@@ -1,91 +1,147 @@
 # Calendário do Prof. Dionísio
 
-Aplicação web para organizar aulas, unidades curriculares e materiais didáticos
-do Prof. Dionísio Pereira, do Senac Ceilândia.
+Aplicação web para organizar aulas, unidades curriculares, atividades e
+materiais didáticos do Prof. Dionísio Pereira, do Senac Ceilândia.
 
 O projeto está sendo reconstruído a partir de um protótipo HTML que armazenava
-os dados somente no navegador. A nova aplicação utilizará Node.js, Express e
-MongoDB para permitir armazenamento centralizado e acesso seguro por
-computadores e celulares.
+os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
+MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
+por computadores e celulares.
+
+> Última atualização desta documentação: 8 de setembro de 2026.
 
 ## Estado atual
 
-A fundação HTTP e a configuração de ambiente estão concluídas.
+A fundação técnica do backend está concluída. O projeto já possui servidor
+HTTP, conexão com MongoDB, validação de ambiente, tratamento de erros, modelo
+administrativo e proteção de senhas.
 
-Funcionalidades disponíveis neste momento:
+O serviço responsável por garantir a existência da primeira conta
+administrativa está implementado e testado. Sua integração ao ciclo de
+inicialização do servidor será o próximo passo.
+
+### Funcionalidades concluídas
 
 - servidor Node.js com Express;
 - rota pública de diagnóstico;
-- resposta JSON padronizada para rotas inexistentes;
+- resposta JSON padronizada para erros;
+- limite para corpos JSON recebidos;
 - validação rigorosa da porta HTTP;
 - inicialização e encerramento controlados;
-- carregamento de variáveis pelo arquivo `.env`;
-- validação e normalização das configurações;
+- conexão encapsulada com MongoDB;
+- prevenção de tentativas simultâneas de conexão;
+- encerramento ordenado do servidor e do banco;
+- carregamento de variáveis com dotenv;
+- validação e normalização das configurações com Zod;
 - proteção do arquivo `.env` contra inclusão no Git;
-- testes HTTP, unitários e de configuração;
-- scripts de desenvolvimento, produção e verificação.
+- modelo Mongoose para o usuário administrativo;
+- normalização e índice único para o e-mail;
+- ocultação do hash da senha em consultas e serializações;
+- hashing assíncrono de senhas com bcrypt;
+- validação do limite de 72 bytes do bcrypt;
+- configuração segura do custo computacional do hash;
+- serviço idempotente para criação do primeiro administrador;
+- tratamento de conflitos concorrentes de e-mail;
+- testes HTTP, unitários e de integração controlada;
+- documentação das decisões de engenharia.
 
-Ainda não estão implementados:
+### Ainda não implementado
 
-- interface visual;
-- conexão com o banco de dados;
-- cadastro de aulas;
+- integração do administrador ao ciclo de abertura do servidor;
 - autenticação;
+- gerenciamento de sessões;
+- limitação de tentativas de login;
+- autorização das rotas;
+- interface visual;
+- cadastro de aulas e atividades;
+- cadastro de unidades curriculares;
 - armazenamento de materiais;
-- acesso externo pela internet.
+- migração dos dados do protótipo;
+- acesso externo à aplicação;
+- implantação em ambiente de produção.
 
-O projeto ainda não deve ser publicado em ambiente de produção.
+A publicação do código em um repositório privado não significa que a aplicação
+esteja implantada. O sistema ainda não deve ser utilizado em produção.
+
+## Repositório
+
+O código-fonte está armazenado em um repositório privado:
+
+[github.com/maurizioprizzi/calendario-dionisio](https://github.com/maurizioprizzi/calendario-dionisio)
+
+Somente pessoas convidadas e autenticadas no GitHub conseguem visualizar o
+conteúdo.
 
 ## Tecnologias
 
 - Node.js 20;
 - npm 10;
 - Express 5;
-- dotenv;
-- Zod;
+- MongoDB 7;
+- Mongoose 9;
+- bcryptjs 3;
+- dotenv 17;
+- Zod 4;
 - test runner nativo do Node.js;
-- Git;
-- MongoDB será introduzido no próximo marco.
+- Git e GitHub.
 
-## Requisitos locais
-
-Para executar o estado atual do projeto:
-
-- Node.js 20.20.0 ou superior;
-- npm 10 ou superior;
-- Git.
-
-Versões utilizadas durante o desenvolvimento inicial:
+Versões utilizadas no ambiente inicial de desenvolvimento:
 
 ```text
 Node.js 20.20.1
 npm 10.8.2
 Git 2.43.0
+MongoDB Server 7.0.42
+MongoDB Shell 2.10.0
+Express 5.2.1
+Mongoose 9.9.4
+bcryptjs 3.0.3
+dotenv 17.3.1
+Zod 4.5.4
 ```
 
-## Instalação local
+## Requisitos locais
 
-Entre no diretório do projeto:
+Para executar o estágio atual do projeto:
+
+- Node.js 20.20.0 ou superior;
+- npm 10 ou superior;
+- Git;
+- MongoDB;
+- acesso ao repositório privado, quando a instalação for feita pelo GitHub.
+
+## Obter o projeto
+
+Quem possuir acesso ao repositório poderá cloná-lo por SSH:
+
+```bash
+git clone git@github.com:maurizioprizzi/calendario-dionisio.git
+cd calendario-dionisio
+```
+
+Na máquina utilizada para o desenvolvimento inicial, o projeto está em:
 
 ```bash
 cd /home/maurizio/eclipse-workspace/dionisio
 ```
 
-Instale as dependências:
+## Instalar as dependências
 
-```bash
-npm install
-```
-
-Quando for necessário reproduzir exatamente as versões registradas no
-`package-lock.json`, utilize:
+Para reproduzir exatamente as versões registradas no `package-lock.json`:
 
 ```bash
 npm ci
 ```
 
-Durante o desenvolvimento cotidiano, não é necessário executar `npm ci` e
-`npm install` em sequência. Basta utilizar um deles conforme a finalidade.
+Durante o desenvolvimento, quando for necessário adicionar ou atualizar uma
+dependência:
+
+```bash
+npm install
+```
+
+Não é necessário executar `npm ci` e `npm install` em sequência. Utilize apenas
+o comando apropriado para a finalidade desejada.
 
 ## Configuração local
 
@@ -95,7 +151,7 @@ Crie o arquivo local de configuração a partir do exemplo:
 cp .env.example .env
 ```
 
-Abra `.env` no editor e configure os valores locais.
+Abra `.env` no editor e substitua os valores demonstrativos.
 
 Gere um segredo de sessão com:
 
@@ -105,28 +161,67 @@ node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"
 
 Utilize o resultado em `SESSION_SECRET`.
 
-Também substitua:
+Também configure:
 
-- `ADMIN_EMAIL` pelo e-mail administrativo;
-- `ADMIN_PASSWORD` por uma senha forte com no mínimo 12 caracteres.
+- `ADMIN_NAME` com o nome do administrador;
+- `ADMIN_EMAIL` com o e-mail administrativo;
+- `ADMIN_PASSWORD` com uma senha exclusiva e forte;
+- `MONGODB_URI` com o endereço do banco de dados.
 
-Nunca envie o conteúdo do `.env` e nunca adicione esse arquivo ao Git.
+A senha administrativa deve:
+
+- possuir pelo menos 12 caracteres;
+- possuir no máximo 72 bytes em UTF-8;
+- não ser reutilizada em outro serviço;
+- existir somente no arquivo `.env` ou no ambiente seguro da hospedagem.
+
+Nunca envie o conteúdo de `.env` por e-mail, mensagem ou commit.
 
 ### Variáveis disponíveis
 
-| Variável | Finalidade |
-| --- | --- |
-| `NODE_ENV` | Define o ambiente de execução |
-| `HOST` | Define a interface de rede |
-| `PORT` | Define a porta HTTP |
-| `MONGODB_URI` | Informa o endereço do banco |
-| `SESSION_SECRET` | Protege as futuras sessões |
-| `ADMIN_NAME` | Nome do administrador inicial |
-| `ADMIN_EMAIL` | E-mail do administrador inicial |
-| `ADMIN_PASSWORD` | Senha do administrador inicial |
-| `SESSION_HOURS` | Duração máxima da sessão |
-| `APP_ORIGIN` | Origem autorizada da aplicação |
-| `TRUST_PROXY` | Informa o uso de proxy reverso |
+| Variável | Obrigatória | Padrão | Finalidade |
+| --- | --- | --- | --- |
+| `NODE_ENV` | Não | `development` | Ambiente de execução |
+| `HOST` | Não | `0.0.0.0` | Interface de rede do servidor |
+| `PORT` | Não | `3000` | Porta HTTP |
+| `MONGODB_URI` | Sim | — | Endereço do MongoDB |
+| `SESSION_SECRET` | Sim | — | Proteção das futuras sessões |
+| `PASSWORD_HASH_ROUNDS` | Não | `12` | Custo computacional do bcrypt |
+| `ADMIN_NAME` | Sim | — | Nome do administrador inicial |
+| `ADMIN_EMAIL` | Sim | — | E-mail do administrador inicial |
+| `ADMIN_PASSWORD` | Sim | — | Senha inicial do administrador |
+| `SESSION_HOURS` | Não | `8` | Duração máxima da futura sessão |
+| `APP_ORIGIN` | Sim | — | Origem autorizada da aplicação |
+| `TRUST_PROXY` | Não | `0` | Uso de proxy reverso |
+
+`PASSWORD_HASH_ROUNDS` aceita somente números inteiros entre 10 e 15. O valor
+recomendado para o projeto é 12.
+
+## Preparar o MongoDB local
+
+Em uma instalação do MongoDB gerenciada pelo systemd:
+
+```bash
+sudo systemctl start mongod
+```
+
+Confirme que o serviço está ativo:
+
+```bash
+systemctl is-active mongod
+```
+
+Teste a comunicação com o banco:
+
+```bash
+mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'
+```
+
+A resposta esperada contém:
+
+```text
+{ ok: 1 }
+```
 
 ## Executar em desenvolvimento
 
@@ -134,8 +229,8 @@ Nunca envie o conteúdo do `.env` e nunca adicione esse arquivo ao Git.
 npm run dev
 ```
 
-Esse comando inicia o servidor e reinicia o processo automaticamente quando
-um arquivo JavaScript monitorado é alterado.
+Esse comando utiliza o modo de observação do Node.js e reinicia o processo
+quando um arquivo JavaScript monitorado é alterado.
 
 O endereço local do servidor é:
 
@@ -143,14 +238,14 @@ O endereço local do servidor é:
 http://localhost:3000
 ```
 
-Neste estágio, ainda não existe uma página visual na rota principal. A rota
-disponível é:
+Neste estágio, ainda não existe uma interface visual na rota principal. O
+endereço disponível para diagnóstico é:
 
 ```text
 http://localhost:3000/api/health
 ```
 
-Ela também pode ser consultada pelo terminal:
+Também é possível consultá-lo pelo terminal:
 
 ```bash
 curl -i http://localhost:3000/api/health
@@ -164,10 +259,20 @@ Para encerrar o servidor, pressione `Ctrl+C`.
 npm start
 ```
 
-Esse comando será usado como base para a futura execução em produção.
+A aplicação valida o ambiente e estabelece a conexão com o MongoDB antes de
+abrir a porta HTTP.
 
-A aplicação valida todas as variáveis obrigatórias antes de abrir a porta.
-Uma configuração ausente ou inválida impede a inicialização.
+Se a configuração ou a conexão com o banco falhar, o servidor não será
+disponibilizado.
+
+## Scripts disponíveis
+
+| Comando | Finalidade |
+| --- | --- |
+| `npm start` | Inicia a aplicação sem monitoramento |
+| `npm run dev` | Inicia com reinicialização automática |
+| `npm test` | Executa todos os testes |
+| `npm run check` | Verifica a sintaxe da entrada do servidor |
 
 ## Testes automatizados
 
@@ -177,26 +282,59 @@ Execute todos os testes:
 npm test
 ```
 
-Os testes atuais verificam:
+No marco atual, a suíte possui:
+
+```text
+156 testes
+20 suítes
+0 falhas
+0 testes ignorados
+```
+
+Os testes verificam, entre outros comportamentos:
 
 - resposta da rota `/api/health`;
-- conteúdo retornado pelo diagnóstico;
-- formato JSON do erro para uma rota inexistente;
-- remoção do cabeçalho que expõe o Express;
-- aplicação da porta padrão;
-- conversão de portas válidas;
-- rejeição de portas inválidas;
-- valores padrão do ambiente;
-- normalização do e-mail administrativo;
-- conversão de configurações numéricas e booleanas;
-- rejeição de configurações inseguras;
-- ausência de senhas nas mensagens de erro.
+- remoção do cabeçalho que identifica o Express;
+- formato seguro de erros HTTP;
+- JSON malformado;
+- corpos excessivamente grandes;
+- portas válidas e inválidas;
+- validação das variáveis de ambiente;
+- ausência de senhas nas mensagens de erro;
+- conexão e desconexão do MongoDB;
+- tentativas simultâneas de conexão;
+- bloqueio do HTTP quando o banco falha;
+- validações do modelo de usuário;
+- índice único do e-mail;
+- ocultação do hash da senha;
+- geração e comparação de hashes bcrypt;
+- custo computacional do hash;
+- limite de 72 bytes para senhas;
+- comportamento com caracteres Unicode;
+- criação controlada do administrador;
+- preservação de contas existentes;
+- conflitos concorrentes de e-mail;
+- ausência de credenciais nos logs.
 
-## Verificação de sintaxe
+Os testes unitários utilizam dependências controladas sempre que possível.
+Assim, a maioria da suíte não depende de uma conexão externa.
+
+## Auditoria das dependências
+
+Execute:
 
 ```bash
-npm run check
+npm audit
 ```
+
+No marco documentado, a auditoria apresentou:
+
+```text
+found 0 vulnerabilities
+```
+
+Esse resultado representa o momento da verificação. A auditoria deve ser
+executada novamente após alterações nas dependências e antes da implantação.
 
 ## Estrutura atual
 
@@ -204,49 +342,94 @@ npm run check
 dionisio/
 ├── src/
 │   ├── config/
+│   │   ├── database.js
 │   │   └── env.js
+│   ├── errors/
+│   │   └── AppError.js
+│   ├── middlewares/
+│   │   └── errorHandler.js
+│   ├── models/
+│   │   └── User.js
+│   ├── services/
+│   │   ├── AdminBootstrapper.js
+│   │   └── PasswordHasher.js
 │   ├── app.js
 │   └── server.js
 ├── test/
+│   ├── AdminBootstrapper.test.js
+│   ├── AppError.test.js
+│   ├── PasswordHasher.test.js
 │   ├── app.test.js
+│   ├── database.test.js
 │   ├── env.test.js
-│   └── server.test.js
+│   ├── errorHandler.test.js
+│   ├── server.test.js
+│   └── user.test.js
+├── .editorconfig
 ├── .env.example
 ├── .gitignore
+├── DEVLOG.md
 ├── package-lock.json
 ├── package.json
 └── README.md
 ```
 
+## Responsabilidades dos módulos
+
 ### `src/app.js`
 
 Configura a aplicação Express, os middlewares e as rotas HTTP.
 
-Esse módulo não abre uma porta diretamente. Isso permite que os testes criem
+Esse módulo não abre uma porta diretamente, permitindo que testes criem
 instâncias isoladas da aplicação.
 
 ### `src/server.js`
 
-Carrega e valida o ambiente, cria o servidor HTTP e controla sua inicialização
-e seu encerramento.
+Carrega e valida o ambiente, conecta o MongoDB, cria o servidor HTTP e controla
+sua inicialização e seu encerramento.
 
 ### `src/config/env.js`
 
-Define, valida e normaliza todas as variáveis utilizadas pela aplicação.
+Define, valida e normaliza as variáveis utilizadas pela aplicação.
 
 Valores confidenciais não são incluídos nas mensagens de erro.
 
-### `test/app.test.js`
+### `src/config/database.js`
 
-Executa testes de integração HTTP utilizando uma porta temporária.
+Encapsula o ciclo de conexão com o MongoDB por meio do Mongoose.
 
-### `test/server.test.js`
+### `src/errors/AppError.js`
 
-Executa testes unitários da validação da porta.
+Representa erros operacionais conhecidos pela aplicação.
 
-### `test/env.test.js`
+### `src/middlewares/errorHandler.js`
 
-Executa testes unitários da configuração e de suas regras de segurança.
+Converte erros conhecidos em respostas JSON seguras e oculta detalhes de
+falhas inesperadas.
+
+### `src/models/User.js`
+
+Define o usuário administrativo e protege o hash da senha contra exposição
+acidental.
+
+### `src/services/PasswordHasher.js`
+
+Gera e compara hashes bcrypt, valida o custo computacional e impede o
+truncamento silencioso de senhas.
+
+### `src/services/AdminBootstrapper.js`
+
+Garante a existência da primeira conta administrativa sem substituir uma conta
+já existente.
+
+### `test/`
+
+Contém os testes automatizados correspondentes aos módulos da aplicação.
+
+### `DEVLOG.md`
+
+Registra cronologicamente os marcos, decisões e verificações realizadas durante
+o desenvolvimento.
 
 ## API atual
 
@@ -267,9 +450,11 @@ Exemplo de resposta:
 }
 ```
 
+O campo `timestamp` é gerado no momento da requisição.
+
 ### Rota inexistente
 
-Uma rota desconhecida retorna o código HTTP `404` e o corpo:
+Uma rota desconhecida retorna o código HTTP `404`:
 
 ```json
 {
@@ -280,45 +465,113 @@ Uma rota desconhecida retorna o código HTTP `404` e o corpo:
 }
 ```
 
+### JSON inválido
+
+Um corpo JSON malformado retorna o código HTTP `400`:
+
+```json
+{
+  "error": {
+    "code": "INVALID_JSON",
+    "message": "O corpo da requisição contém um JSON inválido."
+  }
+}
+```
+
+### Corpo excessivamente grande
+
+Um corpo superior ao limite configurado retorna o código HTTP `413`:
+
+```json
+{
+  "error": {
+    "code": "PAYLOAD_TOO_LARGE",
+    "message": "O corpo da requisição excede o limite permitido."
+  }
+}
+```
+
+## Segurança implementada
+
+- variáveis de ambiente validadas antes da inicialização;
+- segredos excluídos do Git;
+- mensagens de configuração sem valores confidenciais;
+- cabeçalho `X-Powered-By` removido;
+- limite de `100kb` para corpos JSON;
+- erros inesperados ocultados das respostas;
+- logs de erro sem corpo, cookies ou cabeçalhos da requisição;
+- servidor HTTP bloqueado quando o banco está indisponível;
+- hash de senha oculto nas consultas comuns;
+- hash removido das representações JSON;
+- senha original ausente do modelo;
+- hashing assíncrono com salt bcrypt;
+- custo mínimo e máximo do hash;
+- limite de senha medido em bytes UTF-8;
+- criação administrativa sem substituição automática;
+- conflitos concorrentes de e-mail tratados;
+- auditoria periódica das dependências.
+
+Essas medidas ainda não tornam a aplicação pronta para produção. Autenticação,
+sessões, autorização, limitação de tentativas, cabeçalhos adicionais de
+segurança e implantação HTTPS serão implementados nos próximos marcos.
+
 ## Princípios de desenvolvimento
 
-O projeto seguirá estes princípios:
-
-1. cada marco deve permanecer executável;
-2. regras importantes devem possuir testes;
-3. configurações confidenciais não devem entrar no Git;
-4. erros devem possuir formato padronizado;
-5. cada arquivo deve ter uma responsabilidade clara;
-6. decisões técnicas devem ser documentadas;
-7. segurança deve fazer parte da implementação desde o início;
-8. a interface deve funcionar em computador e celular;
-9. nenhuma etapa deve avançar com testes conhecidos em falha.
+1. Cada marco deve permanecer executável.
+2. Regras importantes devem possuir testes.
+3. Configurações confidenciais não devem entrar no Git.
+4. Erros devem possuir formato padronizado.
+5. Cada arquivo deve ter uma responsabilidade clara.
+6. Dependências externas devem permanecer encapsuladas.
+7. Decisões técnicas devem ser documentadas.
+8. Segurança deve fazer parte da implementação desde o início.
+9. A interface deverá funcionar em computador e celular.
+10. Nenhuma etapa avançará com testes conhecidos em falha.
 
 ## Próximos marcos
 
-1. tratamento centralizado de erros;
-2. conexão com MongoDB;
-3. modelo de usuário;
-4. autenticação administrativa;
-5. modelo e API de aulas;
-6. modelo e API de materiais;
-7. migração segura dos dados do protótipo;
-8. reconstrução da interface;
-9. testes completos de integração;
-10. documentação de implantação e acesso remoto.
+1. integrar o `AdminBootstrapper` ao ciclo do servidor;
+2. validar a criação do administrador no MongoDB real;
+3. implementar autenticação e gerenciamento de sessões;
+4. limitar tentativas de autenticação;
+5. proteger rotas administrativas;
+6. criar os modelos do calendário;
+7. implementar as APIs de aulas, atividades e materiais;
+8. migrar com segurança os dados do protótipo;
+9. reconstruir a interface visual responsiva;
+10. realizar testes completos de integração e interface;
+11. preparar documentação de implantação;
+12. publicar e validar a aplicação em computador e celular.
 
-## Segurança
+## Fluxo de atualização pelo Git
 
-Nunca devem ser adicionados ao repositório:
+Antes de iniciar um novo período de trabalho:
 
-- senhas;
-- tokens;
-- chaves privadas;
-- credenciais do banco de dados;
-- conteúdo real do arquivo `.env`.
+```bash
+git pull --ff-only
+git status
+```
 
-Essas informações são armazenadas em variáveis de ambiente. O repositório
-contém apenas `.env.example`, com nomes e valores demonstrativos.
+Depois de um marco aprovado:
+
+```bash
+git add <arquivos-do-marco>
+git commit
+git push
+```
+
+Evite adicionar todos os arquivos indiscriminadamente. Prefira informar
+explicitamente quais arquivos pertencem ao commit.
+
+## Documentação de desenvolvimento
+
+O histórico técnico detalhado está disponível em:
+
+```text
+DEVLOG.md
+```
+
+O diário registra objetivos, decisões, testes e próximos passos de cada marco.
 
 ## Licença
 
