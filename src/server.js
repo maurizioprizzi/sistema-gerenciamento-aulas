@@ -1,16 +1,16 @@
 const http = require('node:http');
 
+const dotenv = require('dotenv');
+
 const { createApp } = require('./app');
+const { loadEnvironment } = require('./config/env');
 
 /**
  * Converte e valida o número da porta informado pelo ambiente.
  *
- * Provedores de hospedagem normalmente entregam a porta por meio da variável
- * PORT. Durante o desenvolvimento local, usamos a porta 3000 como padrão.
- *
- * A expressão regular exige que todo o conteúdo seja formado por algarismos.
- * Isso impede que valores parcialmente numéricos, como "3000abc", "3.14" ou
- * "3e3", sejam silenciosamente aceitos.
+ * Embora env.js já exija somente algarismos, esta função preserva sua própria
+ * proteção. Isso é defesa em profundidade: server.js não depende da suposição
+ * de que sempre receberá valores previamente validados.
  *
  * @param {string | undefined} value Valor recebido da variável PORT.
  * @returns {number} Porta válida para o servidor HTTP.
@@ -38,16 +38,26 @@ function resolvePort(value) {
 }
 
 /**
- * Cria e inicia o servidor HTTP.
+ * Carrega a configuração e inicia o servidor HTTP.
  *
- * Manter a inicialização dentro de uma função permite testar a configuração
- * sem abrir uma porta automaticamente quando este arquivo é importado.
+ * A configuração é validada antes da abertura da porta. Se uma variável
+ * obrigatória estiver ausente ou inválida, o processo será interrompido sem
+ * iniciar parcialmente a aplicação.
  *
  * @returns {import('node:http').Server} Servidor HTTP iniciado.
  */
 function startServer() {
-    const port = resolvePort(process.env.PORT);
-    const host = process.env.HOST ?? '0.0.0.0';
+    /**
+     * Carrega o arquivo .env quando ele existir.
+     *
+     * Por padrão, dotenv não substitui variáveis já fornecidas pelo sistema
+     * operacional ou pela plataforma de hospedagem.
+     */
+    dotenv.config({ quiet: true });
+
+    const environment = loadEnvironment();
+    const port = resolvePort(environment.PORT);
+    const host = environment.HOST;
 
     const app = createApp();
     const server = http.createServer(app);
@@ -68,27 +78,37 @@ function startServer() {
     /**
      * Inicia o recebimento de conexões.
      *
-     * O endereço 0.0.0.0 permite que a aplicação funcione tanto localmente
-     * quanto em contêineres e provedores de hospedagem.
+     * O endereço 0.0.0.0 permite que a aplicação funcione localmente, em
+     * contêineres e em plataformas de hospedagem.
      */
     server.listen(port, host, () => {
-        console.log('Calendário do Prof. Dionísio iniciado com sucesso.');
-        console.log(`Ambiente: ${process.env.NODE_ENV ?? 'development'}`);
+        console.log(
+            'Calendário do Prof. Dionísio iniciado com sucesso.'
+        );
+        console.log(`Ambiente: ${environment.NODE_ENV}`);
         console.log(`Endereço local: http://localhost:${port}`);
     });
 
     /**
      * Encerra o servidor sem interromper requisições que já estejam sendo
-     * processadas. Mais adiante também fecharemos aqui a conexão com o banco.
+     * processadas.
+     *
+     * Quando o MongoDB for adicionado, esta rotina também encerrará a conexão
+     * com o banco antes de finalizar o processo.
      *
      * @param {string} signal Sinal recebido do sistema operacional.
      */
     function shutdown(signal) {
-        console.log(`\n${signal} recebido. Encerrando o servidor...`);
+        console.log(
+            `\n${signal} recebido. Encerrando o servidor...`
+        );
 
         server.close((error) => {
             if (error) {
-                console.error('Erro durante o encerramento:', error);
+                console.error(
+                    'Erro durante o encerramento:',
+                    error
+                );
                 process.exitCode = 1;
                 return;
             }
@@ -106,10 +126,18 @@ function startServer() {
 /**
  * Inicia o servidor somente quando este arquivo é executado diretamente.
  *
- * Se um teste importar server.js, a porta não será aberta automaticamente.
+ * Erros de configuração são apresentados de forma clara, sem abrir a porta e
+ * sem despejar valores confidenciais no terminal.
  */
 if (require.main === module) {
-    startServer();
+    try {
+        startServer();
+    } catch (error) {
+        console.error(
+            `Não foi possível iniciar a aplicação:\n${error.message}`
+        );
+        process.exitCode = 1;
+    }
 }
 
 module.exports = {
