@@ -373,14 +373,104 @@ transformada em hash e descartada antes da persistência.
 - hash ausente das representações públicas;
 - senha original ausente do schema.
 
+---
+
+## 8 de setembro de 2026 — Proteção de senhas com bcrypt
+
+### Objetivo
+
+Criar uma camada isolada e segura para transformar senhas em hashes e comparar
+credenciais, sem armazenar ou registrar a senha original.
+
+### Implementado
+
+- adicionada a dependência `bcryptjs` na versão 3.0.3;
+- criada a classe `PasswordHasher`;
+- implementado hashing assíncrono de senhas;
+- implementada comparação assíncrona entre senha e hash;
+- configurado custo padrão 12;
+- definidos limites operacionais entre 10 e 15;
+- protegido o custo contra alterações depois da construção;
+- protegido o cliente bcrypt com campo privado;
+- rejeitadas senhas vazias ou de tipo incorreto;
+- rejeitados hashes vazios ou de tipo incorreto;
+- rejeitadas senhas maiores que 72 bytes;
+- preservados espaços e caracteres Unicode das senhas;
+- adicionada a variável `PASSWORD_HASH_ROUNDS`;
+- documentada a variável em `.env.example`;
+- validado o custo durante o carregamento do ambiente;
+- validado o limite da senha administrativa em bytes UTF-8;
+- mantidas senhas confidenciais fora das mensagens de erro;
+- criado teste de integração com a implementação real do bcrypt.
+
+### Decisões de engenharia
+
+#### Biblioteca utilizada
+
+Foi escolhido o pacote oficial `bcryptjs`, versão 3.0.3.
+
+A implementação:
+
+- não possui dependências transitivas;
+- não exige compilação de módulos nativos;
+- facilita a execução em serviços de hospedagem;
+- oferece API assíncrona;
+- produz hashes bcrypt compatíveis com o prefixo `$2b$`.
+
+Pacotes com nomes semelhantes não devem ser utilizados, pois existem casos
+documentados de pacotes maliciosos que tentam se passar pelo projeto oficial.
+
+#### Operações assíncronas
+
+As operações `hash` e `compare` utilizam a API assíncrona.
+
+O hashing é propositalmente custoso. A versão assíncrona permite que a
+biblioteca devolva periodicamente o controle ao event loop do Node.js,
+reduzindo o bloqueio das demais operações da aplicação.
+
+#### Limite de 72 bytes
+
+O bcrypt considera no máximo 72 bytes da senha.
+
+A aplicação rejeita entradas maiores em vez de permitir truncamento
+silencioso. A medição utiliza bytes UTF-8, pois caracteres acentuados e emojis
+podem ocupar mais de um byte.
+
+A senha não recebe `trim` nem normalização, porque espaços e caracteres
+Unicode podem fazer parte de uma credencial legítima.
+
+#### Custo computacional
+
+O custo padrão é 12, com valores permitidos entre 10 e 15.
+
+A configuração é validada na fronteira das variáveis de ambiente e novamente
+no construtor de `PasswordHasher`. Essa defesa em profundidade impede custos
+fracos ou excessivos mesmo quando o serviço é utilizado isoladamente.
+
+### Verificação
+
+- 121 testes aprovados;
+- 16 suítes aprovadas;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas;
+- hash real com 60 caracteres gerado;
+- senha correta reconhecida;
+- senha incorreta rejeitada;
+- custo protegido contra alteração externa;
+- limite exato de 72 bytes aceito;
+- entrada acima de 72 bytes rejeitada;
+- comportamento Unicode validado;
+- arquivo `.env.example` validado pelo schema real.
+
 ### Próximo marco
 
-Implementar o serviço responsável pela proteção das senhas:
+Criar de forma controlada a primeira conta administrativa:
 
-1. selecionar uma biblioteca de hashing mantida e sem vulnerabilidades
-   conhecidas;
-2. adicionar a configuração segura do custo do hash;
-3. criar uma classe isolada para gerar e comparar hashes;
-4. impedir o uso de senhas vazias ou excessivamente grandes;
-5. testar geração, comparação e tratamento de entradas inválidas;
-6. preparar a criação controlada do primeiro administrador.
+1. implementar um serviço de inicialização do administrador;
+2. consultar o usuário pelo e-mail normalizado;
+3. evitar a recriação de uma conta existente;
+4. gerar o hash somente quando a conta precisar ser criada;
+5. tratar conflitos de unicidade;
+6. integrar a inicialização ao ciclo de abertura da aplicação;
+7. testar o fluxo sem depender de um MongoDB externo.

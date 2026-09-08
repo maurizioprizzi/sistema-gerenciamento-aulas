@@ -1,4 +1,27 @@
+'use strict';
+
 const { z } = require('zod');
+
+/**
+ * Limites aceitos para o custo computacional do bcrypt.
+ *
+ * O serviço PasswordHasher realiza sua própria validação novamente. Essa
+ * duplicação intencional cria duas fronteiras:
+ *
+ * 1. a configuração inválida impede a inicialização da aplicação;
+ * 2. o serviço rejeita um custo inseguro mesmo quando utilizado isoladamente.
+ */
+const MIN_PASSWORD_HASH_ROUNDS = 10;
+const MAX_PASSWORD_HASH_ROUNDS = 15;
+const DEFAULT_PASSWORD_HASH_ROUNDS = 12;
+
+/**
+ * Limite técnico do bcrypt.
+ *
+ * O bcrypt utiliza somente os primeiros 72 bytes da senha. Como caracteres
+ * Unicode podem ocupar mais de um byte, não é suficiente contar caracteres.
+ */
+const BCRYPT_MAX_PASSWORD_BYTES = 72;
 
 /**
  * Esquema das variáveis de ambiente.
@@ -45,7 +68,7 @@ const environmentSchema = z.object({
         .trim()
         .regex(
             /^mongodb(\+srv)?:\/\//,
-            'MONGODB_URI deve começar com mongodb:// ou mongodb+srv://.'
+            'MONGODB_URI deve começar com mongodb:// ou mongodb+srv://.',
         ),
 
     /**
@@ -55,8 +78,27 @@ const environmentSchema = z.object({
         .string()
         .min(
             32,
-            'SESSION_SECRET deve possuir pelo menos 32 caracteres.'
+            'SESSION_SECRET deve possuir pelo menos 32 caracteres.',
         ),
+
+    /**
+     * Custo computacional utilizado na criação de hashes bcrypt.
+     *
+     * O valor chega como texto pelas variáveis de ambiente e é convertido
+     * para número somente depois de passar pelas regras abaixo.
+     */
+    PASSWORD_HASH_ROUNDS: z.coerce
+        .number()
+        .int('PASSWORD_HASH_ROUNDS deve ser um número inteiro.')
+        .min(
+            MIN_PASSWORD_HASH_ROUNDS,
+            'PASSWORD_HASH_ROUNDS deve ser no mínimo 10.',
+        )
+        .max(
+            MAX_PASSWORD_HASH_ROUNDS,
+            'PASSWORD_HASH_ROUNDS deve ser no máximo 15.',
+        )
+        .default(DEFAULT_PASSWORD_HASH_ROUNDS),
 
     /**
      * Dados utilizados futuramente para criar a primeira conta administrativa.
@@ -73,15 +115,29 @@ const environmentSchema = z.object({
         .email('ADMIN_EMAIL deve conter um e-mail válido.')
         .transform((email) => email.toLowerCase()),
 
+    /**
+     * A senha não utiliza trim ou qualquer transformação.
+     *
+     * Espaços podem fazer parte de uma senha legítima. O limite de 200
+     * caracteres protege a entrada geral, enquanto a regra de 72 bytes trata
+     * especificamente o limite técnico do bcrypt.
+     */
     ADMIN_PASSWORD: z
         .string()
         .min(
             12,
-            'ADMIN_PASSWORD deve possuir pelo menos 12 caracteres.'
+            'ADMIN_PASSWORD deve possuir pelo menos 12 caracteres.',
         )
         .max(
             200,
-            'ADMIN_PASSWORD deve possuir no máximo 200 caracteres.'
+            'ADMIN_PASSWORD deve possuir no máximo 200 caracteres.',
+        )
+        .refine(
+            (password) => (
+                Buffer.byteLength(password, 'utf8') <=
+                BCRYPT_MAX_PASSWORD_BYTES
+            ),
+            'ADMIN_PASSWORD deve possuir no máximo 72 bytes em UTF-8.',
         ),
 
     /**
@@ -106,7 +162,7 @@ const environmentSchema = z.object({
 
                 return protocol === 'http:' || protocol === 'https:';
             },
-            'APP_ORIGIN deve utilizar http:// ou https://.'
+            'APP_ORIGIN deve utilizar http:// ou https://.',
         ),
 
     /**
@@ -115,7 +171,7 @@ const environmentSchema = z.object({
      */
     TRUST_PROXY: z
         .enum(['0', '1'])
-        .default('0')
+        .default('0'),
 });
 
 /**
@@ -150,7 +206,7 @@ function loadEnvironment(source = process.env) {
             .join('\n');
 
         throw new Error(
-            `As variáveis de ambiente são inválidas:\n${details}`
+            `As variáveis de ambiente são inválidas:\n${details}`,
         );
     }
 
@@ -165,10 +221,10 @@ function loadEnvironment(source = process.env) {
         TRUST_PROXY: environment.TRUST_PROXY === '1',
         IS_PRODUCTION: environment.NODE_ENV === 'production',
         SESSION_MAX_AGE_MS:
-            environment.SESSION_HOURS * 60 * 60 * 1000
+            environment.SESSION_HOURS * 60 * 60 * 1000,
     });
 }
 
 module.exports = {
-    loadEnvironment
+    loadEnvironment,
 };
