@@ -1,0 +1,222 @@
+# Diário de Desenvolvimento
+
+Este documento registra os marcos, decisões de engenharia, verificações e
+próximos passos do Calendário do Prof. Dionísio.
+
+O README explica como utilizar o projeto. Este diário explica como e por que
+ele está sendo construído.
+
+---
+
+## 8 de setembro de 2026 — Fundação HTTP
+
+### Objetivo
+
+Criar uma base Node.js pequena, executável e testável antes de introduzir
+banco de dados ou interface visual.
+
+### Implementado
+
+- inicialização do projeto npm;
+- repositório Git na branch `main`;
+- aplicação Express criada por uma função;
+- servidor HTTP separado da aplicação;
+- rota pública `GET /api/health`;
+- resposta JSON para rotas inexistentes;
+- remoção do cabeçalho `X-Powered-By`;
+- limite inicial de 100 KB para corpos JSON;
+- encerramento controlado por `SIGINT` e `SIGTERM`;
+- validação rigorosa da porta HTTP;
+- testes com o test runner nativo do Node.js.
+
+### Decisões
+
+#### Separar `app.js` de `server.js`
+
+`app.js` configura o Express, enquanto `server.js` abre a porta HTTP.
+
+Essa separação permite testar a aplicação em uma porta temporária sem iniciar
+automaticamente o servidor de desenvolvimento.
+
+#### Utilizar o test runner nativo
+
+A fundação utiliza `node:test` e `node:assert`. Isso reduz dependências e atende
+aos testes necessários neste estágio.
+
+#### Validar toda a porta
+
+A primeira implementação utilizava `Number.parseInt()`. Os testes demonstraram
+que valores como `3000abc` e `3.14` seriam aceitos parcialmente.
+
+A implementação passou a exigir somente algarismos e a validar o intervalo
+entre 1 e 65535.
+
+### Verificação
+
+- 13 testes aprovados;
+- zero falhas;
+- servidor validado pelo navegador e pelo `curl`.
+
+### Commit
+
+`58af2a2 chore: initialize Express application`
+
+---
+
+## 8 de setembro de 2026 — Configuração de ambiente
+
+### Objetivo
+
+Impedir que a aplicação inicie com configurações ausentes, inválidas ou
+inseguras.
+
+### Implementado
+
+- arquivo público `.env.example`;
+- arquivo local `.env` protegido pelo `.gitignore`;
+- carregamento das variáveis com dotenv;
+- validação e normalização com Zod;
+- valores padrão para desenvolvimento;
+- validação da URI do MongoDB;
+- exigência de segredo de sessão com tamanho mínimo;
+- normalização do e-mail administrativo;
+- validação da duração da sessão;
+- validação da origem pública;
+- conversão segura de configurações booleanas e numéricas;
+- interrupção da inicialização quando a configuração é inválida.
+
+### Decisões
+
+#### Não versionar o `.env`
+
+O arquivo `.env` pode conter senha administrativa, segredo de sessão e
+credenciais do banco. Somente `.env.example`, com valores demonstrativos,
+pode entrar no Git.
+
+#### Não mostrar valores em mensagens de erro
+
+As mensagens identificam o campo inválido, mas não repetem seu conteúdo. Isso
+reduz o risco de senhas ou credenciais aparecerem nos logs.
+
+#### Manter a configuração imutável
+
+O objeto retornado por `loadEnvironment()` utiliza `Object.freeze()`, evitando
+alterações acidentais durante a execução.
+
+### Verificação
+
+- 31 testes aprovados;
+- configuração inválida recusada antes da abertura da porta;
+- configuração válida executada normalmente;
+- zero vulnerabilidades informadas pelo npm.
+
+### Commit
+
+`2960b8a feat: validate application environment`
+
+---
+
+## 8 de setembro de 2026 — Tratamento centralizado de erros
+
+### Objetivo
+
+Criar uma fronteira única para respostas de erro, preservando mensagens úteis
+sem expor detalhes internos ao navegador.
+
+### Implementado
+
+- classe `AppError`;
+- validação dos códigos HTTP de erro;
+- códigos internos padronizados;
+- suporte a detalhes seguros de validação;
+- middleware para rotas inexistentes;
+- middleware central de erros;
+- injeção do serviço de log;
+- ocultação de falhas inesperadas;
+- normalização de JSON malformado;
+- normalização de corpos maiores que 100 KB;
+- integração do tratamento ao fluxo real do Express.
+
+### Decisões
+
+#### Separar erros previstos e inesperados
+
+`AppError` representa situações conhecidas, como recurso inexistente ou dados
+inválidos. Sua mensagem pode ser apresentada ao usuário.
+
+Erros comuns de programação continuam usando `Error`. Nesse caso, a mensagem
+técnica fica apenas no servidor e o navegador recebe uma resposta genérica.
+
+#### Usar códigos estáveis
+
+Além do estado HTTP, cada resposta possui um código estável, como:
+
+- `ROUTE_NOT_FOUND`;
+- `INVALID_JSON`;
+- `PAYLOAD_TOO_LARGE`;
+- `INTERNAL_ERROR`.
+
+O futuro frontend poderá reagir aos códigos sem depender do texto das
+mensagens.
+
+#### Injetar o serviço de log
+
+O middleware recebe seu logger como dependência. Em execução normal utiliza o
+console; nos testes utiliza um objeto controlado que não polui o terminal.
+
+Essa decisão reduz acoplamento e torna o comportamento verificável.
+
+#### Não registrar o conteúdo da requisição
+
+O log de falhas inesperadas registra método, caminho e informações do erro,
+mas não registra corpo, cookies ou cabeçalhos. Isso reduz o risco de armazenar
+dados confidenciais.
+
+#### Normalizar erros do framework
+
+O parser JSON do Express utiliza identificadores técnicos para JSON malformado
+e corpo excessivamente grande.
+
+Esses erros são convertidos em `AppError` antes da resposta final, produzindo
+códigos HTTP corretos sem revelar mensagens internas.
+
+### Respostas padronizadas
+
+JSON malformado:
+
+- estado HTTP: `400`;
+- código: `INVALID_JSON`;
+- mensagem pública: `O corpo da requisição contém um JSON inválido.`
+
+Corpo excessivamente grande:
+
+- estado HTTP: `413`;
+- código: `PAYLOAD_TOO_LARGE`;
+- mensagem pública: `O corpo da requisição ultrapassa o limite permitido.`
+
+Erro inesperado:
+
+- estado HTTP: `500`;
+- código: `INTERNAL_ERROR`;
+- mensagem pública: `Não foi possível concluir a operação.`
+
+### Verificação
+
+- 44 testes aprovados;
+- zero falhas;
+- JSON malformado retorna `400`;
+- corpo excessivo retorna `413`;
+- erros inesperados retornam mensagem pública genérica;
+- detalhes técnicos permanecem somente no log do servidor;
+- respostas iniciadas são devolvidas ao tratamento padrão do Express.
+
+### Próximo marco
+
+Introduzir a conexão com MongoDB de forma isolada e testável:
+
+1. instalar o Mongoose;
+2. criar o módulo responsável pela conexão;
+3. representar os estados da conexão;
+4. testar sem depender de um banco externo;
+5. integrar o banco ao ciclo de vida do servidor;
+6. atualizar a documentação.

@@ -1,0 +1,22 @@
+# Indica que este é o arquivo EditorConfig principal do projeto.
+root = true
+
+# Regras gerais para arquivos de texto.
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+# O JavaScript do projeto utiliza quatro espaços.
+[*.js]
+indent_size = 4
+
+# JSON utiliza dois espaços, seguindo o formato produzido pelo npm.
+[*.json]
+indent_size = 2
+
+# Espaços finais podem ter significado especial em Markdown.
+[*.md]
+trim_trailing_whitespace = false

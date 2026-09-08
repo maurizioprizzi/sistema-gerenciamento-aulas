@@ -12,27 +12,36 @@ const { createApp } = require('../src/app');
 /**
  * Testes de integração da aplicação HTTP.
  *
- * Estes testes usam apenas recursos nativos do Node.js:
+ * Estes testes utilizam somente recursos nativos do Node.js:
  * - node:test para organizar e executar os testes;
  * - node:assert para realizar as verificações;
- * - node:http para iniciar um servidor temporário.
- *
- * Não precisamos instalar uma biblioteca de testes neste momento.
+ * - node:http para iniciar um servidor temporário;
+ * - fetch para enviar requisições HTTP reais.
  */
 describe('Aplicação HTTP', () => {
     let server;
     let baseUrl;
 
     /**
+     * O logger de teste impede que erros intencionais poluam o terminal.
+     */
+    const logger = {
+        calls: [],
+
+        error(...argumentsReceived) {
+            this.calls.push(argumentsReceived);
+        }
+    };
+
+    /**
      * Antes dos testes, cria uma instância real da aplicação e solicita ao
      * sistema operacional uma porta livre.
      *
-     * A porta 0 não significa que o servidor ficará na porta zero. Ela pede
-     * ao sistema operacional que selecione automaticamente uma porta
-     * disponível, evitando conflitos com o servidor de desenvolvimento.
+     * A porta 0 pede ao sistema operacional que selecione automaticamente
+     * uma porta disponível.
      */
     before(async () => {
-        const app = createApp();
+        const app = createApp({ logger });
 
         server = http.createServer(app);
 
@@ -48,8 +57,6 @@ describe('Aplicação HTTP', () => {
 
     /**
      * Depois dos testes, encerra o servidor temporário.
-     *
-     * Essa limpeza evita que o processo de testes permaneça aberto.
      */
     after(async () => {
         await new Promise((resolve, reject) => {
@@ -89,11 +96,16 @@ describe('Aplicação HTTP', () => {
     test('a aplicação não revela o uso do Express no cabeçalho', async () => {
         const response = await fetch(`${baseUrl}/api/health`);
 
-        assert.equal(response.headers.get('x-powered-by'), null);
+        assert.equal(
+            response.headers.get('x-powered-by'),
+            null
+        );
     });
 
     test('uma rota inexistente retorna erro JSON padronizado', async () => {
-        const response = await fetch(`${baseUrl}/api/inexistente`);
+        const response = await fetch(
+            `${baseUrl}/api/inexistente`
+        );
         const body = await response.json();
 
         assert.equal(response.status, 404);
@@ -105,6 +117,73 @@ describe('Aplicação HTTP', () => {
             error: {
                 code: 'ROUTE_NOT_FOUND',
                 message: 'O endereço solicitado não existe.'
+            }
+        });
+    });
+
+    test('JSON malformado retorna um erro seguro de cliente', async () => {
+        const invalidJson = '{"date": "2026-09-08"';
+
+        const response = await fetch(
+            `${baseUrl}/api/health`,
+            {
+                method: 'POST',
+                headers: {
+                    'content-type': 'application/json'
+                },
+                body: invalidJson
+            }
+        );
+
+        const body = await response.json();
+
+        assert.equal(response.status, 400);
+        assert.deepEqual(body, {
+            error: {
+                code: 'INVALID_JSON',
+                message:
+                    'O corpo da requisição contém um JSON inválido.'
+            }
+        });
+
+        /**
+         * A resposta pública não deve apresentar a mensagem técnica produzida
+         * pelo interpretador de JSON.
+         */
+        assert.equal(
+            JSON.stringify(body).includes('SyntaxError'),
+            false
+        );
+    });
+
+    test('corpo excessivamente grande retorna o código 413', async () => {
+        /**
+         * O limite configurado em app.js é 100 KB. Este conteúdo ultrapassa
+         * deliberadamente o limite para comprovar a proteção.
+         */
+        const largePayload = JSON.stringify({
+            content: 'a'.repeat(101 * 1024)
+        });
+
+        const response = await fetch(
+            `${baseUrl}/api/health`,
+            {
+                method: 'POST',
+                headers: {
+                    'content-type': 'application/json'
+                },
+                body: largePayload
+            }
+        );
+
+        const body = await response.json();
+
+        assert.equal(response.status, 413);
+        assert.deepEqual(body, {
+            error: {
+                code: 'PAYLOAD_TOO_LARGE',
+                message:
+                    'O corpo da requisição ultrapassa o limite permitido.'
             }
         });
     });

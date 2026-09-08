@@ -1,5 +1,10 @@
 const express = require('express');
 
+const {
+    notFoundHandler,
+    createErrorHandler
+} = require('./middlewares/errorHandler');
+
 /**
  * Cria e configura a aplicação Express.
  *
@@ -7,9 +12,16 @@ const express = require('express');
  * receber uma instância nova e isolada. Isso também evita que o servidor
  * comece a escutar uma porta simplesmente porque este arquivo foi importado.
  *
+ * O logger é recebido como dependência opcional. Em produção será utilizado
+ * o console; nos testes poderemos fornecer um logger controlado.
+ *
+ * @param {object} options Opções da aplicação.
+ * @param {{ error: Function }} [options.logger=console]
+ * Serviço utilizado para registrar erros inesperados.
+ *
  * @returns {import('express').Express} Aplicação Express configurada.
  */
-function createApp() {
+function createApp({ logger = console } = {}) {
     const app = express();
 
     /**
@@ -47,19 +59,20 @@ function createApp() {
     });
 
     /**
-     * Resposta padronizada para endereços inexistentes.
+     * Este middleware deve permanecer depois de todas as rotas válidas.
      *
-     * Este middleware deve permanecer depois das rotas válidas. O Express
-     * chega até ele somente quando nenhuma rota anterior atendeu a requisição.
+     * Se nenhuma rota anterior atender a requisição, ele cria um AppError
+     * com o código ROUTE_NOT_FOUND e o encaminha ao tratamento central.
      */
-    app.use((request, response) => {
-        response.status(404).json({
-            error: {
-                code: 'ROUTE_NOT_FOUND',
-                message: 'O endereço solicitado não existe.'
-            }
-        });
-    });
+    app.use(notFoundHandler);
+
+    /**
+     * O middleware de erro deve ser sempre o último da aplicação.
+     *
+     * Ele transforma erros operacionais em respostas conhecidas e impede que
+     * falhas inesperadas exponham informações internas ao navegador.
+     */
+    app.use(createErrorHandler({ logger }));
 
     return app;
 }
