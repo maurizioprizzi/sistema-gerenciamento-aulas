@@ -1,0 +1,26 @@
+# Dependências instaladas pelo npm.
+node_modules/
+
+# Variáveis locais e informações confidenciais.
+.env
+.env.*
+!.env.example
+
+# Relatórios produzidos pelos testes.
+coverage/
+
+# Arquivos de log.
+*.log
+npm-debug.log*
+
+# Arquivos temporários do sistema operacional.
+.DS_Store
+Thumbs.db
+
+# Configurações locais de editores.
+.vscode/
+.idea/
+
+# Pacotes e cópias de segurança gerados localmente.
+*.zip
+*.tar.gz

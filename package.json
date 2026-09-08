@@ -1,0 +1,21 @@
+{
+  "name": "calendario-dionisio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aplicação web para organização das aulas e materiais do Prof. Dionísio Pereira.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test",
+    "check": "node --check src/server.js"
+  },
+  "engines": {
+    "node": ">=20.20.0"
+  },
+  "author": "Maurizio Prizzi",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
