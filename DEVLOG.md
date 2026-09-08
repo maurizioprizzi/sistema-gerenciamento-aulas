@@ -210,13 +210,96 @@ Erro inesperado:
 - detalhes técnicos permanecem somente no log do servidor;
 - respostas iniciadas são devolvidas ao tratamento padrão do Express.
 
+---
+
+## 8 de setembro de 2026 — Conexão com MongoDB
+
+### Objetivo
+
+Adicionar armazenamento persistente sem acoplar as regras da aplicação
+diretamente ao Mongoose ou exigir um banco externo nos testes unitários.
+
+### Implementado
+
+- Mongoose como ODM do MongoDB;
+- atualização controlada para uma versão sem vulnerabilidades conhecidas;
+- classe `DatabaseConnection`;
+- tradução dos estados internos da conexão;
+- reutilização de conexões já estabelecidas;
+- prevenção de tentativas simultâneas;
+- configuração do pool de conexões;
+- tempo limite para seleção do servidor;
+- tratamento seguro de falhas;
+- encerramento idempotente;
+- integração do MongoDB ao ciclo de vida HTTP;
+- encerramento ordenado do servidor e do banco;
+- teste de falha do banco antes da abertura HTTP.
+
+### Decisões
+
+#### Utilizar Mongoose 9.9.4
+
+A versão 9.2.4 inicialmente instalada apresentou uma vulnerabilidade moderada
+no relatório do npm.
+
+A dependência foi atualizada explicitamente para 9.9.4. Não foi utilizado
+`npm audit fix` de forma automática, evitando alterações não revisadas.
+
+#### Encapsular o Mongoose
+
+O restante da aplicação não controlará diretamente `mongoose.connect()` ou
+`mongoose.disconnect()`.
+
+A classe `DatabaseConnection` concentra o ciclo de vida do banco e recebe suas
+dependências pelo construtor, permitindo testes sem conexão externa.
+
+#### Conectar antes de abrir a porta HTTP
+
+O servidor somente começa a aceitar requisições depois que o MongoDB está
+disponível.
+
+Se o banco falhar, a aplicação encerra a tentativa e não apresenta um servidor
+parcialmente funcional.
+
+#### Não registrar a URI
+
+A URI do MongoDB pode conter usuário e senha. Por isso, ela nunca é incluída
+nos registros produzidos pela classe de conexão.
+
+#### Índices automáticos somente fora de produção
+
+A criação automática de índices permanece ativa durante desenvolvimento e
+testes.
+
+Em produção, essa função será desativada para que alterações de índices sejam
+realizadas de maneira controlada.
+
+### Ambiente local validado
+
+- MongoDB Server 7.0.42;
+- MongoDB Shell 2.10.0;
+- serviço `mongod` ativo;
+- comando de ping retornando `{ ok: 1 }`;
+- conexão real da aplicação concluída;
+- encerramento real da conexão concluído.
+
+### Verificação
+
+- 56 testes aprovados;
+- zero falhas;
+- zero vulnerabilidades informadas pelo npm;
+- conexão simultânea protegida;
+- nova tentativa permitida após falha;
+- servidor HTTP bloqueado quando o banco está indisponível;
+- nenhum teste unitário depende de MongoDB real.
+
 ### Próximo marco
 
-Introduzir a conexão com MongoDB de forma isolada e testável:
+Criar o modelo de usuário administrativo, incluindo:
 
-1. instalar o Mongoose;
-2. criar o módulo responsável pela conexão;
-3. representar os estados da conexão;
-4. testar sem depender de um banco externo;
-5. integrar o banco ao ciclo de vida do servidor;
-6. atualizar a documentação.
+1. definição segura do schema;
+2. normalização e unicidade do e-mail;
+3. proteção do hash da senha;
+4. validações do domínio;
+5. testes do modelo;
+6. preparação para autenticação.
