@@ -293,13 +293,94 @@ realizadas de maneira controlada.
 - servidor HTTP bloqueado quando o banco está indisponível;
 - nenhum teste unitário depende de MongoDB real.
 
+---
+
+## 8 de setembro de 2026 — Modelo de usuário administrativo
+
+### Objetivo
+
+Criar uma representação segura e testável do usuário administrativo que
+acessará o sistema do Prof. Dionísio.
+
+### Implementado
+
+- criado o modelo `User` com Mongoose;
+- criada uma fábrica para construir o modelo de forma isolada;
+- definidos nome, e-mail, hash da senha, papel, estado da conta e último acesso;
+- implementada normalização de nomes;
+- implementada normalização de endereços de e-mail;
+- definido índice único para impedir contas com o mesmo e-mail;
+- configurado o papel administrativo como valor padrão;
+- protegido o campo `passwordHash` nas consultas comuns;
+- removido o hash da senha das representações JSON e de objeto;
+- habilitadas datas automáticas de criação e atualização;
+- evitado qualquer campo destinado ao armazenamento da senha original;
+- criada uma suíte de testes sem dependência de MongoDB externo;
+- utilizadas validações assíncronas compatíveis com futuras versões do
+  Mongoose.
+
+### Decisões de engenharia
+
+#### Fábrica de modelos
+
+A criação do modelo foi centralizada em `createUserModel`.
+
+Essa abordagem:
+
+- evita registrar o mesmo modelo mais de uma vez;
+- facilita testes com instâncias isoladas do Mongoose;
+- não abre uma conexão com o banco ao importar o arquivo;
+- mantém a criação do schema em um único lugar.
+
+#### Proteção do hash da senha
+
+O campo `passwordHash` utiliza `select: false`.
+
+Isso significa que consultas comuns não recuperam o hash automaticamente.
+Uma futura operação de autenticação deverá solicitar esse campo de maneira
+explícita e controlada.
+
+O hash também é removido durante conversões para JSON e para objetos comuns,
+criando uma segunda camada de proteção contra exposição acidental.
+
+#### Normalização do e-mail
+
+Antes do armazenamento, o e-mail:
+
+- tem espaços externos removidos;
+- é convertido para letras minúsculas.
+
+A restrição efetiva de unicidade será mantida pelo índice do MongoDB. A opção
+`unique` não foi tratada incorretamente como se fosse uma validação comum do
+Mongoose.
+
+#### Senha original
+
+O schema não possui um campo chamado `password`.
+
+A senha original será recebida somente pela futura camada de autenticação,
+transformada em hash e descartada antes da persistência.
+
+### Verificação
+
+- 78 testes aprovados;
+- zero falhas;
+- zero testes ignorados;
+- nenhum aviso de API obsoleta;
+- modelo criado sem abrir conexão com o MongoDB;
+- validações executadas inteiramente em memória;
+- índice único do e-mail verificado;
+- hash ausente das representações públicas;
+- senha original ausente do schema.
+
 ### Próximo marco
 
-Criar o modelo de usuário administrativo, incluindo:
+Implementar o serviço responsável pela proteção das senhas:
 
-1. definição segura do schema;
-2. normalização e unicidade do e-mail;
-3. proteção do hash da senha;
-4. validações do domínio;
-5. testes do modelo;
-6. preparação para autenticação.
+1. selecionar uma biblioteca de hashing mantida e sem vulnerabilidades
+   conhecidas;
+2. adicionar a configuração segura do custo do hash;
+3. criar uma classe isolada para gerar e comparar hashes;
+4. impedir o uso de senhas vazias ou excessivamente grandes;
+5. testar geração, comparação e tratamento de entradas inválidas;
+6. preparar a criação controlada do primeiro administrador.
