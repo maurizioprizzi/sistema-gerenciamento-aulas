@@ -8,17 +8,18 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 8 de setembro de 2026.
+> Última atualização desta documentação: 9 de setembro de 2026.
 
 ## Estado atual
 
 A fundação técnica do backend está concluída. O projeto já possui servidor
-HTTP, conexão com MongoDB, validação de ambiente, tratamento de erros, modelo
-administrativo e proteção de senhas.
+HTTP, conexão com MongoDB, validação de ambiente, tratamento centralizado de
+erros, modelo administrativo, proteção de senhas e inicialização controlada da
+primeira conta administrativa.
 
-O serviço responsável por garantir a existência da primeira conta
-administrativa está implementado e testado. Sua integração ao ciclo de
-inicialização do servidor será o próximo passo.
+O administrador é preparado depois da conexão com o banco e antes da abertura
+da porta HTTP. O processo é idempotente: uma conta existente é preservada e
+não é duplicada nem tem sua senha substituída.
 
 ### Funcionalidades concluídas
 
@@ -42,12 +43,14 @@ inicialização do servidor será o próximo passo.
 - configuração segura do custo computacional do hash;
 - serviço idempotente para criação do primeiro administrador;
 - tratamento de conflitos concorrentes de e-mail;
+- integração do administrador ao ciclo de abertura do servidor;
+- bloqueio do servidor HTTP quando a inicialização falha;
+- validação da criação administrativa com MongoDB local;
 - testes HTTP, unitários e de integração controlada;
 - documentação das decisões de engenharia.
 
 ### Ainda não implementado
 
-- integração do administrador ao ciclo de abertura do servidor;
 - autenticação;
 - gerenciamento de sessões;
 - limitação de tentativas de login;
@@ -285,8 +288,8 @@ npm test
 No marco atual, a suíte possui:
 
 ```text
-156 testes
-20 suítes
+163 testes
+21 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -314,10 +317,19 @@ Os testes verificam, entre outros comportamentos:
 - criação controlada do administrador;
 - preservação de contas existentes;
 - conflitos concorrentes de e-mail;
-- ausência de credenciais nos logs.
+- ausência de credenciais nos logs;
+- composição dos serviços durante a inicialização;
+- ordem entre banco, administrador e servidor HTTP;
+- bloqueio do HTTP quando a preparação administrativa falha;
+- encerramento do banco depois de falhas de inicialização;
+- configuração controlada dos índices em produção.
 
-Os testes unitários utilizam dependências controladas sempre que possível.
-Assim, a maioria da suíte não depende de uma conexão externa.
+Os testes automatizados utilizam dependências controladas sempre que possível
+e não exigem um MongoDB externo.
+
+Além da suíte automatizada, o fluxo administrativo foi validado manualmente
+com MongoDB local. A primeira execução criou uma única conta com hash bcrypt,
+e a segunda execução preservou a mesma conta sem duplicação.
 
 ## Auditoria das dependências
 
@@ -385,8 +397,12 @@ instâncias isoladas da aplicação.
 
 ### `src/server.js`
 
-Carrega e valida o ambiente, conecta o MongoDB, cria o servidor HTTP e controla
-sua inicialização e seu encerramento.
+Carrega e valida o ambiente, conecta o MongoDB, garante a existência da conta
+administrativa, cria o servidor HTTP e controla sua inicialização e seu
+encerramento.
+
+A porta HTTP somente é aberta depois que o banco e a conta administrativa
+estão disponíveis.
 
 ### `src/config/env.js`
 
@@ -420,7 +436,8 @@ truncamento silencioso de senhas.
 ### `src/services/AdminBootstrapper.js`
 
 Garante a existência da primeira conta administrativa sem substituir uma conta
-já existente.
+já cadastrada. Também trata conflitos de criação simultânea e evita que
+credenciais sejam incluídas nos resultados ou nos logs.
 
 ### `test/`
 
@@ -501,14 +518,17 @@ Um corpo superior ao limite configurado retorna o código HTTP `413`:
 - erros inesperados ocultados das respostas;
 - logs de erro sem corpo, cookies ou cabeçalhos da requisição;
 - servidor HTTP bloqueado quando o banco está indisponível;
+- servidor HTTP bloqueado quando a preparação administrativa falha;
 - hash de senha oculto nas consultas comuns;
 - hash removido das representações JSON;
-- senha original ausente do modelo;
+- senha original ausente do modelo e do banco;
 - hashing assíncrono com salt bcrypt;
 - custo mínimo e máximo do hash;
 - limite de senha medido em bytes UTF-8;
 - criação administrativa sem substituição automática;
+- inicialização administrativa idempotente;
 - conflitos concorrentes de e-mail tratados;
+- limpeza do banco após falhas de inicialização;
 - auditoria periódica das dependências.
 
 Essas medidas ainda não tornam a aplicação pronta para produção. Autenticação,
@@ -530,18 +550,16 @@ segurança e implantação HTTPS serão implementados nos próximos marcos.
 
 ## Próximos marcos
 
-1. integrar o `AdminBootstrapper` ao ciclo do servidor;
-2. validar a criação do administrador no MongoDB real;
-3. implementar autenticação e gerenciamento de sessões;
-4. limitar tentativas de autenticação;
-5. proteger rotas administrativas;
-6. criar os modelos do calendário;
-7. implementar as APIs de aulas, atividades e materiais;
-8. migrar com segurança os dados do protótipo;
-9. reconstruir a interface visual responsiva;
-10. realizar testes completos de integração e interface;
-11. preparar documentação de implantação;
-12. publicar e validar a aplicação em computador e celular.
+1. implementar autenticação e gerenciamento de sessões;
+2. limitar tentativas de autenticação;
+3. proteger rotas administrativas;
+4. criar os modelos do calendário;
+5. implementar as APIs de aulas, atividades e materiais;
+6. migrar com segurança os dados do protótipo;
+7. reconstruir a interface visual responsiva;
+8. realizar testes completos de integração e interface;
+9. preparar os guias técnico e didático;
+10. publicar e validar a aplicação em computador e celular.
 
 ## Fluxo de atualização pelo Git
 

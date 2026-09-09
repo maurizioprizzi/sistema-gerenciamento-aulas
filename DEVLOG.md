@@ -463,14 +463,170 @@ fracos ou excessivos mesmo quando o serviço é utilizado isoladamente.
 - comportamento Unicode validado;
 - arquivo `.env.example` validado pelo schema real.
 
+---
+
+## 9 de setembro de 2026 — Inicialização da conta administrativa
+
+### Objetivo
+
+Integrar ao ciclo de inicialização da aplicação a criação controlada da
+primeira conta administrativa.
+
+A aplicação agora prepara o administrador depois de estabelecer a conexão com
+o MongoDB e antes de disponibilizar o servidor HTTP.
+
+### Serviço de inicialização
+
+Foi criado o serviço `AdminBootstrapper`, responsável por:
+
+- normalizar o e-mail administrativo;
+- consultar a existência da conta;
+- preservar uma conta já cadastrada;
+- gerar o hash somente quando a criação for necessária;
+- criar o usuário com papel administrativo;
+- tratar conflitos de unicidade provocados por inicializações simultâneas;
+- evitar o retorno ou registro de credenciais;
+- permitir testes por meio da injeção de dependências.
+
+O serviço retorna somente o estado da operação. O documento do usuário, a
+senha e o hash não fazem parte do resultado público.
+
+### Tratamento de concorrência
+
+Duas instâncias da aplicação podem tentar criar o primeiro administrador ao
+mesmo tempo.
+
+O índice único do e-mail continua sendo a proteção definitiva do banco de
+dados. Quando o MongoDB informa um conflito nesse índice, o serviço realiza
+uma nova consulta:
+
+- se a conta passou a existir, a inicialização é considerada bem-sucedida;
+- se a conta não for encontrada, o erro original é propagado;
+- conflitos pertencentes a outros campos não são ocultados.
+
+### Integração com o servidor
+
+O `server.js` passou a executar a seguinte ordem:
+
+1. carregar e validar as variáveis de ambiente;
+2. validar as dependências de inicialização;
+3. conectar ao MongoDB;
+4. construir o serviço de proteção de senhas;
+5. construir o serviço de inicialização administrativa;
+6. garantir a existência da conta administrativa;
+7. criar a aplicação Express;
+8. abrir o servidor HTTP.
+
+Essa ordem impede que a aplicação aceite requisições antes de possuir banco de
+dados e conta administrativa disponíveis.
+
+Se qualquer etapa posterior à conexão falhar, o MongoDB é encerrado antes de
+o erro ser propagado.
+
+### Configuração do hash
+
+O custo do bcrypt é recebido de `PASSWORD_HASH_ROUNDS`, já validado pelo
+módulo de ambiente.
+
+O servidor cria uma instância de `PasswordHasher` com esse custo e a entrega
+ao `AdminBootstrapper`. Dessa forma, a composição das dependências permanece
+explícita e testável.
+
+### Segurança
+
+A integração garante que:
+
+- a senha original não seja armazenada no MongoDB;
+- o hash não apareça nas representações públicas do usuário;
+- a senha e o hash não sejam escritos nos logs;
+- uma conta existente não tenha sua senha substituída;
+- o hash não seja recalculado desnecessariamente;
+- falhas administrativas impeçam a abertura do servidor HTTP;
+- configurações criptográficas inválidas sejam rejeitadas;
+- conflitos legítimos de unicidade não sejam ignorados.
+
+### Testes automatizados
+
+Os testes isolados do `AdminBootstrapper` verificam:
+
+- validação das dependências;
+- validação da configuração administrativa;
+- preservação de contas existentes;
+- criação de uma conta inexistente;
+- geração do hash somente quando necessária;
+- ausência de credenciais nos logs;
+- propagação de falhas de consulta, hashing e criação;
+- identificação correta de conflitos do índice de e-mail;
+- recuperação segura de inicializações simultâneas.
+
+Os testes de `server.js` verificam:
+
+- construção do serviço com o custo configurado;
+- rejeição de custos inválidos;
+- validação da fábrica administrativa;
+- bloqueio do HTTP quando o MongoDB falha;
+- bloqueio do HTTP quando a inicialização administrativa falha;
+- encerramento do banco depois de falhas;
+- envio correto dos dados administrativos ao serviço;
+- ausência da senha nos registros operacionais;
+- ordem completa da inicialização;
+- desativação de índices automáticos em produção.
+
+Nenhum desses testes depende de conexão com um MongoDB externo.
+
+### Validação com MongoDB local
+
+Também foi executada uma validação real com o MongoDB local.
+
+Na primeira inicialização:
+
+- a conexão com o banco foi estabelecida;
+- a conta administrativa foi criada;
+- o servidor HTTP foi disponibilizado;
+- o encerramento ocorreu de maneira segura.
+
+A inspeção segura do documento confirmou:
+
+- exatamente um usuário cadastrado;
+- papel `admin`;
+- conta ativa;
+- hash bcrypt presente com 60 caracteres;
+- ausência de um campo contendo a senha original.
+
+Na segunda inicialização:
+
+- a conta existente foi reconhecida;
+- nenhuma nova conta foi criada;
+- a quantidade de usuários permaneceu igual a um;
+- o servidor iniciou e encerrou normalmente.
+
+Esse resultado confirma a idempotência do processo.
+
+### Verificação
+
+- 163 testes aprovados;
+- 21 suítes aprovadas;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas;
+- inicialização isolada coberta por testes;
+- integração real com MongoDB validada;
+- senha original ausente do banco;
+- hash protegido;
+- conta duplicada não criada;
+- encerramento seguro confirmado.
+
 ### Próximo marco
 
-Criar de forma controlada a primeira conta administrativa:
+Implementar a autenticação administrativa e as sessões seguras:
 
-1. implementar um serviço de inicialização do administrador;
-2. consultar o usuário pelo e-mail normalizado;
-3. evitar a recriação de uma conta existente;
-4. gerar o hash somente quando a conta precisar ser criada;
-5. tratar conflitos de unicidade;
-6. integrar a inicialização ao ciclo de abertura da aplicação;
-7. testar o fluxo sem depender de um MongoDB externo.
+1. definir a estratégia de autenticação;
+2. criar o serviço de autenticação;
+3. comparar senhas sem expor credenciais;
+4. utilizar sessões armazenadas no servidor;
+5. configurar cookies seguros;
+6. limitar tentativas repetidas de acesso;
+7. criar as rotas de entrada e saída;
+8. proteger as futuras rotas administrativas;
+9. testar os fluxos de sucesso e falha;
+10. documentar as decisões de segurança.

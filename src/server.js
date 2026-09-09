@@ -1,3 +1,5 @@
+'use strict';
+
 const http = require('node:http');
 
 const dotenv = require('dotenv');
@@ -5,8 +7,14 @@ const dotenv = require('dotenv');
 const { createApp } = require('./app');
 const { loadEnvironment } = require('./config/env');
 const {
-    databaseConnection
+    databaseConnection,
 } = require('./config/database');
+const {
+    AdminBootstrapper,
+} = require('./services/AdminBootstrapper');
+const {
+    PasswordHasher,
+} = require('./services/PasswordHasher');
 
 /**
  * Converte e valida o número da porta informado pelo ambiente.
@@ -25,7 +33,7 @@ function resolvePort(value) {
 
     if (!containsOnlyDigits) {
         throw new RangeError(
-            'A variável PORT deve conter um número inteiro entre 1 e 65535.'
+            'A variável PORT deve conter um número inteiro entre 1 e 65535.',
         );
     }
 
@@ -33,7 +41,7 @@ function resolvePort(value) {
 
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
         throw new RangeError(
-            'A variável PORT deve conter um número inteiro entre 1 e 65535.'
+            'A variável PORT deve conter um número inteiro entre 1 e 65535.',
         );
     }
 
@@ -65,7 +73,7 @@ function listen(server, host, port) {
         server.listen(port, host, () => {
             server.removeListener(
                 'error',
-                handleStartupError
+                handleStartupError,
             );
 
             resolve();
@@ -93,11 +101,41 @@ function closeServer(server) {
 }
 
 /**
- * Carrega a configuração, conecta o banco e inicia o servidor HTTP.
+ * Constrói os serviços responsáveis pela criação da conta administrativa.
  *
- * A conexão com MongoDB acontece antes da abertura da porta. Dessa forma, a
- * aplicação nunca anuncia que está disponível enquanto seu armazenamento
- * principal estiver inacessível.
+ * Essa função pertence ao ponto de composição da aplicação: é aqui que
+ * implementações concretas são conectadas umas às outras.
+ *
+ * O custo do bcrypt vem exclusivamente do ambiente validado. A senha não é
+ * armazenada nesta função e não aparece em mensagens de log.
+ *
+ * @param {object} options Configurações da composição.
+ * @param {number} options.passwordHashRounds Custo validado do bcrypt.
+ * @param {object} options.logger Logger operacional.
+ * @returns {AdminBootstrapper} Serviço administrativo configurado.
+ */
+function createAdminBootstrapper({
+    passwordHashRounds,
+    logger,
+}) {
+    const passwordHasherService = new PasswordHasher({
+        rounds: passwordHashRounds,
+    });
+
+    return new AdminBootstrapper({
+        passwordHasherService,
+        logger,
+    });
+}
+
+/**
+ * Carrega a configuração, conecta o banco, garante o administrador e inicia
+ * o servidor HTTP.
+ *
+ * A conexão com MongoDB e a inicialização administrativa acontecem antes da
+ * abertura da porta. Dessa forma, a aplicação nunca anuncia disponibilidade
+ * enquanto seu armazenamento ou sua conta administrativa estiverem
+ * inacessíveis.
  *
  * As dependências opcionais permitem testar o ciclo de vida sem acessar rede
  * ou banco reais.
@@ -107,15 +145,18 @@ function closeServer(server) {
  * Gerenciador da conexão com o banco.
  * @param {Function} [options.appFactory=createApp]
  * Função responsável pela criação da aplicação Express.
- * @param {{ log: Function, error: Function }} [options.logger=console]
- * Serviço de registro operacional.
+ * @param {Function} [options.adminBootstrapperFactory=createAdminBootstrapper]
+ * Função que cria o serviço de inicialização administrativa.
+ * @param {{ log: Function, info: Function, error: Function }}
+ * [options.logger=console] Serviço de registro operacional.
  *
  * @returns {Promise<import('node:http').Server>} Servidor iniciado.
  */
 async function startServer({
     database = databaseConnection,
     appFactory = createApp,
-    logger = console
+    adminBootstrapperFactory = createAdminBootstrapper,
+    logger = console,
 } = {}) {
     /**
      * Carrega o arquivo .env sem substituir variáveis fornecidas pelo sistema
@@ -126,6 +167,12 @@ async function startServer({
     const environment = loadEnvironment();
     const port = resolvePort(environment.PORT);
     const host = environment.HOST;
+
+    if (typeof adminBootstrapperFactory !== 'function') {
+        throw new TypeError(
+            'A fábrica de inicialização administrativa deve ser uma função.',
+        );
+    }
 
     let server = null;
 
@@ -139,10 +186,45 @@ async function startServer({
         await database.connect(
             environment.MONGODB_URI,
             {
-                autoIndex: !environment.IS_PRODUCTION
-            }
+                autoIndex: !environment.IS_PRODUCTION,
+            },
         );
 
+        /**
+         * O serviço é construído depois da conexão porque sua primeira
+         * operação consultará o modelo User no MongoDB.
+         */
+        const adminBootstrapper = adminBootstrapperFactory({
+            passwordHashRounds:
+                environment.PASSWORD_HASH_ROUNDS,
+            logger,
+        });
+
+        if (
+            !adminBootstrapper ||
+            typeof adminBootstrapper.ensureAdmin !== 'function'
+        ) {
+            throw new TypeError(
+                'A fábrica administrativa deve retornar um serviço com ensureAdmin().',
+            );
+        }
+
+        /**
+         * Estes dados já passaram pela validação de ambiente.
+         *
+         * A senha será utilizada somente pelo PasswordHasher e não será
+         * incluída no documento persistido nem nas mensagens de log.
+         */
+        await adminBootstrapper.ensureAdmin({
+            name: environment.ADMIN_NAME,
+            email: environment.ADMIN_EMAIL,
+            password: environment.ADMIN_PASSWORD,
+        });
+
+        /**
+         * A aplicação Express somente é criada depois que o armazenamento e
+         * a conta administrativa estiverem disponíveis.
+         */
         const app = appFactory({ logger });
 
         /**
@@ -159,8 +241,11 @@ async function startServer({
         await listen(server, host, port);
     } catch (error) {
         /**
-         * Se o banco conectou, mas a abertura HTTP falhou, a conexão precisa
-         * ser encerrada antes de propagar o erro.
+         * Se qualquer etapa posterior à tentativa de conexão falhar, o banco
+         * precisa ser encerrado antes de o erro chegar ao chamador.
+         *
+         * disconnect() é idempotente e pode ser chamado mesmo quando a conexão
+         * não chegou a ser estabelecida.
          */
         try {
             await database.disconnect();
@@ -169,8 +254,8 @@ async function startServer({
                 'Falha ao encerrar o MongoDB após erro de inicialização.',
                 {
                     errorName: disconnectError.name,
-                    message: disconnectError.message
-                }
+                    message: disconnectError.message,
+                },
             );
         }
 
@@ -178,7 +263,7 @@ async function startServer({
     }
 
     logger.log(
-        'Calendário do Prof. Dionísio iniciado com sucesso.'
+        'Calendário do Prof. Dionísio iniciado com sucesso.',
     );
     logger.log(`Ambiente: ${environment.NODE_ENV}`);
     logger.log(`Endereço local: http://localhost:${port}`);
@@ -202,7 +287,7 @@ async function startServer({
         isShuttingDown = true;
 
         logger.log(
-            `\n${signal} recebido. Encerrando a aplicação...`
+            `\n${signal} recebido. Encerrando a aplicação...`,
         );
 
         try {
@@ -210,15 +295,15 @@ async function startServer({
             await database.disconnect();
 
             logger.log(
-                'Aplicação encerrada com segurança.'
+                'Aplicação encerrada com segurança.',
             );
         } catch (error) {
             logger.error(
                 'Erro durante o encerramento da aplicação.',
                 {
                     errorName: error.name,
-                    message: error.message
-                }
+                    message: error.message,
+                },
             );
 
             process.exitCode = 1;
@@ -227,12 +312,12 @@ async function startServer({
 
     process.once(
         'SIGINT',
-        () => void shutdown('SIGINT')
+        () => void shutdown('SIGINT'),
     );
 
     process.once(
         'SIGTERM',
-        () => void shutdown('SIGTERM')
+        () => void shutdown('SIGTERM'),
     );
 
     /**
@@ -244,8 +329,8 @@ async function startServer({
             'Erro no servidor HTTP.',
             {
                 errorName: error.name,
-                message: error.message
-            }
+                message: error.message,
+            },
         );
 
         process.exitCode = 1;
@@ -260,7 +345,7 @@ async function startServer({
 if (require.main === module) {
     startServer().catch((error) => {
         console.error(
-            `Não foi possível iniciar a aplicação:\n${error.message}`
+            `Não foi possível iniciar a aplicação:\n${error.message}`,
         );
 
         process.exitCode = 1;
@@ -268,6 +353,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+    createAdminBootstrapper,
     resolvePort,
-    startServer
+    startServer,
 };
