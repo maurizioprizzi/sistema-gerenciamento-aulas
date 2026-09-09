@@ -155,6 +155,13 @@ describe('loadEnvironment', () => {
             expectedField: 'SESSION_SECRET',
         },
         {
+            description:
+                'SESSION_SECRET formado somente por espaços',
+            field: 'SESSION_SECRET',
+            value: ' '.repeat(32),
+            expectedField: 'SESSION_SECRET',
+        },
+        {
             description: 'PASSWORD_HASH_ROUNDS abaixo do mínimo',
             field: 'PASSWORD_HASH_ROUNDS',
             value: '9',

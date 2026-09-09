@@ -14,12 +14,16 @@ por computadores e celulares.
 
 A fundação técnica do backend está concluída. O projeto já possui servidor
 HTTP, conexão com MongoDB, validação de ambiente, tratamento centralizado de
-erros, modelo administrativo, proteção de senhas e inicialização controlada da
-primeira conta administrativa.
+erros, modelo administrativo, proteção de senhas, inicialização controlada da
+primeira conta administrativa e infraestrutura de sessões persistentes.
 
 O administrador é preparado depois da conexão com o banco e antes da abertura
 da porta HTTP. O processo é idempotente: uma conta existente é preservada e
 não é duplicada nem tem sua senha substituída.
+
+As futuras sessões autenticadas serão armazenadas no MongoDB. O armazenamento
+reutiliza o mesmo cliente mantido pelo Mongoose, enquanto o navegador receberá
+somente um identificador opaco protegido por cookie.
 
 ### Funcionalidades concluídas
 
@@ -31,6 +35,8 @@ não é duplicada nem tem sua senha substituída.
 - inicialização e encerramento controlados;
 - conexão encapsulada com MongoDB;
 - prevenção de tentativas simultâneas de conexão;
+- acesso controlado ao cliente MongoDB nativo;
+- reutilização da conexão Mongoose pelo armazenamento de sessões;
 - encerramento ordenado do servidor e do banco;
 - carregamento de variáveis com dotenv;
 - validação e normalização das configurações com Zod;
@@ -44,6 +50,12 @@ não é duplicada nem tem sua senha substituída.
 - serviço idempotente para criação do primeiro administrador;
 - tratamento de conflitos concorrentes de e-mail;
 - integração do administrador ao ciclo de abertura do servidor;
+- armazenamento persistente de sessões com connect-mongo;
+- middleware de sessões com express-session;
+- cookies `HttpOnly` e `SameSite=Lax`;
+- cookie `Secure` com prefixo `__Host-` em produção;
+- prevenção de cookies e sessões vazias para visitantes anônimos;
+- integração das sessões ao ciclo de abertura do servidor;
 - bloqueio do servidor HTTP quando a inicialização falha;
 - validação da criação administrativa com MongoDB local;
 - testes HTTP, unitários e de integração controlada;
@@ -51,8 +63,9 @@ não é duplicada nem tem sua senha substituída.
 
 ### Ainda não implementado
 
-- autenticação;
-- gerenciamento de sessões;
+- autenticação administrativa;
+- rotas de entrada e saída;
+- criação e encerramento de sessões autenticadas;
 - limitação de tentativas de login;
 - autorização das rotas;
 - interface visual;
@@ -83,6 +96,8 @@ conteúdo.
 - MongoDB 7;
 - Mongoose 9;
 - bcryptjs 3;
+- express-session 1;
+- connect-mongo 6;
 - dotenv 17;
 - Zod 4;
 - test runner nativo do Node.js;
@@ -99,6 +114,8 @@ MongoDB Shell 2.10.0
 Express 5.2.1
 Mongoose 9.9.4
 bcryptjs 3.0.3
+express-session 1.19.0
+connect-mongo 6.0.0
 dotenv 17.3.1
 Zod 4.5.4
 ```
@@ -288,8 +305,8 @@ npm test
 No marco atual, a suíte possui:
 
 ```text
-163 testes
-21 suítes
+195 testes
+25 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -306,6 +323,8 @@ Os testes verificam, entre outros comportamentos:
 - ausência de senhas nas mensagens de erro;
 - conexão e desconexão do MongoDB;
 - tentativas simultâneas de conexão;
+- acesso seguro ao cliente MongoDB nativo;
+- reutilização do cliente mantido pelo Mongoose;
 - bloqueio do HTTP quando o banco falha;
 - validações do modelo de usuário;
 - índice único do e-mail;
@@ -318,8 +337,16 @@ Os testes verificam, entre outros comportamentos:
 - preservação de contas existentes;
 - conflitos concorrentes de e-mail;
 - ausência de credenciais nos logs;
+- configuração do armazenamento persistente de sessões;
+- expiração e atualização controladas das sessões;
+- validação do segredo de sessão;
+- cookies seguros para desenvolvimento e produção;
+- prevenção de sessões anônimas vazias;
+- execução do middleware de sessão antes das rotas;
+- validação das fábricas de sessão;
+- bloqueio do HTTP quando a sessão não pode ser construída;
 - composição dos serviços durante a inicialização;
-- ordem entre banco, administrador e servidor HTTP;
+- ordem entre banco, administrador, sessões e servidor HTTP;
 - bloqueio do HTTP quando a preparação administrativa falha;
 - encerramento do banco depois de falhas de inicialização;
 - configuração controlada dos índices em produção.
@@ -327,9 +354,15 @@ Os testes verificam, entre outros comportamentos:
 Os testes automatizados utilizam dependências controladas sempre que possível
 e não exigem um MongoDB externo.
 
-Além da suíte automatizada, o fluxo administrativo foi validado manualmente
-com MongoDB local. A primeira execução criou uma única conta com hash bcrypt,
-e a segunda execução preservou a mesma conta sem duplicação.
+Além da suíte automatizada, os fluxos administrativo e de sessões foram
+validados manualmente com MongoDB local. A primeira execução administrativa
+criou uma única conta com hash bcrypt, e a segunda execução preservou a mesma
+conta sem duplicação.
+
+A aplicação completa também iniciou com o armazenamento real de sessões. A
+rota pública `/api/health` respondeu sem emitir `Set-Cookie` e sem criar uma
+sessão anônima no MongoDB, confirmando a configuração
+`saveUninitialized: false`.
 
 ## Auditoria das dependências
 
@@ -355,7 +388,8 @@ dionisio/
 ├── src/
 │   ├── config/
 │   │   ├── database.js
-│   │   └── env.js
+│   │   ├── env.js
+│   │   └── session.js
 │   ├── errors/
 │   │   └── AppError.js
 │   ├── middlewares/
@@ -376,6 +410,7 @@ dionisio/
 │   ├── env.test.js
 │   ├── errorHandler.test.js
 │   ├── server.test.js
+│   ├── session.test.js
 │   └── user.test.js
 ├── .editorconfig
 ├── .env.example
@@ -395,14 +430,18 @@ Configura a aplicação Express, os middlewares e as rotas HTTP.
 Esse módulo não abre uma porta diretamente, permitindo que testes criem
 instâncias isoladas da aplicação.
 
+O middleware de sessão é recebido pronto por injeção e instalado antes das
+rotas. O módulo não conhece o segredo, o MongoDB ou os detalhes do
+armazenamento.
+
 ### `src/server.js`
 
 Carrega e valida o ambiente, conecta o MongoDB, garante a existência da conta
-administrativa, cria o servidor HTTP e controla sua inicialização e seu
-encerramento.
+administrativa, constrói o armazenamento e o middleware de sessões, cria o
+servidor HTTP e controla sua inicialização e seu encerramento.
 
-A porta HTTP somente é aberta depois que o banco e a conta administrativa
-estão disponíveis.
+A porta HTTP somente é aberta depois que o banco, a conta administrativa e a
+infraestrutura de sessões estão disponíveis.
 
 ### `src/config/env.js`
 
@@ -413,6 +452,18 @@ Valores confidenciais não são incluídos nas mensagens de erro.
 ### `src/config/database.js`
 
 Encapsula o ciclo de conexão com o MongoDB por meio do Mongoose.
+
+O módulo também fornece acesso validado ao cliente MongoDB nativo depois da
+conexão. Esse cliente é reutilizado pelo armazenamento de sessões, evitando a
+criação de um segundo conjunto de conexões.
+
+### `src/config/session.js`
+
+Constrói o armazenamento persistente de sessões com connect-mongo e configura
+o middleware do express-session.
+
+O módulo centraliza duração, cookies, nomes, expiração e validações de
+segurança sem conhecer as rotas da aplicação.
 
 ### `src/errors/AppError.js`
 
@@ -550,16 +601,18 @@ segurança e implantação HTTPS serão implementados nos próximos marcos.
 
 ## Próximos marcos
 
-1. implementar autenticação e gerenciamento de sessões;
-2. limitar tentativas de autenticação;
-3. proteger rotas administrativas;
-4. criar os modelos do calendário;
-5. implementar as APIs de aulas, atividades e materiais;
-6. migrar com segurança os dados do protótipo;
-7. reconstruir a interface visual responsiva;
-8. realizar testes completos de integração e interface;
-9. preparar os guias técnico e didático;
-10. publicar e validar a aplicação em computador e celular.
+1. implementar o serviço de autenticação administrativa;
+2. criar as rotas de entrada e saída;
+3. regenerar e encerrar sessões autenticadas com segurança;
+4. limitar tentativas repetidas de autenticação;
+5. proteger as rotas administrativas;
+6. criar os modelos do calendário;
+7. implementar as APIs de aulas, atividades e materiais;
+8. migrar com segurança os dados do protótipo;
+9. reconstruir a interface visual responsiva;
+10. realizar testes completos de integração e interface;
+11. preparar os guias técnico e didático;
+12. publicar e validar a aplicação em computador e celular.
 
 ## Fluxo de atualização pelo Git
 

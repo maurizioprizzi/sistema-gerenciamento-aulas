@@ -7,7 +7,102 @@ const {
     test
 } = require('node:test');
 
-const { createApp } = require('../src/app');
+const {
+    APP_ERROR_MESSAGES,
+    createApp
+} = require('../src/app');
+
+describe('configuração do middleware de sessão', () => {
+    test('permite criar a aplicação sem middleware de sessão', () => {
+        assert.doesNotThrow(() => createApp());
+    });
+
+    test('rejeita um middleware de sessão inválido', () => {
+        const invalidMiddlewares = [
+            'middleware',
+            42,
+            {},
+            []
+        ];
+
+        for (const sessionMiddleware of invalidMiddlewares) {
+            assert.throws(
+                () => createApp({ sessionMiddleware }),
+                {
+                    name: 'TypeError',
+                    message:
+                        APP_ERROR_MESSAGES
+                            .INVALID_SESSION_MIDDLEWARE
+                }
+            );
+        }
+    });
+
+    test(
+        'executa o middleware de sessão antes da rota',
+        async () => {
+            let middlewareCalls = 0;
+
+            function sessionMiddleware(
+                request,
+                response,
+                next
+            ) {
+                middlewareCalls += 1;
+
+                /**
+                 * O cabeçalho permite observar pelo teste HTTP que este
+                 * middleware foi executado antes da resposta da rota.
+                 */
+                response.setHeader(
+                    'x-session-middleware',
+                    'active'
+                );
+
+                next();
+            }
+
+            const app = createApp({ sessionMiddleware });
+            const temporaryServer = http.createServer(app);
+
+            await new Promise((resolve, reject) => {
+                temporaryServer.once('error', reject);
+                temporaryServer.listen(
+                    0,
+                    '127.0.0.1',
+                    resolve
+                );
+            });
+
+            try {
+                const address = temporaryServer.address();
+                const response = await fetch(
+                    `http://127.0.0.1:${address.port}/api/health`
+                );
+
+                assert.equal(response.status, 200);
+                assert.equal(
+                    response.headers.get(
+                        'x-session-middleware'
+                    ),
+                    'active'
+                );
+                assert.equal(middlewareCalls, 1);
+            } finally {
+                await new Promise((resolve, reject) => {
+                    temporaryServer.close((error) => {
+                        if (error) {
+                            reject(error);
+                            return;
+                        }
+
+                        resolve();
+                    });
+                });
+            }
+        }
+    );
+});
 
 /**
  * Testes de integração da aplicação HTTP.

@@ -74,8 +74,12 @@ const environmentSchema = z.object({
     /**
      * Exige um segredo longo para dificultar falsificação de sessões.
      */
-    SESSION_SECRET: z
+        SESSION_SECRET: z
         .string()
+        .refine(
+            (secret) => secret.trim().length > 0,
+            'SESSION_SECRET não pode conter somente espaços.',
+        )
         .min(
             32,
             'SESSION_SECRET deve possuir pelo menos 32 caracteres.',

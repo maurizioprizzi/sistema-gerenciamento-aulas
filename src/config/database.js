@@ -1,3 +1,5 @@
+'use strict';
+
 const mongoose = require('mongoose');
 
 /**
@@ -88,6 +90,59 @@ class DatabaseConnection {
     }
 
     /**
+     * Entrega o cliente nativo do MongoDB utilizado pelo Mongoose.
+     *
+     * O acesso acontece por meio deste método para que outros componentes não
+     * dependam diretamente da estrutura interna do Mongoose.
+     *
+     * O cliente somente pode ser obtido depois que connect() concluir. Isso
+     * impede que um armazenamento de sessões seja criado sobre uma conexão
+     * inexistente ou ainda incompleta.
+     *
+     * @returns {import('mongodb').MongoClient} Cliente MongoDB ativo.
+     *
+     * @throws {Error} Quando o banco não está conectado.
+     * @throws {TypeError} Quando a conexão não fornece um cliente válido.
+     */
+    getNativeClient() {
+        if (!this.isConnected()) {
+            throw new Error(
+                'O cliente MongoDB somente está disponível após a conexão.'
+            );
+        }
+
+        const connection = this.mongooseClient.connection;
+
+        if (
+            !connection
+            || typeof connection.getClient !== 'function'
+        ) {
+            throw new TypeError(
+                'A conexão Mongoose não fornece um cliente MongoDB válido.'
+            );
+        }
+
+        const nativeClient = connection.getClient();
+
+        /**
+         * A função db() faz parte da interface pública do MongoClient.
+         *
+         * Esta verificação detecta imediatamente clientes incorretos antes que
+         * sejam entregues ao armazenamento de sessões.
+         */
+        if (
+            !nativeClient
+            || typeof nativeClient.db !== 'function'
+        ) {
+            throw new TypeError(
+                'A conexão Mongoose não fornece um cliente MongoDB válido.'
+            );
+        }
+
+        return nativeClient;
+    }
+
+    /**
      * Estabelece a conexão com MongoDB.
      *
      * @param {string} uri URI validada do MongoDB.
@@ -120,8 +175,9 @@ class DatabaseConnection {
         /**
          * As opções limitam o tempo de espera e o tamanho do pool.
          *
-         * autoIndex será desativado em produção mais adiante, evitando que
-         * alterações de índice ocorram automaticamente durante a partida.
+         * O valor de autoIndex é escolhido pelo ciclo de inicialização. Em
+         * produção ele permanece desativado para evitar alterações
+         * inesperadas de índices durante a partida da aplicação.
          */
         const connectionOptions = {
             serverSelectionTimeoutMS: 10000,

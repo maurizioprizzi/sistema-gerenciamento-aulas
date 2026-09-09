@@ -478,7 +478,345 @@ describe('startServer', () => {
     );
 
     test(
-        'executa banco, administrador e Express na ordem correta',
+        'rejeita uma fábrica de armazenamento inválida antes de conectar',
+        async () => {
+            await withTestEnvironment(async () => {
+                const calls = {
+                    connect: 0,
+                    disconnect: 0,
+                };
+
+                const database = {
+                    async connect() {
+                        calls.connect += 1;
+                    },
+
+                    async disconnect() {
+                        calls.disconnect += 1;
+                    },
+                };
+
+                const { logger } = createFakeLogger();
+
+                await assert.rejects(
+                    startServer({
+                        database,
+                        sessionStoreFactory: null,
+                        logger,
+                    }),
+                    {
+                        name: 'TypeError',
+                        message:
+                            'A fábrica do armazenamento de sessões deve ser uma função.',
+                    },
+                );
+
+                /**
+                 * A falha é estrutural e foi detectada antes que qualquer
+                 * recurso externo fosse aberto.
+                 */
+                assert.equal(calls.connect, 0);
+                assert.equal(calls.disconnect, 0);
+            });
+        },
+    );
+
+    test(
+        'rejeita uma fábrica de middleware inválida antes de conectar',
+        async () => {
+            await withTestEnvironment(async () => {
+                const calls = {
+                    connect: 0,
+                    disconnect: 0,
+                };
+
+                const database = {
+                    async connect() {
+                        calls.connect += 1;
+                    },
+
+                    async disconnect() {
+                        calls.disconnect += 1;
+                    },
+                };
+
+                const { logger } = createFakeLogger();
+
+                await assert.rejects(
+                    startServer({
+                        database,
+                        sessionMiddlewareFactory: null,
+                        logger,
+                    }),
+                    {
+                        name: 'TypeError',
+                        message:
+                            'A fábrica do middleware de sessão deve ser uma função.',
+                    },
+                );
+
+                assert.equal(calls.connect, 0);
+                assert.equal(calls.disconnect, 0);
+            });
+        },
+    );
+
+    test(
+        'desconecta o banco quando o armazenamento de sessões falha',
+        async () => {
+            await withTestEnvironment(async () => {
+                const expectedError = new Error(
+                    'Falha controlada no armazenamento de sessões.',
+                );
+
+                const nativeClient = {
+                    db() {
+                        return {};
+                    },
+                };
+
+                const calls = {
+                    connect: 0,
+                    getNativeClient: 0,
+                    disconnect: 0,
+                    sessionStoreFactory: 0,
+                    sessionMiddlewareFactory: 0,
+                    appFactory: 0,
+                };
+
+                const database = {
+                    async connect() {
+                        calls.connect += 1;
+                    },
+
+                    getNativeClient() {
+                        calls.getNativeClient += 1;
+
+                        return nativeClient;
+                    },
+
+                    async disconnect() {
+                        calls.disconnect += 1;
+                    },
+                };
+
+                function adminBootstrapperFactory() {
+                    return {
+                        async ensureAdmin() {},
+                    };
+                }
+
+                function sessionStoreFactory(options) {
+                    calls.sessionStoreFactory += 1;
+
+                    assert.strictEqual(
+                        options.nativeClient,
+                        nativeClient,
+                    );
+                    assert.equal(
+                        options.maxAgeMs,
+                        60 * 60 * 1000,
+                    );
+
+                    throw expectedError;
+                }
+
+                function sessionMiddlewareFactory() {
+                    calls.sessionMiddlewareFactory += 1;
+
+                    throw new Error(
+                        'O middleware de sessão não deveria ser criado.',
+                    );
+                }
+
+                function appFactory() {
+                    calls.appFactory += 1;
+
+                    throw new Error(
+                        'O Express não deveria ser criado.',
+                    );
+                }
+
+                const { logger } = createFakeLogger();
+
+                await assert.rejects(
+                    startServer({
+                        database,
+                        appFactory,
+                        adminBootstrapperFactory,
+                        sessionStoreFactory,
+                        sessionMiddlewareFactory,
+                        logger,
+                    }),
+                    (error) => {
+                        assert.strictEqual(error, expectedError);
+
+                        return true;
+                    },
+                );
+
+                assert.equal(calls.connect, 1);
+                assert.equal(calls.getNativeClient, 1);
+                assert.equal(calls.disconnect, 1);
+                assert.equal(calls.sessionStoreFactory, 1);
+                assert.equal(
+                    calls.sessionMiddlewareFactory,
+                    0,
+                );
+                assert.equal(calls.appFactory, 0);
+            });
+        },
+    );
+
+    test(
+        'desconecta o banco quando o middleware de sessão falha',
+        async () => {
+            await withTestEnvironment(async () => {
+                const expectedError = new Error(
+                    'Falha controlada no middleware de sessão.',
+                );
+
+                const nativeClient = {
+                    db() {
+                        return {};
+                    },
+                };
+
+                const sessionStore = {
+                    on(eventName, listener) {
+                        assert.equal(eventName, 'error');
+                        assert.equal(typeof listener, 'function');
+
+                        return this;
+                    },
+
+                    get() {},
+                    set() {},
+                    destroy() {},
+                };
+
+                const calls = {
+                    connect: 0,
+                    disconnect: 0,
+                    sessionStoreFactory: 0,
+                    sessionMiddlewareFactory: 0,
+                    appFactory: 0,
+                };
+
+                const database = {
+                    async connect() {
+                        calls.connect += 1;
+                    },
+
+                    getNativeClient() {
+                        return nativeClient;
+                    },
+
+                    async disconnect() {
+                        calls.disconnect += 1;
+                    },
+                };
+
+                function adminBootstrapperFactory() {
+                    return {
+                        async ensureAdmin() {},
+                    };
+                }
+
+                function sessionStoreFactory(options) {
+                    calls.sessionStoreFactory += 1;
+
+                    assert.strictEqual(
+                        options.nativeClient,
+                        nativeClient,
+                    );
+
+                    return sessionStore;
+                }
+
+                function sessionMiddlewareFactory(options) {
+                    calls.sessionMiddlewareFactory += 1;
+
+                    assert.strictEqual(
+                        options.store,
+                        sessionStore,
+                    );
+                    assert.equal(
+                        options.secret,
+                        TEST_ENVIRONMENT.SESSION_SECRET,
+                    );
+                    assert.equal(
+                        options.maxAgeMs,
+                        60 * 60 * 1000,
+                    );
+                    assert.equal(
+                        options.isProduction,
+                        false,
+                    );
+
+                    throw expectedError;
+                }
+
+                function appFactory() {
+                    calls.appFactory += 1;
+
+                    throw new Error(
+                        'O Express não deveria ser criado.',
+                    );
+                }
+
+                const { logger, entries } =
+                    createFakeLogger();
+
+                await assert.rejects(
+                    startServer({
+                        database,
+                        appFactory,
+                        adminBootstrapperFactory,
+                        sessionStoreFactory,
+                        sessionMiddlewareFactory,
+                        logger,
+                    }),
+                    (error) => {
+                        assert.strictEqual(error, expectedError);
+
+                        return true;
+                    },
+                );
+
+                assert.equal(calls.connect, 1);
+                assert.equal(calls.disconnect, 1);
+                assert.equal(calls.sessionStoreFactory, 1);
+                assert.equal(
+                    calls.sessionMiddlewareFactory,
+                    1,
+                );
+                assert.equal(calls.appFactory, 0);
+
+                /**
+                 * Nem o segredo de sessão nem a senha administrativa podem
+                 * aparecer nos registros produzidos durante a falha.
+                 */
+                const serializedLogs = JSON.stringify(entries);
+
+                assert.equal(
+                    serializedLogs.includes(
+                        TEST_ENVIRONMENT.SESSION_SECRET,
+                    ),
+                    false,
+                );
+                assert.equal(
+                    serializedLogs.includes(
+                        TEST_ENVIRONMENT.ADMIN_PASSWORD,
+                    ),
+                    false,
+                );
+            });
+        },
+    );
+
+    test(
+        'executa banco, administrador, sessões e Express na ordem correta',
         async () => {
             await withTestEnvironment(async () => {
                 const expectedError = new Error(
@@ -487,9 +825,53 @@ describe('startServer', () => {
 
                 const order = [];
 
+                /**
+                 * Representa o mesmo cliente MongoDB nativo que seria mantido
+                 * internamente pelo Mongoose.
+                 */
+                const nativeClient = {
+                    db() {
+                        return {};
+                    },
+                };
+
+                /**
+                 * O armazenamento possui somente o contrato necessário para
+                 * esta etapa da composição. Os detalhes do connect-mongo já
+                 * estão cobertos isoladamente em session.test.js.
+                 */
+                const sessionStore = {
+                    on(eventName, listener) {
+                        order.push(`session.store.on:${eventName}`);
+
+                        assert.equal(eventName, 'error');
+                        assert.equal(typeof listener, 'function');
+
+                        return this;
+                    },
+
+                    get() {},
+                    set() {},
+                    destroy() {},
+                };
+
+                const sessionMiddleware = (
+                    request,
+                    response,
+                    next
+                ) => next();
+
                 const database = {
                     async connect() {
                         order.push('database.connect');
+                    },
+
+                    getNativeClient() {
+                        order.push(
+                            'database.getNativeClient',
+                        );
+
+                        return nativeClient;
                     },
 
                     async disconnect() {
@@ -507,8 +889,60 @@ describe('startServer', () => {
                     };
                 }
 
-                function appFactory() {
+                function sessionStoreFactory(options) {
+                    order.push('session.store.factory');
+
+                    assert.strictEqual(
+                        options.nativeClient,
+                        nativeClient,
+                    );
+                    assert.equal(
+                        options.maxAgeMs,
+                        60 * 60 * 1000,
+                    );
+
+                    return sessionStore;
+                }
+
+                function sessionMiddlewareFactory(options) {
+                    order.push('session.middleware.factory');
+
+                    assert.strictEqual(
+                        options.store,
+                        sessionStore,
+                    );
+                    assert.equal(
+                        options.secret,
+                        TEST_ENVIRONMENT.SESSION_SECRET,
+                    );
+                    assert.equal(
+                        options.maxAgeMs,
+                        60 * 60 * 1000,
+                    );
+                    assert.equal(
+                        options.isProduction,
+                        false,
+                    );
+
+                    return sessionMiddleware;
+                }
+
+                function appFactory(options) {
                     order.push('app.factory');
+
+                    assert.strictEqual(
+                        options.sessionMiddleware,
+                        sessionMiddleware,
+                    );
+
+                    /**
+                     * A mesma instância do logger deve atravessar todo o ponto
+                     * de composição.
+                     */
+                    assert.strictEqual(
+                        options.logger,
+                        logger,
+                    );
 
                     /**
                      * A falha intencional interrompe o teste antes da criação
@@ -524,6 +958,8 @@ describe('startServer', () => {
                         database,
                         appFactory,
                         adminBootstrapperFactory,
+                        sessionStoreFactory,
+                        sessionMiddlewareFactory,
                         logger,
                     }),
                     (error) => {
@@ -537,6 +973,10 @@ describe('startServer', () => {
                     'database.connect',
                     'admin.factory',
                     'admin.ensure',
+                    'database.getNativeClient',
+                    'session.store.factory',
+                    'session.store.on:error',
+                    'session.middleware.factory',
                     'app.factory',
                     'database.disconnect',
                 ]);

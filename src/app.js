@@ -1,3 +1,5 @@
+'use strict';
+
 const express = require('express');
 
 const {
@@ -6,22 +8,49 @@ const {
 } = require('./middlewares/errorHandler');
 
 /**
+ * Mensagens relacionadas à configuração da aplicação.
+ */
+const APP_ERROR_MESSAGES = Object.freeze({
+    INVALID_SESSION_MIDDLEWARE:
+        'A aplicação exige um middleware de sessão válido quando ele é informado.'
+});
+
+/**
  * Cria e configura a aplicação Express.
  *
  * A aplicação é construída dentro de uma função para que cada teste possa
  * receber uma instância nova e isolada. Isso também evita que o servidor
  * comece a escutar uma porta simplesmente porque este arquivo foi importado.
  *
- * O logger é recebido como dependência opcional. Em produção será utilizado
- * o console; nos testes poderemos fornecer um logger controlado.
+ * O app recebe somente o middleware de sessão já construído. Ele não conhece:
+ * - o segredo utilizado para assinar cookies;
+ * - o MongoClient;
+ * - o connect-mongo;
+ * - as regras de criação do armazenamento.
+ *
+ * Essa separação mantém a infraestrutura fora da camada HTTP.
  *
  * @param {object} options Opções da aplicação.
  * @param {{ error: Function }} [options.logger=console]
  * Serviço utilizado para registrar erros inesperados.
+ * @param {Function | null} [options.sessionMiddleware=null]
+ * Middleware de sessão previamente configurado.
  *
  * @returns {import('express').Express} Aplicação Express configurada.
  */
-function createApp({ logger = console } = {}) {
+function createApp({
+    logger = console,
+    sessionMiddleware = null
+} = {}) {
+    if (
+        sessionMiddleware !== null
+        && typeof sessionMiddleware !== 'function'
+    ) {
+        throw new TypeError(
+            APP_ERROR_MESSAGES.INVALID_SESSION_MIDDLEWARE
+        );
+    }
+
     const app = express();
 
     /**
@@ -39,7 +68,21 @@ function createApp({ logger = console } = {}) {
      * memória desnecessária. Neste projeto, 100 KB é mais do que suficiente
      * para os futuros cadastros de aulas e materiais.
      */
-    app.use(express.json({ limit: '100kb' }));
+    app.use(express.json({
+        limit: '100kb'
+    }));
+
+    /**
+     * O middleware de sessão deve ser instalado antes das rotas que poderão
+     * utilizar request.session.
+     *
+     * Neste estágio ele permanece opcional para que a fundação HTTP também
+     * possa ser criada isoladamente. O ciclo real do servidor fornecerá esse
+     * middleware antes da abertura da porta.
+     */
+    if (sessionMiddleware) {
+        app.use(sessionMiddleware);
+    }
 
     /**
      * Rota pública de diagnóstico.
@@ -72,9 +115,14 @@ function createApp({ logger = console } = {}) {
      * Ele transforma erros operacionais em respostas conhecidas e impede que
      * falhas inesperadas exponham informações internas ao navegador.
      */
-    app.use(createErrorHandler({ logger }));
+    app.use(createErrorHandler({
+        logger
+    }));
 
     return app;
 }
 
-module.exports = { createApp };
+module.exports = {
+    APP_ERROR_MESSAGES,
+    createApp
+};

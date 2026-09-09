@@ -616,17 +616,260 @@ Esse resultado confirma a idempotência do processo.
 - conta duplicada não criada;
 - encerramento seguro confirmado.
 
+---
+
+## 9 de setembro de 2026 — Fundação de sessões persistentes
+
+### Objetivo
+
+Preparar a infraestrutura necessária para autenticação administrativa com
+sessões armazenadas no servidor.
+
+A fundação deveria impedir que informações de autenticação fossem mantidas
+diretamente no navegador e reutilizar a conexão MongoDB já administrada pelo
+Mongoose.
+
+### Dependências adicionadas
+
+Foram adicionadas:
+
+- `express-session` 1.19.0;
+- `connect-mongo` 6.0.0.
+
+O `express-session` gerencia o identificador da sessão e o cookie enviado ao
+navegador.
+
+O `connect-mongo` armazena o conteúdo da sessão no MongoDB. Dessa forma, o
+navegador recebe somente um identificador opaco, enquanto os dados efetivos
+permanecem no servidor.
+
+A instalação manteve zero vulnerabilidades conhecidas pelo `npm audit`.
+
+### Acesso controlado ao cliente MongoDB
+
+O módulo `src/config/database.js` passou a fornecer `getNativeClient()`.
+
+Esse método:
+
+- somente funciona depois que a conexão foi estabelecida;
+- obtém o cliente nativo mantido pelo Mongoose;
+- valida o formato do cliente antes de retorná-lo;
+- não cria uma conexão MongoDB adicional;
+- não expõe a URI do banco.
+
+O armazenamento de sessões e os modelos Mongoose passam, portanto, a
+compartilhar o mesmo conjunto de conexões.
+
+### Configuração das sessões
+
+Foi criado `src/config/session.js`, responsável por construir:
+
+1. o armazenamento persistente no MongoDB;
+2. o middleware do `express-session`.
+
+O módulo mantém essas responsabilidades fora de `app.js` e permite que todas
+as dependências sejam substituídas por implementações controladas nos testes.
+
+### Armazenamento persistente
+
+O armazenamento utiliza:
+
+- a coleção `sessions`;
+- expiração baseada na duração validada da sessão;
+- remoção nativa por índice TTL do MongoDB;
+- atualização periódica da atividade da sessão;
+- serialização explícita;
+- datas de criação e atualização;
+- o mesmo `MongoClient` utilizado pelo Mongoose.
+
+O TTL é arredondado para cima quando necessário, impedindo que uma sessão
+expire antes do período configurado.
+
+### Cookies de sessão
+
+A configuração dos cookies utiliza:
+
+- `httpOnly: true`;
+- `sameSite: 'lax'`;
+- `path: '/'`;
+- prioridade alta;
+- duração correspondente a `SESSION_HOURS`;
+- ausência do atributo `domain`;
+- `secure: true` em produção;
+- `secure: false` no ambiente local.
+
+Em desenvolvimento, o cookie utiliza o nome:
+
+```text
+calendario.sid
+```
+
+Em produção, utiliza:
+
+```text
+__Host-calendario.sid
+```
+
+O prefixo `__Host-` exige conexão HTTPS, caminho raiz e ausência de domínio
+explícito, reduzindo o risco de cookies concorrentes criados por subdomínios.
+
+### Comportamento das sessões
+
+O middleware foi configurado com:
+
+- `resave: false`;
+- `saveUninitialized: false`;
+- `rolling: false`;
+- `unset: 'destroy'`.
+
+Com `saveUninitialized: false`, visitantes anônimos de rotas públicas não
+recebem cookies e não criam documentos vazios no MongoDB.
+
+Uma sessão somente será persistida quando a futura autenticação adicionar
+dados relevantes a ela.
+
+### Validação do segredo
+
+O segredo de sessão continua vindo exclusivamente de `SESSION_SECRET`.
+
+A validação agora também rejeita valores formados somente por espaços. O
+segredo precisa:
+
+- ser um texto;
+- possuir conteúdo significativo;
+- possuir pelo menos 32 bytes UTF-8;
+- permanecer ausente das mensagens de erro e dos logs.
+
+O valor não recebe `trim` nem normalização, pois qualquer alteração modificaria
+o segredo criptográfico efetivamente utilizado.
+
+### Integração com o Express
+
+`src/app.js` passou a aceitar um middleware de sessão por injeção.
+
+Quando fornecido, o middleware é instalado:
+
+1. depois da interpretação do corpo JSON;
+2. antes das rotas;
+3. antes dos tratamentos de rota inexistente e de erro.
+
+A aplicação Express não conhece:
+
+- o segredo da sessão;
+- a URI do MongoDB;
+- o cliente nativo;
+- a biblioteca `connect-mongo`;
+- os detalhes do armazenamento.
+
+Essa separação mantém o módulo HTTP isolado e testável.
+
+### Integração ao ciclo de abertura
+
+`src/server.js` passou a inicializar a aplicação nesta ordem:
+
+1. carregar e validar o ambiente;
+2. conectar o MongoDB;
+3. garantir a conta administrativa;
+4. obter o cliente MongoDB nativo;
+5. criar o armazenamento persistente de sessões;
+6. registrar o tratamento de erros do armazenamento;
+7. criar o middleware de sessão;
+8. entregar o middleware ao Express;
+9. abrir o servidor HTTP.
+
+Qualquer falha anterior à abertura HTTP impede que a aplicação anuncie
+disponibilidade.
+
+Se uma falha ocorrer depois da conexão, o MongoDB é encerrado antes de o erro
+ser propagado.
+
+### Tratamento de erros do armazenamento
+
+Erros emitidos posteriormente pelo armazenamento de sessões recebem um
+listener operacional.
+
+O registro contém somente:
+
+- o nome do erro;
+- a mensagem técnica.
+
+A URI do banco, o segredo da sessão, a senha administrativa e o conteúdo das
+sessões não são incluídos.
+
+### Testes automatizados
+
+Foram adicionados testes para verificar:
+
+- constantes e mensagens imutáveis;
+- configuração completa do armazenamento;
+- arredondamento seguro do TTL;
+- rejeição de clientes MongoDB inválidos;
+- rejeição de durações inválidas;
+- validação das fábricas injetadas;
+- validação do armazenamento retornado;
+- configuração dos cookies em desenvolvimento;
+- configuração protegida dos cookies em produção;
+- construção de um middleware real;
+- rejeição de segredos inválidos;
+- rejeição de segredos formados somente por espaços;
+- ausência do segredo nas mensagens de erro;
+- execução do middleware antes das rotas;
+- funcionamento do Express sem sessão nos testes isolados;
+- reutilização do cliente MongoDB mantido pelo Mongoose;
+- ordem completa da inicialização;
+- limpeza da conexão após falhas;
+- bloqueio do Express quando a sessão não pode ser construída;
+- ausência de senha e segredo nos logs de falha.
+
+Nenhum teste automatizado depende de um MongoDB externo.
+
+### Validação com MongoDB local
+
+A aplicação completa também foi executada com o MongoDB local.
+
+A validação confirmou:
+
+- conexão real com o MongoDB;
+- reconhecimento da conta administrativa existente;
+- construção real do armazenamento de sessões;
+- criação real do middleware;
+- abertura normal do servidor HTTP;
+- resposta `200 OK` em `/api/health`;
+- ausência do cabeçalho `Set-Cookie` na rota pública;
+- zero sessões anônimas gravadas no MongoDB;
+- encerramento seguro por `SIGINT`.
+
+A ausência de uma sessão após o diagnóstico público confirma o funcionamento
+de `saveUninitialized: false`.
+
+### Verificação
+
+- 195 testes aprovados;
+- 25 suítes aprovadas;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas;
+- integração isolada coberta;
+- inicialização real com MongoDB validada;
+- cliente MongoDB compartilhado;
+- cookies anônimos não emitidos;
+- sessões anônimas não persistidas;
+- segredo e credenciais ausentes dos logs;
+- encerramento seguro confirmado.
+
 ### Próximo marco
 
-Implementar a autenticação administrativa e as sessões seguras:
+Implementar a autenticação administrativa:
 
-1. definir a estratégia de autenticação;
-2. criar o serviço de autenticação;
-3. comparar senhas sem expor credenciais;
-4. utilizar sessões armazenadas no servidor;
-5. configurar cookies seguros;
-6. limitar tentativas repetidas de acesso;
-7. criar as rotas de entrada e saída;
-8. proteger as futuras rotas administrativas;
-9. testar os fluxos de sucesso e falha;
-10. documentar as decisões de segurança.
+1. criar um serviço isolado de autenticação;
+2. localizar o administrador pelo e-mail normalizado;
+3. selecionar explicitamente o hash protegido da senha;
+4. comparar a senha com bcrypt sem expor credenciais;
+5. retornar uma mensagem genérica para credenciais inválidas;
+6. regenerar a sessão depois da autenticação;
+7. armazenar somente a identidade mínima do administrador;
+8. implementar entrada e saída;
+9. limitar tentativas repetidas de autenticação;
+10. proteger as futuras rotas administrativas;
+11. testar sucesso, falha, sessão e encerramento;
+12. atualizar a documentação.
