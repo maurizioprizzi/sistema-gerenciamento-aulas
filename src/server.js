@@ -1,35 +1,59 @@
 'use strict';
 
 const http = require('node:http');
-
 const dotenv = require('dotenv');
 
 const { createApp } = require('./app');
+const { databaseConnection } = require('./config/database');
 const { loadEnvironment } = require('./config/env');
 const {
-    databaseConnection,
-} = require('./config/database');
-const {
+    SESSION_COOKIE_NAMES,
     createMongoSessionStore,
     createSessionMiddleware,
 } = require('./config/session');
 const {
+    AuthenticationController,
+} = require('./controllers/AuthenticationController');
+const { User } = require('./models/User');
+const {
+    createAuthenticationRouter,
+} = require('./routes/authenticationRoutes');
+const {
     AdminBootstrapper,
 } = require('./services/AdminBootstrapper');
 const {
+    AuthenticationService,
+} = require('./services/AuthenticationService');
+const {
     PasswordHasher,
 } = require('./services/PasswordHasher');
+const {
+    SessionManager,
+} = require('./services/SessionManager');
+
+/**
+ * Mensagens estáveis relacionadas ao ponto de composição.
+ */
+const SERVER_ERROR_MESSAGES = Object.freeze({
+    INVALID_ADMIN_FACTORY:
+        'A fábrica de inicialização administrativa deve ser uma função.',
+    INVALID_ADMIN_SERVICE:
+        'A fábrica administrativa deve retornar um serviço com ensureAdmin().',
+    INVALID_SESSION_STORE_FACTORY:
+        'A fábrica do armazenamento de sessões deve ser uma função.',
+    INVALID_SESSION_MIDDLEWARE_FACTORY:
+        'A fábrica do middleware de sessão deve ser uma função.',
+    INVALID_AUTHENTICATION_ROUTER_FACTORY:
+        'A fábrica do roteador de autenticação deve ser uma função.',
+    INVALID_AUTHENTICATION_ROUTER:
+        'A fábrica de autenticação deve retornar um roteador válido.',
+});
 
 /**
  * Converte e valida o número da porta informado pelo ambiente.
  *
- * Embora env.js já exija somente algarismos, esta função preserva sua própria
- * proteção. Isso é defesa em profundidade: server.js não depende da suposição
- * de que sempre receberá valores previamente validados.
- *
  * @param {string | undefined} value Valor recebido da variável PORT.
  * @returns {number} Porta válida para o servidor HTTP.
- * @throws {RangeError} Quando o valor não representa uma porta válida.
  */
 function resolvePort(value) {
     const rawValue = value ?? '3000';
@@ -67,13 +91,8 @@ function listen(server, host, port) {
         }
 
         server.once('error', handleStartupError);
-
         server.listen(port, host, () => {
-            server.removeListener(
-                'error',
-                handleStartupError,
-            );
-
+            server.removeListener('error', handleStartupError);
             resolve();
         });
     });
@@ -99,10 +118,7 @@ function closeServer(server) {
 }
 
 /**
- * Constrói os serviços responsáveis pela criação da conta administrativa.
- *
- * Essa função pertence ao ponto de composição da aplicação: é aqui que
- * implementações concretas são conectadas umas às outras.
+ * Constrói o serviço responsável pela conta administrativa inicial.
  *
  * @param {object} options Configurações da composição.
  * @param {number} options.passwordHashRounds Custo validado do bcrypt.
@@ -124,36 +140,63 @@ function createAdminBootstrapper({
 }
 
 /**
+ * Compõe os serviços e a camada HTTP da autenticação administrativa.
+ *
+ * O nome do cookie é escolhido pela mesma constante utilizada na criação do
+ * middleware de sessão. Isso garante que o logout apague exatamente o cookie
+ * emitido pelo express-session em desenvolvimento ou produção.
+ *
+ * @param {object} options Configurações da composição.
+ * @param {number} options.passwordHashRounds Custo validado do bcrypt.
+ * @param {boolean} options.isProduction Indicação validada do ambiente.
+ * @returns {Function} Roteador Express de autenticação.
+ */
+function createAdministrativeAuthenticationRouter({
+    passwordHashRounds,
+    isProduction,
+}) {
+    const passwordHasherService = new PasswordHasher({
+        rounds: passwordHashRounds,
+    });
+
+    const authenticationService = new AuthenticationService({
+        UserModel: User,
+        passwordHasherService,
+    });
+
+    const sessionManagerService = new SessionManager();
+    const cookieName = isProduction
+        ? SESSION_COOKIE_NAMES.PRODUCTION
+        : SESSION_COOKIE_NAMES.DEVELOPMENT;
+
+    const controller = new AuthenticationController({
+        authenticationService,
+        sessionManager: sessionManagerService,
+        cookieName,
+        isProduction,
+    });
+
+    return createAuthenticationRouter({ controller });
+}
+
+/**
  * Carrega a configuração e inicia todos os componentes da aplicação.
  *
- * A ordem de inicialização é intencional:
- *
- * 1. validar o ambiente;
- * 2. conectar o MongoDB;
- * 3. garantir a conta administrativa;
- * 4. obter o cliente MongoDB nativo;
- * 5. criar o armazenamento persistente de sessões;
- * 6. criar o middleware de sessão;
- * 7. construir o Express;
- * 8. abrir o servidor HTTP.
- *
- * A aplicação não anuncia disponibilidade enquanto qualquer dependência
- * obrigatória ainda estiver indisponível.
+ * A ordem é intencional: ambiente, MongoDB, administrador, armazenamento de
+ * sessões, middleware, autenticação, Express e servidor HTTP.
  *
  * @param {object} options Dependências de inicialização.
- * @param {object} [options.database=databaseConnection]
- * Gerenciador da conexão com o banco.
- * @param {Function} [options.appFactory=createApp]
- * Função responsável pela criação da aplicação Express.
- * @param {Function} [options.adminBootstrapperFactory=createAdminBootstrapper]
- * Função que cria o serviço de inicialização administrativa.
- * @param {Function} [options.sessionStoreFactory=createMongoSessionStore]
- * Função que cria o armazenamento persistente de sessões.
- * @param {Function} [options.sessionMiddlewareFactory=createSessionMiddleware]
- * Função que cria o middleware do express-session.
- * @param {{ log: Function, info: Function, error: Function }}
- * [options.logger=console] Serviço de registro operacional.
- *
+ * @param {object} [options.database=databaseConnection] Banco de dados.
+ * @param {Function} [options.appFactory=createApp] Fábrica do Express.
+ * @param {Function} [options.adminBootstrapperFactory]
+ * Fábrica da inicialização administrativa.
+ * @param {Function} [options.sessionStoreFactory]
+ * Fábrica do armazenamento de sessões.
+ * @param {Function} [options.sessionMiddlewareFactory]
+ * Fábrica do middleware de sessão.
+ * @param {Function} [options.authenticationRouterFactory]
+ * Fábrica da composição de autenticação.
+ * @param {object} [options.logger=console] Logger operacional.
  * @returns {Promise<import('node:http').Server>} Servidor iniciado.
  */
 async function startServer({
@@ -162,12 +205,10 @@ async function startServer({
     adminBootstrapperFactory = createAdminBootstrapper,
     sessionStoreFactory = createMongoSessionStore,
     sessionMiddlewareFactory = createSessionMiddleware,
+    authenticationRouterFactory =
+        createAdministrativeAuthenticationRouter,
     logger = console,
 } = {}) {
-    /**
-     * O arquivo .env não substitui variáveis já fornecidas pela plataforma de
-     * hospedagem ou pelo sistema operacional.
-     */
     dotenv.config({ quiet: true });
 
     const environment = loadEnvironment();
@@ -175,36 +216,33 @@ async function startServer({
     const host = environment.HOST;
 
     /**
-     * As fábricas são validadas antes da conexão para impedir que uma
-     * configuração estruturalmente inválida abra recursos desnecessários.
+     * Falhas estruturais são detectadas antes de abrir recursos externos.
      */
     if (typeof adminBootstrapperFactory !== 'function') {
-        throw new TypeError(
-            'A fábrica de inicialização administrativa deve ser uma função.',
-        );
+        throw new TypeError(SERVER_ERROR_MESSAGES.INVALID_ADMIN_FACTORY);
     }
 
     if (typeof sessionStoreFactory !== 'function') {
         throw new TypeError(
-            'A fábrica do armazenamento de sessões deve ser uma função.',
+            SERVER_ERROR_MESSAGES.INVALID_SESSION_STORE_FACTORY,
         );
     }
 
     if (typeof sessionMiddlewareFactory !== 'function') {
         throw new TypeError(
-            'A fábrica do middleware de sessão deve ser uma função.',
+            SERVER_ERROR_MESSAGES.INVALID_SESSION_MIDDLEWARE_FACTORY,
+        );
+    }
+
+    if (typeof authenticationRouterFactory !== 'function') {
+        throw new TypeError(
+            SERVER_ERROR_MESSAGES.INVALID_AUTHENTICATION_ROUTER_FACTORY,
         );
     }
 
     let server = null;
 
     try {
-        /**
-         * Índices automáticos são úteis durante o desenvolvimento.
-         *
-         * Em produção, eles permanecem desativados para evitar mudanças
-         * inesperadas durante a abertura do processo.
-         */
         await database.connect(
             environment.MONGODB_URI,
             {
@@ -213,8 +251,7 @@ async function startServer({
         );
 
         const adminBootstrapper = adminBootstrapperFactory({
-            passwordHashRounds:
-                environment.PASSWORD_HASH_ROUNDS,
+            passwordHashRounds: environment.PASSWORD_HASH_ROUNDS,
             logger,
         });
 
@@ -223,37 +260,22 @@ async function startServer({
             || typeof adminBootstrapper.ensureAdmin !== 'function'
         ) {
             throw new TypeError(
-                'A fábrica administrativa deve retornar um serviço com ensureAdmin().',
+                SERVER_ERROR_MESSAGES.INVALID_ADMIN_SERVICE,
             );
         }
 
-        /**
-         * A senha administrativa será utilizada somente pelo serviço de hash.
-         * Ela não é registrada nem armazenada diretamente no MongoDB.
-         */
         await adminBootstrapper.ensureAdmin({
             name: environment.ADMIN_NAME,
             email: environment.ADMIN_EMAIL,
             password: environment.ADMIN_PASSWORD,
         });
 
-        /**
-         * O connect-mongo recebe o mesmo MongoClient utilizado pelo Mongoose.
-         *
-         * Assim, a aplicação não cria um segundo conjunto independente de
-         * conexões apenas para armazenar sessões.
-         */
         const nativeClient = database.getNativeClient();
-
         const sessionStore = sessionStoreFactory({
             nativeClient,
             maxAgeMs: environment.SESSION_MAX_AGE_MS,
         });
 
-        /**
-         * Erros posteriores do armazenamento são registrados sem expor a URI,
-         * o segredo da sessão ou o conteúdo das sessões.
-         */
         sessionStore.on('error', (error) => {
             logger.error(
                 'Erro no armazenamento persistente de sessões.',
@@ -273,13 +295,23 @@ async function startServer({
             isProduction: environment.IS_PRODUCTION,
         });
 
-        /**
-         * O Express recebe apenas o middleware pronto. Ele não conhece a URI,
-         * o segredo, o cliente MongoDB nem a biblioteca connect-mongo.
-         */
+        const authenticationRouter =
+            authenticationRouterFactory({
+                passwordHashRounds:
+                    environment.PASSWORD_HASH_ROUNDS,
+                isProduction: environment.IS_PRODUCTION,
+            });
+
+        if (typeof authenticationRouter !== 'function') {
+            throw new TypeError(
+                SERVER_ERROR_MESSAGES.INVALID_AUTHENTICATION_ROUTER,
+            );
+        }
+
         const app = appFactory({
             logger,
             sessionMiddleware,
+            authenticationRouter,
         });
 
         if (environment.TRUST_PROXY) {
@@ -287,14 +319,8 @@ async function startServer({
         }
 
         server = http.createServer(app);
-
         await listen(server, host, port);
     } catch (error) {
-        /**
-         * O armazenamento de sessões compartilha o cliente do Mongoose.
-         * Portanto, o encerramento centralizado do banco também libera os
-         * recursos utilizados pelas sessões.
-         */
         try {
             await database.disconnect();
         } catch (disconnectError) {
@@ -310,41 +336,24 @@ async function startServer({
         throw error;
     }
 
-    logger.log(
-        'Calendário do Prof. Dionísio iniciado com sucesso.',
-    );
+    logger.log('Calendário do Prof. Dionísio iniciado com sucesso.');
     logger.log(`Ambiente: ${environment.NODE_ENV}`);
     logger.log(`Endereço local: http://localhost:${port}`);
 
-    /**
-     * Evita que dois sinais iniciem encerramentos simultâneos.
-     */
     let isShuttingDown = false;
 
-    /**
-     * Encerra primeiro o servidor HTTP e depois o MongoDB.
-     *
-     * @param {string} signal Sinal recebido do sistema operacional.
-     * @returns {Promise<void>}
-     */
     async function shutdown(signal) {
         if (isShuttingDown) {
             return;
         }
 
         isShuttingDown = true;
-
-        logger.log(
-            `\n${signal} recebido. Encerrando a aplicação...`,
-        );
+        logger.log(`\n${signal} recebido. Encerrando a aplicação...`);
 
         try {
             await closeServer(server);
             await database.disconnect();
-
-            logger.log(
-                'Aplicação encerrada com segurança.',
-            );
+            logger.log('Aplicação encerrada com segurança.');
         } catch (error) {
             logger.error(
                 'Erro durante o encerramento da aplicação.',
@@ -358,20 +367,9 @@ async function startServer({
         }
     }
 
-    process.once(
-        'SIGINT',
-        () => void shutdown('SIGINT'),
-    );
+    process.once('SIGINT', () => void shutdown('SIGINT'));
+    process.once('SIGTERM', () => void shutdown('SIGTERM'));
 
-    process.once(
-        'SIGTERM',
-        () => void shutdown('SIGTERM'),
-    );
-
-    /**
-     * Eventos posteriores à inicialização são registrados sem expor dados da
-     * requisição ou da configuração.
-     */
     server.on('error', (error) => {
         logger.error(
             'Erro no servidor HTTP.',
@@ -387,9 +385,6 @@ async function startServer({
     return server;
 }
 
-/**
- * Inicia a aplicação somente quando este arquivo é executado diretamente.
- */
 if (require.main === module) {
     startServer().catch((error) => {
         console.error(
@@ -401,7 +396,9 @@ if (require.main === module) {
 }
 
 module.exports = {
+    SERVER_ERROR_MESSAGES,
     createAdminBootstrapper,
+    createAdministrativeAuthenticationRouter,
     resolvePort,
     startServer,
 };

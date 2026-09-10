@@ -4,7 +4,7 @@ const express = require('express');
 
 const {
     notFoundHandler,
-    createErrorHandler
+    createErrorHandler,
 } = require('./middlewares/errorHandler');
 
 /**
@@ -12,7 +12,9 @@ const {
  */
 const APP_ERROR_MESSAGES = Object.freeze({
     INVALID_SESSION_MIDDLEWARE:
-        'A aplicação exige um middleware de sessão válido quando ele é informado.'
+        'A aplicação exige um middleware de sessão válido quando ele é informado.',
+    INVALID_AUTHENTICATION_ROUTER:
+        'A aplicação exige um roteador de autenticação válido quando ele é informado.',
 });
 
 /**
@@ -22,32 +24,46 @@ const APP_ERROR_MESSAGES = Object.freeze({
  * receber uma instância nova e isolada. Isso também evita que o servidor
  * comece a escutar uma porta simplesmente porque este arquivo foi importado.
  *
- * O app recebe somente o middleware de sessão já construído. Ele não conhece:
+ * O app recebe componentes HTTP já construídos. Ele não conhece:
  * - o segredo utilizado para assinar cookies;
  * - o MongoClient;
  * - o connect-mongo;
- * - as regras de criação do armazenamento.
+ * - as regras de autenticação;
+ * - o serviço de proteção de senhas.
  *
- * Essa separação mantém a infraestrutura fora da camada HTTP.
+ * Essa separação mantém a infraestrutura e as regras de negócio fora da
+ * camada responsável por organizar os middlewares e as rotas.
  *
  * @param {object} options Opções da aplicação.
  * @param {{ error: Function }} [options.logger=console]
  * Serviço utilizado para registrar erros inesperados.
  * @param {Function | null} [options.sessionMiddleware=null]
  * Middleware de sessão previamente configurado.
+ * @param {Function | null} [options.authenticationRouter=null]
+ * Roteador responsável pela entrada e saída administrativas.
  *
  * @returns {import('express').Express} Aplicação Express configurada.
  */
 function createApp({
     logger = console,
-    sessionMiddleware = null
+    sessionMiddleware = null,
+    authenticationRouter = null,
 } = {}) {
     if (
         sessionMiddleware !== null
         && typeof sessionMiddleware !== 'function'
     ) {
         throw new TypeError(
-            APP_ERROR_MESSAGES.INVALID_SESSION_MIDDLEWARE
+            APP_ERROR_MESSAGES.INVALID_SESSION_MIDDLEWARE,
+        );
+    }
+
+    if (
+        authenticationRouter !== null
+        && typeof authenticationRouter !== 'function'
+    ) {
+        throw new TypeError(
+            APP_ERROR_MESSAGES.INVALID_AUTHENTICATION_ROUTER,
         );
     }
 
@@ -69,54 +85,53 @@ function createApp({
      * para os futuros cadastros de aulas e materiais.
      */
     app.use(express.json({
-        limit: '100kb'
+        limit: '100kb',
     }));
 
     /**
-     * O middleware de sessão deve ser instalado antes das rotas que poderão
-     * utilizar request.session.
+     * O middleware de sessão deve ser instalado antes das rotas de
+     * autenticação, pois login e logout utilizam request.session.
      *
-     * Neste estágio ele permanece opcional para que a fundação HTTP também
-     * possa ser criada isoladamente. O ciclo real do servidor fornecerá esse
-     * middleware antes da abertura da porta.
+     * Ele permanece opcional para permitir testes isolados da fundação HTTP.
+     * O ciclo real do servidor sempre fornece o middleware configurado.
      */
     if (sessionMiddleware) {
         app.use(sessionMiddleware);
     }
 
     /**
-     * Rota pública de diagnóstico.
+     * As rotas administrativas ficam agrupadas sob um prefixo estável.
      *
-     * Ela será usada para confirmar que:
-     * - o processo Node está funcionando;
-     * - o Express respondeu à requisição;
-     * - a aplicação está acessível pela rede.
+     * Endereços resultantes:
+     * - POST /api/auth/login;
+     * - POST /api/auth/logout.
+     */
+    if (authenticationRouter) {
+        app.use('/api/auth', authenticationRouter);
+    }
+
+    /**
+     * Rota pública de diagnóstico.
      */
     app.get('/api/health', (request, response) => {
         response.status(200).json({
             status: 'ok',
             application: 'Calendário do Prof. Dionísio',
             version: '0.1.0',
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
         });
     });
 
     /**
      * Este middleware deve permanecer depois de todas as rotas válidas.
-     *
-     * Se nenhuma rota anterior atender a requisição, ele cria um AppError
-     * com o código ROUTE_NOT_FOUND e o encaminha ao tratamento central.
      */
     app.use(notFoundHandler);
 
     /**
      * O middleware de erro deve ser sempre o último da aplicação.
-     *
-     * Ele transforma erros operacionais em respostas conhecidas e impede que
-     * falhas inesperadas exponham informações internas ao navegador.
      */
     app.use(createErrorHandler({
-        logger
+        logger,
     }));
 
     return app;
@@ -124,5 +139,5 @@ function createApp({
 
 module.exports = {
     APP_ERROR_MESSAGES,
-    createApp
+    createApp,
 };

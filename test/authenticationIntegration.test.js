@@ -1,0 +1,365 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const http = require('node:http');
+const {
+    describe,
+    test,
+} = require('node:test');
+
+const {
+    APP_ERROR_MESSAGES,
+    createApp,
+} = require('../src/app');
+const {
+    SERVER_ERROR_MESSAGES,
+    createAdministrativeAuthenticationRouter,
+    startServer,
+} = require('../src/server');
+
+const TEST_ENVIRONMENT = Object.freeze({
+    NODE_ENV: 'test',
+    HOST: '127.0.0.1',
+    PORT: '3000',
+    MONGODB_URI:
+        'mongodb://127.0.0.1:27017/calendario_teste',
+    SESSION_SECRET:
+        'segredo-de-teste-com-mais-de-trinta-e-dois-caracteres',
+    PASSWORD_HASH_ROUNDS: '12',
+    ADMIN_NAME: 'Administrador de Teste',
+    ADMIN_EMAIL: 'admin@example.com',
+    ADMIN_PASSWORD: 'senha-forte-de-teste',
+    SESSION_HOURS: '1',
+    APP_ORIGIN: 'http://localhost:3000',
+    TRUST_PROXY: '0',
+});
+
+async function withTestEnvironment(callback) {
+    const originals = {};
+
+    for (const [key, value] of Object.entries(TEST_ENVIRONMENT)) {
+        originals[key] = process.env[key];
+        process.env[key] = value;
+    }
+
+    try {
+        await callback();
+    } finally {
+        for (const key of Object.keys(TEST_ENVIRONMENT)) {
+            if (originals[key] === undefined) {
+                delete process.env[key];
+            } else {
+                process.env[key] = originals[key];
+            }
+        }
+    }
+}
+
+async function listenTemporarily(app, callback) {
+    const server = http.createServer(app);
+
+    await new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', resolve);
+    });
+
+    try {
+        const address = server.address();
+        await callback(`http://127.0.0.1:${address.port}`);
+    } finally {
+        await new Promise((resolve, reject) => {
+            server.close((error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+
+                resolve();
+            });
+        });
+    }
+}
+
+describe('integração das rotas de autenticação no Express', () => {
+    test('rejeita um roteador de autenticação inválido', () => {
+        const invalidRouters = [
+            'router',
+            42,
+            {},
+            [],
+        ];
+
+        for (const authenticationRouter of invalidRouters) {
+            assert.throws(
+                () => createApp({ authenticationRouter }),
+                {
+                    name: 'TypeError',
+                    message:
+                        APP_ERROR_MESSAGES
+                            .INVALID_AUTHENTICATION_ROUTER,
+                },
+            );
+        }
+    });
+
+    test(
+        'monta o roteador sob /api/auth depois da sessão',
+        async () => {
+            const order = [];
+
+            function sessionMiddleware(request, response, next) {
+                order.push('session');
+                request.sessionWasPrepared = true;
+                next();
+            }
+
+            function authenticationRouter(request, response, next) {
+                order.push('authentication');
+
+                if (
+                    request.method === 'POST'
+                    && request.url === '/login'
+                ) {
+                    response.status(200).json({
+                        sessionWasPrepared:
+                            request.sessionWasPrepared,
+                    });
+                    return;
+                }
+
+                next();
+            }
+
+            const app = createApp({
+                sessionMiddleware,
+                authenticationRouter,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    `${baseUrl}/api/auth/login`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'content-type': 'application/json',
+                        },
+                        body: JSON.stringify({}),
+                    },
+                );
+                const body = await response.json();
+
+                assert.equal(response.status, 200);
+                assert.deepEqual(body, {
+                    sessionWasPrepared: true,
+                });
+                assert.deepEqual(order, [
+                    'session',
+                    'authentication',
+                ]);
+            });
+        },
+    );
+
+    test('não monta o roteador fora do prefixo autorizado', async () => {
+        function authenticationRouter(request, response) {
+            response.status(204).end();
+        }
+
+        const app = createApp({ authenticationRouter });
+
+        await listenTemporarily(app, async (baseUrl) => {
+            const response = await fetch(`${baseUrl}/login`, {
+                method: 'POST',
+            });
+            const body = await response.json();
+
+            assert.equal(response.status, 404);
+            assert.equal(body.error.code, 'ROUTE_NOT_FOUND');
+        });
+    });
+});
+
+describe('composição da autenticação administrativa', () => {
+    test('cria roteadores válidos para desenvolvimento e produção', () => {
+        const developmentRouter =
+            createAdministrativeAuthenticationRouter({
+                passwordHashRounds: 12,
+                isProduction: false,
+            });
+
+        const productionRouter =
+            createAdministrativeAuthenticationRouter({
+                passwordHashRounds: 12,
+                isProduction: true,
+            });
+
+        assert.equal(typeof developmentRouter, 'function');
+        assert.equal(typeof productionRouter, 'function');
+    });
+
+    test('rejeita configurações inseguras na composição', () => {
+        assert.throws(
+            () => createAdministrativeAuthenticationRouter({
+                passwordHashRounds: 9,
+                isProduction: false,
+            }),
+            {
+                name: 'RangeError',
+                message:
+                    'O custo do hash deve ser um número inteiro entre 10 e 15.',
+            },
+        );
+
+        assert.throws(
+            () => createAdministrativeAuthenticationRouter({
+                passwordHashRounds: 12,
+                isProduction: 'false',
+            }),
+            {
+                name: 'TypeError',
+            },
+        );
+    });
+});
+
+describe('integração da autenticação no ciclo de abertura', () => {
+    test('rejeita uma fábrica inválida antes de conectar', async () => {
+        await withTestEnvironment(async () => {
+            let connectionAttempts = 0;
+
+            const database = {
+                async connect() {
+                    connectionAttempts += 1;
+                },
+            };
+
+            await assert.rejects(
+                startServer({
+                    database,
+                    authenticationRouterFactory: {},
+                }),
+                {
+                    name: 'TypeError',
+                    message:
+                        SERVER_ERROR_MESSAGES
+                            .INVALID_AUTHENTICATION_ROUTER_FACTORY,
+                },
+            );
+
+            assert.equal(connectionAttempts, 0);
+        });
+    });
+
+    test(
+        'constrói a autenticação antes de entregar o app ao Express',
+        async () => {
+            await withTestEnvironment(async () => {
+                const expectedError = new Error(
+                    'Parada controlada antes da abertura HTTP.',
+                );
+                const order = [];
+                const nativeClient = { db() {} };
+                const sessionStore = {
+                    on() {
+                        return this;
+                    },
+                    get() {},
+                    set() {},
+                    destroy() {},
+                };
+                const sessionMiddleware = (request, response, next) =>
+                    next();
+                const authenticationRouter = (
+                    request,
+                    response,
+                    next,
+                ) => next();
+
+                const database = {
+                    async connect() {
+                        order.push('database.connect');
+                    },
+                    getNativeClient() {
+                        order.push('database.getNativeClient');
+                        return nativeClient;
+                    },
+                    async disconnect() {
+                        order.push('database.disconnect');
+                    },
+                };
+
+                function adminBootstrapperFactory() {
+                    order.push('admin.factory');
+                    return {
+                        async ensureAdmin() {
+                            order.push('admin.ensure');
+                        },
+                    };
+                }
+
+                function sessionStoreFactory() {
+                    order.push('session.store.factory');
+                    return sessionStore;
+                }
+
+                function sessionMiddlewareFactory() {
+                    order.push('session.middleware.factory');
+                    return sessionMiddleware;
+                }
+
+                function authenticationRouterFactory(options) {
+                    order.push('authentication.router.factory');
+                    assert.deepEqual(options, {
+                        passwordHashRounds: 12,
+                        isProduction: false,
+                    });
+                    return authenticationRouter;
+                }
+
+                function appFactory(options) {
+                    order.push('app.factory');
+                    assert.strictEqual(
+                        options.sessionMiddleware,
+                        sessionMiddleware,
+                    );
+                    assert.strictEqual(
+                        options.authenticationRouter,
+                        authenticationRouter,
+                    );
+                    throw expectedError;
+                }
+
+                const logger = {
+                    log() {},
+                    info() {},
+                    error() {},
+                };
+
+                await assert.rejects(
+                    startServer({
+                        database,
+                        appFactory,
+                        adminBootstrapperFactory,
+                        sessionStoreFactory,
+                        sessionMiddlewareFactory,
+                        authenticationRouterFactory,
+                        logger,
+                    }),
+                    expectedError,
+                );
+
+                assert.deepEqual(order, [
+                    'database.connect',
+                    'admin.factory',
+                    'admin.ensure',
+                    'database.getNativeClient',
+                    'session.store.factory',
+                    'session.middleware.factory',
+                    'authentication.router.factory',
+                    'app.factory',
+                    'database.disconnect',
+                ]);
+            });
+        },
+    );
+});

@@ -1073,3 +1073,119 @@ Integrar a autenticação às sessões e à API:
 10. proteger as futuras rotas administrativas;
 11. testar os fluxos HTTP completos;
 12. validar o armazenamento real da sessão.
+
+## 10 de setembro de 2026 — Autenticação HTTP e ciclo de sessão
+
+### Objetivo
+
+Integrar o serviço de autenticação à API e ao armazenamento persistente de
+sessões, mantendo credenciais e dados internos fora das respostas e dos logs.
+
+### Implementação
+
+Foi criado o `SessionManager`, responsável por:
+
+- validar e reduzir a identidade persistida;
+- regenerar a sessão depois da autenticação;
+- armazenar somente o identificador e o papel;
+- salvar explicitamente a sessão antes da resposta;
+- remover a identidade e destruir a sessão quando a gravação falha;
+- destruir a sessão durante a saída.
+
+O `AuthenticationController` passou a coordenar os fluxos HTTP:
+
+- autentica as credenciais recebidas;
+- remove campos que não pertencem à resposta pública;
+- estabelece a sessão regenerada;
+- responde ao login com código `200`;
+- destrói a sessão durante o logout;
+- limpa o cookie com opções coerentes com o ambiente;
+- responde ao logout com código `204`.
+
+O roteador de autenticação registra:
+
+- `POST /api/auth/login`;
+- `POST /api/auth/logout`.
+
+O servidor agora compõe explicitamente o serviço de senha, o serviço de
+autenticação, o gerenciador de sessão, o controlador e o roteador antes de
+entregar a aplicação ao servidor HTTP.
+
+### Ordem de inicialização
+
+1. validar o ambiente;
+2. conectar o MongoDB;
+3. garantir a conta administrativa;
+4. obter o cliente MongoDB nativo;
+5. criar o armazenamento de sessões;
+6. criar o middleware de sessão;
+7. compor a autenticação administrativa;
+8. montar as rotas no Express;
+9. abrir a porta HTTP.
+
+### Segurança
+
+- a senha e o hash não são incluídos na sessão;
+- somente identificador e papel são persistidos;
+- a sessão é regenerada depois do login;
+- contas inexistentes executam comparação bcrypt substituta;
+- credenciais incorretas e contas inexistentes produzem a mesma resposta;
+- falhas de autenticação não emitem cookie nem criam sessão;
+- o logout destrói o documento da sessão;
+- o cookie é limpo com o mesmo nome e escopo utilizados na criação;
+- configurações inválidas impedem a abertura do servidor;
+- logs não recebem senha, hash, segredo ou identificador do cookie.
+
+### Testes automatizados
+
+Foram acrescentados testes para:
+
+- identidade mínima da sessão;
+- regeneração, gravação e destruição;
+- limpeza depois de falhas de persistência;
+- login e logout no controlador;
+- seleção dos campos públicos;
+- opções de limpeza do cookie;
+- registro das rotas;
+- montagem sob `/api/auth`;
+- ordem entre sessão e autenticação;
+- composição no ciclo de inicialização;
+- bloqueio diante de fábricas inválidas.
+
+### Validação real com MongoDB
+
+O fluxo completo foi executado contra o MongoDB local.
+
+No login:
+
+- a resposta foi `200`;
+- somente `email`, `id`, `name` e `role` foram devolvidos;
+- um cookie foi emitido;
+- exatamente uma sessão foi criada no MongoDB.
+
+No logout:
+
+- a resposta foi `204`;
+- o cookie foi invalidado;
+- a sessão foi removida do MongoDB.
+
+Também foram testadas uma senha incorreta e uma conta inexistente. Ambas
+retornaram `401`, produziram respostas públicas equivalentes, não emitiram
+cookie e não criaram sessão.
+
+### Verificação
+
+- 271 testes aprovados;
+- 41 suítes aprovadas;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas;
+- sintaxe validada;
+- integração HTTP confirmada;
+- sessão persistente criada e removida;
+- encerramento seguro confirmado.
+
+### Próximo marco
+
+Limitar tentativas repetidas de autenticação, atualizar o último acesso e criar
+o middleware de autorização das futuras rotas administrativas.

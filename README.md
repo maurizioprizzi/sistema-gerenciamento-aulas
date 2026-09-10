@@ -15,20 +15,21 @@ por computadores e celulares.
 A fundação técnica do backend está concluída. O projeto já possui servidor
 HTTP, conexão com MongoDB, validação de ambiente, tratamento centralizado de
 erros, modelo administrativo, proteção de senhas, inicialização controlada da
-primeira conta, sessões persistentes e um serviço isolado de autenticação
-administrativa.
+primeira conta, sessões persistentes e autenticação administrativa integrada à
+API HTTP.
 
 O administrador é preparado depois da conexão com o banco e antes da abertura
 da porta HTTP. O processo é idempotente: uma conta existente é preservada e
 não é duplicada nem tem sua senha substituída.
 
-As futuras sessões autenticadas serão armazenadas no MongoDB. O armazenamento
-reutiliza o mesmo cliente mantido pelo Mongoose, enquanto o navegador receberá
-somente um identificador opaco protegido por cookie.
+As sessões autenticadas são armazenadas no MongoDB. O armazenamento reutiliza
+o mesmo cliente mantido pelo Mongoose, enquanto o navegador recebe somente um
+identificador opaco protegido por cookie.
 
-O serviço de autenticação já localiza a conta pelo e-mail normalizado, recupera
-explicitamente o hash protegido, compara a senha com bcrypt e devolve somente
-a identidade mínima. Ele ainda não está ligado a rotas HTTP de entrada e saída.
+O login localiza a conta pelo e-mail normalizado, recupera explicitamente o
+hash protegido, compara a senha com bcrypt, regenera a sessão e persiste apenas
+o identificador e o papel do administrador. O logout destrói a sessão no
+servidor e invalida o cookie no navegador.
 
 ### Funcionalidades concluídas
 
@@ -66,7 +67,11 @@ a identidade mínima. Ele ainda não está ligado a rotas HTTP de entrada e saí
 - comparação bcrypt substituta para contas inexistentes;
 - resposta genérica para credenciais recusadas;
 - rejeição de contas administrativas inativas;
-- identidade autenticada mínima e imutável;
+- identidade autenticada pública e imutável;
+- regeneração da sessão depois do login;
+- persistência somente do identificador e do papel;
+- rotas `POST /api/auth/login` e `POST /api/auth/logout`;
+- destruição da sessão e limpeza do cookie no logout;
 - bloqueio do servidor HTTP quando a inicialização falha;
 - validações reais com MongoDB local;
 - testes HTTP, unitários e de integração controlada;
@@ -74,11 +79,10 @@ a identidade mínima. Ele ainda não está ligado a rotas HTTP de entrada e saí
 
 ### Ainda não implementado
 
-- rotas administrativas de entrada e saída;
-- criação e encerramento de sessões autenticadas;
 - atualização do último acesso durante o login;
-- limitação de tentativas de autenticação;
-- autorização das rotas administrativas;
+- limitação de tentativas repetidas de autenticação;
+- autorização das futuras rotas administrativas;
+- cabeçalhos adicionais de segurança;
 - interface visual;
 - cadastro de aulas e atividades;
 - cadastro de unidades curriculares;
@@ -316,62 +320,45 @@ npm test
 No marco atual, a suíte possui:
 
 ```text
-218 testes
-29 suítes
+271 testes
+41 suítes
 0 falhas
 0 testes ignorados
 ```
 
 Os testes verificam, entre outros comportamentos:
 
-- resposta da rota `/api/health`;
-- remoção do cabeçalho que identifica o Express;
-- formato seguro de erros HTTP;
-- JSON malformado e corpos excessivamente grandes;
-- portas válidas e inválidas;
-- validação das variáveis de ambiente;
-- ausência de senhas nas mensagens de erro;
-- conexão, reutilização e desconexão do MongoDB;
-- acesso seguro ao cliente MongoDB nativo;
-- bloqueio do HTTP quando alguma preparação falha;
-- validações e índice único do modelo de usuário;
-- ocultação do hash da senha;
-- geração e comparação de hashes bcrypt;
-- custo computacional e limite de 72 bytes das senhas;
-- comportamento com caracteres Unicode;
-- criação controlada e idempotente do administrador;
-- conflitos concorrentes de e-mail;
-- armazenamento persistente de sessões;
-- expiração e atualização controladas das sessões;
-- cookies seguros para desenvolvimento e produção;
-- prevenção de sessões anônimas vazias;
-- execução do middleware de sessão antes das rotas;
-- validação das fábricas e da ordem de inicialização;
-- configuração controlada dos índices em produção;
-- validação das dependências do serviço de autenticação;
-- normalização das credenciais;
-- recuperação explícita do hash protegido;
-- autenticação de uma conta administrativa ativa;
-- comparação substituta para usuário inexistente;
-- resposta pública genérica para credenciais recusadas;
-- recusa de contas inativas;
-- identidade autenticada mínima e imutável;
-- propagação de falhas reais do banco e do bcrypt.
+- fundação HTTP, erros e limites do corpo JSON;
+- ambiente, porta e ciclo de vida do servidor;
+- conexão, cliente nativo e encerramento do MongoDB;
+- modelo administrativo e índice único do e-mail;
+- proteção e comparação de senhas com bcrypt;
+- inicialização idempotente do administrador;
+- armazenamento persistente e cookies de sessão;
+- autenticação com respostas genéricas;
+- comparação substituta para usuários inexistentes;
+- identidade pública e identidade mínima da sessão;
+- regeneração, gravação e destruição de sessões;
+- limpeza após falhas durante a persistência;
+- handlers vinculados de login e logout;
+- remoção de campos privados da resposta;
+- limpeza coerente do cookie em desenvolvimento e produção;
+- registro das rotas de entrada e saída;
+- montagem do roteador sob `/api/auth`;
+- execução do middleware de sessão antes da autenticação;
+- composição das dependências antes da abertura HTTP;
+- bloqueio da inicialização diante de fábricas inválidas;
+- ausência de senhas, hashes, segredos e cookies nos logs.
 
 Os testes automatizados utilizam dependências controladas sempre que possível
 e não exigem um MongoDB externo.
 
-Além da suíte automatizada, os fluxos administrativo, de sessões e de
-autenticação foram validados manualmente com MongoDB local.
+Além da suíte automatizada, o fluxo HTTP completo foi validado manualmente com
+MongoDB local. O login real retornou `200`, emitiu um cookie e criou uma única
+sessão. O logout retornou `204`, invalidou o cookie e removeu a sessão.
 
-A primeira execução administrativa criou uma única conta com hash bcrypt, e a
-segunda execução preservou a mesma conta sem duplicação. A rota pública
-`/api/health` respondeu sem emitir `Set-Cookie` e sem criar uma sessão anônima,
-confirmando a configuração `saveUninitialized: false`.
-
-A autenticação real reconheceu a senha correta e devolveu somente `id`, `name`,
-`email` e `role`. Tentativas com senha incorreta e com e-mail inexistente
-retornaram o mesmo erro público `401 INVALID_CREDENTIALS`.
+Tentativas com senha incorreta e com e-mail inexistente retornaram a mesma
+resposta `401`, não emitiram cookies e não criaram sessões.
 
 ## Auditoria das dependências
 
@@ -399,24 +386,33 @@ dionisio/
 │   │   ├── database.js
 │   │   ├── env.js
 │   │   └── session.js
+│   ├── controllers/
+│   │   └── AuthenticationController.js
 │   ├── errors/
 │   │   └── AppError.js
 │   ├── middlewares/
 │   │   └── errorHandler.js
 │   ├── models/
 │   │   └── User.js
+│   ├── routes/
+│   │   └── authenticationRoutes.js
 │   ├── services/
 │   │   ├── AdminBootstrapper.js
 │   │   ├── AuthenticationService.js
-│   │   └── PasswordHasher.js
+│   │   ├── PasswordHasher.js
+│   │   └── SessionManager.js
 │   ├── app.js
 │   └── server.js
 ├── test/
 │   ├── AdminBootstrapper.test.js
 │   ├── AppError.test.js
+│   ├── AuthenticationController.test.js
 │   ├── AuthenticationService.test.js
 │   ├── PasswordHasher.test.js
+│   ├── SessionManager.test.js
 │   ├── app.test.js
+│   ├── authenticationIntegration.test.js
+│   ├── authenticationRoutes.test.js
 │   ├── database.test.js
 │   ├── env.test.js
 │   ├── errorHandler.test.js
@@ -436,37 +432,33 @@ dionisio/
 
 ### `src/app.js`
 
-Configura a aplicação Express, os middlewares e as rotas HTTP.
-
-Esse módulo não abre uma porta diretamente, permitindo que testes criem
-instâncias isoladas da aplicação. O middleware de sessão é recebido pronto por
-injeção e instalado antes das rotas.
+Configura o Express, instala o middleware de sessão, monta as rotas de
+autenticação sob `/api/auth` e mantém o tratamento de erros por último.
 
 ### `src/server.js`
 
-Carrega e valida o ambiente, conecta o MongoDB, garante a existência da conta
-administrativa, constrói a infraestrutura de sessões, cria o servidor HTTP e
-controla sua inicialização e seu encerramento.
-
-A porta HTTP somente é aberta depois que o banco, a conta administrativa e as
-sessões estão disponíveis.
+Compõe banco, administrador, sessões, autenticação e Express. A porta HTTP
+somente é aberta depois que todas as dependências obrigatórias estão prontas.
 
 ### `src/config/env.js`
 
-Define, valida e normaliza as variáveis utilizadas pela aplicação. Valores
-confidenciais não são incluídos nas mensagens de erro.
+Define, valida e normaliza as variáveis utilizadas pela aplicação sem incluir
+valores confidenciais nas mensagens de erro.
 
 ### `src/config/database.js`
 
-Encapsula o ciclo de conexão com o MongoDB por meio do Mongoose. Também fornece
-acesso validado ao cliente MongoDB nativo, reutilizado pelo armazenamento de
-sessões.
+Encapsula o ciclo da conexão Mongoose e fornece de maneira controlada o cliente
+MongoDB nativo utilizado pelo armazenamento de sessões.
 
 ### `src/config/session.js`
 
-Constrói o armazenamento persistente com connect-mongo e configura o
-middleware do express-session. Centraliza duração, cookies, nomes, expiração e
-validações de segurança.
+Cria o armazenamento connect-mongo e configura o express-session, a expiração
+e os atributos de cookie apropriados ao ambiente.
+
+### `src/controllers/AuthenticationController.js`
+
+Coordena as operações HTTP de login e logout, limita a resposta aos campos
+públicos autorizados e garante a limpeza coerente do cookie.
 
 ### `src/errors/AppError.js`
 
@@ -479,35 +471,40 @@ falhas inesperadas.
 
 ### `src/models/User.js`
 
-Define o usuário administrativo e protege o hash da senha contra exposição
-acidental.
+Define o usuário administrativo e protege o hash contra exposição acidental.
 
-### `src/services/PasswordHasher.js`
+### `src/routes/authenticationRoutes.js`
 
-Gera e compara hashes bcrypt, valida o custo computacional e impede o
-truncamento silencioso de senhas.
+Registra as rotas `POST /login` e `POST /logout`, posteriormente montadas
+pelo app sob o prefixo `/api/auth`.
 
 ### `src/services/AdminBootstrapper.js`
 
-Garante a existência da primeira conta administrativa sem substituir uma conta
-já cadastrada. Também trata conflitos de criação simultânea e evita que
-credenciais sejam incluídas nos resultados ou nos logs.
+Garante a existência da conta administrativa sem substituir uma conta já
+cadastrada e trata conflitos de criação simultânea.
 
 ### `src/services/AuthenticationService.js`
 
-Valida e normaliza credenciais, recupera explicitamente o hash protegido,
-compara a senha com bcrypt e devolve somente uma identidade pública mínima e
-imutável. Utiliza uma comparação substituta para reduzir a possibilidade de
-descobrir contas cadastradas por diferenças no fluxo de autenticação.
+Normaliza credenciais, recupera explicitamente o hash, compara senhas e devolve
+somente uma identidade pública mínima e imutável.
+
+### `src/services/PasswordHasher.js`
+
+Gera e compara hashes bcrypt, valida o custo e impede o truncamento silencioso
+de senhas acima de 72 bytes.
+
+### `src/services/SessionManager.js`
+
+Regenera, grava e destrói sessões autenticadas. Somente o identificador e o
+papel do usuário são persistidos.
 
 ### `test/`
 
-Contém os testes automatizados correspondentes aos módulos da aplicação.
+Contém os testes unitários, HTTP e de integração controlada correspondentes.
 
 ### `DEVLOG.md`
 
-Registra cronologicamente os marcos, decisões e verificações realizadas durante
-o desenvolvimento.
+Registra cronologicamente os marcos, decisões e verificações do desenvolvimento.
 
 ## API atual
 
@@ -517,91 +514,94 @@ o desenvolvimento.
 GET /api/health
 ```
 
-Exemplo de resposta:
+### Entrada administrativa
+
+```http
+POST /api/auth/login
+Content-Type: application/json
+```
+
+Corpo esperado:
 
 ```json
 {
-  "status": "ok",
-  "application": "Calendário do Prof. Dionísio",
-  "version": "0.1.0",
-  "timestamp": "2026-09-08T14:14:17.329Z"
+  "email": "administrador@example.com",
+  "password": "senha-informada-pelo-administrador"
 }
 ```
 
-O campo `timestamp` é gerado no momento da requisição.
+Em caso de sucesso, a resposta possui código `200`, cria a sessão e devolve
+somente os campos públicos do usuário:
+
+```json
+{
+  "data": {
+    "user": {
+      "id": "identificador-do-usuario",
+      "name": "Nome do Administrador",
+      "email": "administrador@example.com",
+      "role": "admin"
+    }
+  }
+}
+```
+
+Credenciais recusadas retornam `401` com uma mensagem genérica:
+
+```json
+{
+  "error": {
+    "code": "INVALID_CREDENTIALS",
+    "message": "E-mail ou senha inválidos."
+  }
+}
+```
+
+### Saída administrativa
+
+```http
+POST /api/auth/logout
+```
+
+O logout destrói a sessão, limpa o cookie e retorna `204 No Content`.
 
 ### Rota inexistente
 
-Uma rota desconhecida retorna o código HTTP `404`:
+Uma rota desconhecida retorna `404` com o código `ROUTE_NOT_FOUND`.
 
-```json
-{
-  "error": {
-    "code": "ROUTE_NOT_FOUND",
-    "message": "O endereço solicitado não existe."
-  }
-}
-```
+### Requisições inválidas
 
-### JSON inválido
-
-Um corpo JSON malformado retorna o código HTTP `400`:
-
-```json
-{
-  "error": {
-    "code": "INVALID_JSON",
-    "message": "O corpo da requisição contém um JSON inválido."
-  }
-}
-```
-
-### Corpo excessivamente grande
-
-Um corpo superior ao limite configurado retorna o código HTTP `413`:
-
-```json
-{
-  "error": {
-    "code": "PAYLOAD_TOO_LARGE",
-    "message": "O corpo da requisição excede o limite permitido."
-  }
-}
-```
-
-As rotas de autenticação ainda não fazem parte da API pública.
+JSON malformado retorna `400` com o código `INVALID_JSON`. Corpos acima de
+100 KB retornam `413` com o código `PAYLOAD_TOO_LARGE`.
 
 ## Segurança implementada
 
 - variáveis de ambiente validadas antes da inicialização;
-- segredos excluídos do Git;
-- mensagens de configuração sem valores confidenciais;
+- segredos excluídos do Git e ausentes das mensagens de erro;
 - cabeçalho `X-Powered-By` removido;
 - limite de `100kb` para corpos JSON;
 - erros inesperados ocultados das respostas;
-- logs de erro sem corpo, cookies ou cabeçalhos da requisição;
+- logs sem corpo, cookies ou cabeçalhos da requisição;
 - servidor HTTP bloqueado quando preparações obrigatórias falham;
-- hash de senha oculto nas consultas comuns e representações JSON;
 - senha original ausente do modelo e do banco;
-- hashing assíncrono com salt bcrypt;
-- custo mínimo e máximo do hash;
+- hash oculto e selecionado somente durante a autenticação;
+- hashing assíncrono com salt bcrypt e custo controlado;
 - limite de senha medido em bytes UTF-8;
-- criação administrativa idempotente e sem substituição automática;
-- conflitos concorrentes de e-mail tratados;
+- criação administrativa idempotente;
 - sessões armazenadas no servidor com expiração controlada;
 - cookies `HttpOnly`, `SameSite=Lax` e `Secure` em produção;
 - ausência de sessões vazias para visitantes anônimos;
-- seleção do hash somente no fluxo de autenticação;
-- comparação bcrypt substituta para contas inexistentes;
+- comparação substituta para contas inexistentes;
 - mensagem genérica para senha incorreta, conta inexistente ou inativa;
-- identidade autenticada sem senha, hash ou documento interno;
+- regeneração da sessão depois da autenticação;
+- persistência somente do identificador e do papel;
+- destruição da sessão e limpeza do cookie durante o logout;
 - limpeza do banco após falhas de inicialização;
 - auditoria periódica das dependências.
 
-Essas medidas ainda não tornam a aplicação pronta para produção. Rotas de
-entrada e saída, regeneração da sessão, limitação de tentativas, autorização,
-cabeçalhos adicionais de segurança e implantação HTTPS ainda serão
-implementados.
+Essas medidas ainda não tornam a aplicação pronta para produção. Limitação de
+tentativas, autorização, cabeçalhos adicionais, HTTPS e implantação segura
+ainda serão implementados.
 
 ## Princípios de desenvolvimento
 
@@ -618,11 +618,11 @@ implementados.
 
 ## Próximos marcos
 
-1. integrar a autenticação às rotas de entrada e saída;
-2. regenerar e encerrar sessões autenticadas com segurança;
-3. atualizar controladamente o último acesso;
-4. limitar tentativas repetidas de autenticação;
-5. proteger as rotas administrativas;
+1. limitar tentativas repetidas de autenticação;
+2. atualizar controladamente o último acesso;
+3. criar o middleware de autorização administrativa;
+4. proteger as futuras rotas administrativas;
+5. adicionar cabeçalhos HTTP de segurança;
 6. criar os modelos do calendário;
 7. implementar as APIs de aulas, atividades e materiais;
 8. migrar com segurança os dados do protótipo;
