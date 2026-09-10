@@ -857,19 +857,219 @@ de `saveUninitialized: false`.
 - segredo e credenciais ausentes dos logs;
 - encerramento seguro confirmado.
 
+---
+
+## 10 de setembro de 2026 — Serviço de autenticação administrativa
+
+### Objetivo
+
+Implementar a camada responsável por verificar as credenciais da conta
+administrativa sem depender das futuras rotas HTTP ou do gerenciamento de
+sessões.
+
+O serviço deveria:
+
+- receber e validar as credenciais;
+- normalizar o endereço de e-mail;
+- localizar explicitamente o hash protegido;
+- comparar a senha utilizando bcrypt;
+- recusar contas inexistentes, inativas ou com senha incorreta;
+- evitar revelar se determinado e-mail está cadastrado;
+- devolver somente a identidade mínima necessária;
+- permanecer isolado e testável.
+
+### Implementação
+
+Foi criado o módulo:
+
+```text
+src/services/AuthenticationService.js
+```
+
+A classe `AuthenticationService` recebe por injeção:
+
+- o modelo de usuário;
+- o serviço responsável pela comparação de senhas;
+- um hash bcrypt substituto.
+
+Essa composição permite testar o comportamento sem conexão externa e mantém as
+responsabilidades separadas.
+
+### Preparação das credenciais
+
+Antes da consulta, o serviço:
+
+- exige um objeto de credenciais válido;
+- normaliza espaços externos e letras maiúsculas do e-mail;
+- verifica a estrutura básica do endereço;
+- limita o e-mail a 254 caracteres;
+- preserva integralmente os caracteres da senha;
+- aceita senhas com até 72 bytes;
+- considera corretamente caracteres Unicode;
+- transforma entradas inválidas em uma resposta pública genérica.
+
+A senha não recebe `trim` nem normalização, pois espaços podem fazer parte de
+uma credencial legítima.
+
+### Consulta protegida
+
+O campo `passwordHash` utiliza `select: false` no modelo de usuário.
+
+Por isso, a autenticação solicita o hash de maneira explícita:
+
+```text
+select('+passwordHash')
+```
+
+Essa seleção ocorre somente dentro do fluxo que realmente precisa comparar a
+senha.
+
+### Proteção contra descoberta de contas
+
+Uma tentativa com usuário inexistente também executa uma comparação bcrypt
+utilizando um hash substituto válido.
+
+Essa estratégia reduz a diferença observável entre:
+
+- e-mail inexistente;
+- senha incorreta;
+- conta inativa.
+
+Todas essas situações retornam o mesmo erro operacional:
+
+```text
+401 INVALID_CREDENTIALS
+E-mail ou senha inválidos.
+```
+
+A aplicação não informa publicamente se o endereço consultado está cadastrado.
+
+### Contas inativas
+
+A senha é comparada antes da verificação do estado da conta.
+
+Mesmo que a senha esteja correta, uma conta com `active: false` recebe a mesma
+resposta genérica utilizada pelas demais credenciais recusadas.
+
+### Identidade autenticada
+
+Uma autenticação bem-sucedida não devolve o documento completo do Mongoose.
+
+O resultado contém somente:
+
+- `id`;
+- `name`;
+- `email`;
+- `role`.
+
+A identidade retornada é congelada com `Object.freeze` e não inclui:
+
+- senha;
+- hash da senha;
+- estado interno do Mongoose;
+- metadados desnecessários.
+
+### Tratamento de falhas
+
+Erros de credenciais são representados por `AppError` com código HTTP `401`.
+
+Falhas reais de infraestrutura ou inconsistências internas não são
+transformadas silenciosamente em erros de credenciais. Elas são propagadas
+para o tratamento centralizado, permitindo diagnóstico operacional correto.
+
+### Testes automatizados
+
+Foi criado o arquivo:
+
+```text
+test/AuthenticationService.test.js
+```
+
+Os 23 novos testes verificam:
+
+- constantes e mensagens imutáveis;
+- construção com dependências padrão;
+- rejeição de dependências inválidas;
+- validação do hash substituto;
+- normalização do e-mail;
+- preservação dos espaços da senha;
+- limite exato de 72 bytes;
+- medição de caracteres Unicode em UTF-8;
+- rejeição segura de credenciais inválidas;
+- seleção explícita do hash;
+- autenticação de conta ativa;
+- comparação substituta para usuário inexistente;
+- recusa de senha incorreta;
+- recusa de conta inativa;
+- identidade pública mínima;
+- imutabilidade da identidade;
+- propagação de falhas do banco;
+- propagação de falhas do bcrypt;
+- detecção de documentos inconsistentes;
+- ausência de uso incorreto do hash substituto para contas existentes.
+
+### Validação com MongoDB local
+
+O serviço também foi validado contra a conta administrativa real armazenada
+no MongoDB local.
+
+A autenticação correta confirmou:
+
+- conexão real com o banco;
+- localização da conta administrativa;
+- recuperação explícita do hash;
+- comparação real com bcrypt;
+- retorno do papel `admin`;
+- identidade limitada aos quatro campos públicos;
+- resultado imutável;
+- encerramento correto da conexão.
+
+Também foram executadas duas tentativas negativas:
+
+1. e-mail existente com senha incorreta;
+2. e-mail inexistente com senha incorreta.
+
+As duas retornaram exatamente:
+
+```text
+AppError
+401
+INVALID_CREDENTIALS
+E-mail ou senha inválidos.
+```
+
+A igualdade das respostas confirma que o serviço não revela a existência da
+conta por meio da mensagem pública.
+
+### Verificação
+
+- 218 testes aprovados;
+- 29 suítes aprovadas;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas;
+- sintaxe dos novos arquivos validada;
+- integração real com MongoDB confirmada;
+- comparação bcrypt real confirmada;
+- usuário inexistente protegido por comparação substituta;
+- conta inativa tratada de maneira genérica;
+- senha e hash ausentes dos resultados;
+- identidade mínima e imutável;
+- erros públicos equivalentes para credenciais recusadas.
+
 ### Próximo marco
 
-Implementar a autenticação administrativa:
+Integrar a autenticação às sessões e à API:
 
-1. criar um serviço isolado de autenticação;
-2. localizar o administrador pelo e-mail normalizado;
-3. selecionar explicitamente o hash protegido da senha;
-4. comparar a senha com bcrypt sem expor credenciais;
-5. retornar uma mensagem genérica para credenciais inválidas;
-6. regenerar a sessão depois da autenticação;
-7. armazenar somente a identidade mínima do administrador;
-8. implementar entrada e saída;
-9. limitar tentativas repetidas de autenticação;
+1. criar as rotas de entrada e saída;
+2. validar os corpos das requisições;
+3. regenerar a sessão depois da autenticação;
+4. armazenar somente a identidade mínima na sessão;
+5. atualizar controladamente o último acesso;
+6. destruir a sessão durante a saída;
+7. limpar o cookie de sessão;
+8. limitar tentativas repetidas de autenticação;
+9. criar middleware de autorização;
 10. proteger as futuras rotas administrativas;
-11. testar sucesso, falha, sessão e encerramento;
-12. atualizar a documentação.
+11. testar os fluxos HTTP completos;
+12. validar o armazenamento real da sessão.
