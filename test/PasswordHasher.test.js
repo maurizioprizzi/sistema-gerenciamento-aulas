@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { describe, test } = require('node:test');
 
 const {
+    BCRYPT_MAX_PASSWORD_BYTES,
     DEFAULT_PASSWORD_HASH_ROUNDS,
     MAX_PASSWORD_HASH_ROUNDS,
     MIN_PASSWORD_HASH_ROUNDS,
@@ -30,16 +31,9 @@ function createFakeBcrypt({
     const calls = {
         hash: [],
         compare: [],
-        truncates: [],
     };
 
     const bcryptClient = {
-        truncates(password) {
-            calls.truncates.push(password);
-
-            return Buffer.byteLength(password, 'utf8') > 72;
-        },
-
         async hash(password, rounds) {
             calls.hash.push({
                 password,
@@ -80,6 +74,7 @@ describe('configuração do PasswordHasher', () => {
             DEFAULT_PASSWORD_HASH_ROUNDS,
         );
         assert.equal(DEFAULT_PASSWORD_HASH_ROUNDS, 12);
+        assert.equal(BCRYPT_MAX_PASSWORD_BYTES, 72);
     });
 
     test('aceita os limites de custo permitidos', () => {
@@ -129,11 +124,9 @@ describe('configuração do PasswordHasher', () => {
         {},
         {
             hash() {},
-            compare() {},
         },
         {
-            hash() {},
-            truncates() {},
+            compare() {},
         },
     ]) {
         test('rejeita um cliente bcrypt incompleto', () => {
@@ -148,6 +141,18 @@ describe('configuração do PasswordHasher', () => {
             );
         });
     }
+
+    test('aceita um cliente com somente hash e compare', () => {
+        const { bcryptClient } = createFakeBcrypt();
+
+        assert.doesNotThrow(
+            () => new PasswordHasher({ bcryptClient }),
+        );
+        assert.deepEqual(
+            Object.keys(bcryptClient).sort(),
+            ['compare', 'hash'],
+        );
+    });
 
     test('não permite alterar o custo depois da construção', () => {
         const { bcryptClient } = createFakeBcrypt();
@@ -193,7 +198,6 @@ describe('PasswordHasher.hash', () => {
                 rounds: 11,
             },
         ]);
-        assert.deepEqual(calls.truncates, ['Senha de teste 2026!']);
     });
 
     for (const invalidPassword of [
@@ -365,6 +369,27 @@ describe('PasswordHasher.compare', () => {
 
         assert.equal(calls.compare.length, 0);
     });
+
+    test(
+        'rejeita senha maior que 72 bytes antes da comparação',
+        async () => {
+            const { bcryptClient, calls } = createFakeBcrypt();
+            const service = new PasswordHasher({ bcryptClient });
+            const password = 'a'.repeat(
+                BCRYPT_MAX_PASSWORD_BYTES + 1,
+            );
+
+            await assert.rejects(
+                service.compare(password, 'hash-armazenado'),
+                {
+                    name: 'RangeError',
+                    message: PASSWORD_ERRORS.PASSWORD_TOO_LONG,
+                },
+            );
+
+            assert.equal(calls.compare.length, 0);
+        },
+    );
 
     for (const invalidHash of [
         undefined,

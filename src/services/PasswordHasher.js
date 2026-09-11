@@ -6,7 +6,7 @@ const bcrypt = require('bcryptjs');
  * Custo padrão utilizado pelo bcrypt.
  *
  * O custo 12 oferece uma proteção adequada para uma aplicação administrativa
- * pequena. Ele poderá ser configurado por variável de ambiente posteriormente.
+ * pequena. A inicialização pode substituí-lo por PASSWORD_HASH_ROUNDS.
  */
 const DEFAULT_PASSWORD_HASH_ROUNDS = 12;
 
@@ -19,6 +19,15 @@ const DEFAULT_PASSWORD_HASH_ROUNDS = 12;
  */
 const MIN_PASSWORD_HASH_ROUNDS = 10;
 const MAX_PASSWORD_HASH_ROUNDS = 15;
+
+/**
+ * Limite técnico do algoritmo bcrypt em bytes UTF-8.
+ *
+ * O bcrypt considera exclusivamente os primeiros 72 bytes. Caracteres Unicode
+ * podem ocupar múltiplos bytes, portanto a validação deve medir o tamanho do
+ * buffer em UTF-8 e não a contagem de caracteres da string.
+ */
+const BCRYPT_MAX_PASSWORD_BYTES = 72;
 
 /**
  * Mensagens públicas e estáveis utilizadas nas validações.
@@ -93,8 +102,7 @@ class PasswordHasher {
         const isValid =
             bcryptClient &&
             typeof bcryptClient.hash === 'function' &&
-            typeof bcryptClient.compare === 'function' &&
-            typeof bcryptClient.truncates === 'function';
+            typeof bcryptClient.compare === 'function';
 
         if (!isValid) {
             throw new TypeError(PASSWORD_ERRORS.INVALID_CLIENT);
@@ -136,8 +144,15 @@ class PasswordHasher {
             throw new TypeError(PASSWORD_ERRORS.INVALID_PASSWORD);
         }
 
-        if (this.#bcryptClient.truncates(password)) {
-            throw new RangeError(PASSWORD_ERRORS.PASSWORD_TOO_LONG);
+        const passwordBytes = Buffer.byteLength(
+            password,
+            'utf8',
+        );
+
+        if (passwordBytes > BCRYPT_MAX_PASSWORD_BYTES) {
+            throw new RangeError(
+                PASSWORD_ERRORS.PASSWORD_TOO_LONG,
+            );
         }
     }
 
@@ -198,6 +213,7 @@ class PasswordHasher {
 const passwordHasher = new PasswordHasher();
 
 module.exports = {
+    BCRYPT_MAX_PASSWORD_BYTES,
     DEFAULT_PASSWORD_HASH_ROUNDS,
     MAX_PASSWORD_HASH_ROUNDS,
     MIN_PASSWORD_HASH_ROUNDS,

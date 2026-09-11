@@ -1441,3 +1441,46 @@ anterior inválido para uma nova consulta, que voltou a retornar `401`.
 
 Adicionar cabeçalhos HTTP de segurança e iniciar a primeira interface visual
 com uma tela administrativa de login.
+
+## 11 de setembro de 2026 — Validação independente do limite bcrypt
+
+### Objetivo
+
+Reduzir o acoplamento do `PasswordHasher` à API específica do bcryptjs sem
+alterar a proteção contra o truncamento silencioso de senhas acima de 72 bytes.
+
+### Implementação
+
+O limite técnico passou a ser representado pela constante exportada
+`BCRYPT_MAX_PASSWORD_BYTES`. O tamanho da senha agora é calculado diretamente
+com `Buffer.byteLength(password, 'utf8')` antes de qualquer operação bcrypt.
+
+Com isso, o cliente criptográfico injetado precisa oferecer somente `hash()` e
+`compare()`. O serviço não depende mais do método auxiliar `truncates()` do
+bcryptjs.
+
+O `AuthenticationService` reutiliza a nova constante, mas preserva o export
+`MAX_PASSWORD_BYTES`, evitando quebra do contrato existente. A configuração
+de ambiente mantém sua validação independente como defesa em profundidade.
+
+### Testes automatizados
+
+Os simuladores foram simplificados para o novo contrato mínimo. Os testes
+confirmam a aceitação de um cliente com somente `hash()` e `compare()`, o
+limite exato de 72 bytes, a medição de caracteres Unicode e a rejeição de uma
+senha maior que o limite antes de gerar ou comparar hashes.
+
+### Verificação
+
+- 313 testes aprovados;
+- 50 suítes aprovadas;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas;
+- sintaxe validada;
+- contrato público da autenticação preservado.
+
+### Próximo marco
+
+Adicionar cabeçalhos HTTP de segurança e iniciar a primeira interface visual
+com uma tela administrativa de login.

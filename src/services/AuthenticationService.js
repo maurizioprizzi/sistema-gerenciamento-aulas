@@ -7,6 +7,7 @@ const {
     normalizeEmail,
 } = require('../models/User');
 const {
+    BCRYPT_MAX_PASSWORD_BYTES,
     passwordHasher,
 } = require('./PasswordHasher');
 
@@ -71,7 +72,7 @@ const DEFAULT_DUMMY_PASSWORD_HASH =
  * Limites que protegem a fronteira de autenticação.
  */
 const MAX_EMAIL_LENGTH = 254;
-const MAX_PASSWORD_BYTES = 72;
+const MAX_PASSWORD_BYTES = BCRYPT_MAX_PASSWORD_BYTES;
 
 /**
  * Autentica uma conta administrativa sem conhecer HTTP ou sessões.

@@ -331,7 +331,7 @@ npm test
 No marco atual, a suíte possui:
 
 ```text
-311 testes
+313 testes
 50 suítes
 0 falhas
 0 testes ignorados
@@ -344,6 +344,7 @@ Os testes verificam, entre outros comportamentos:
 - conexão, cliente nativo e encerramento do MongoDB;
 - modelo administrativo e índice único do e-mail;
 - proteção e comparação de senhas com bcrypt;
+- medição independente do limite bcrypt em bytes UTF-8;
 - inicialização idempotente do administrador;
 - armazenamento persistente e cookies de sessão;
 - autenticação com respostas genéricas;
@@ -548,7 +549,7 @@ somente uma identidade pública mínima e imutável.
 ### `src/services/PasswordHasher.js`
 
 Gera e compara hashes bcrypt, valida o custo e impede o truncamento silencioso
-de senhas acima de 72 bytes.
+de senhas acima de 72 bytes por meio de medição UTF-8 independente do cliente.
 
 ### `src/services/SessionManager.js`
 
