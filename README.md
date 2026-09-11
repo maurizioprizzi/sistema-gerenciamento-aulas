@@ -16,8 +16,8 @@ A fundação técnica do backend está concluída. O projeto já possui servidor
 HTTP, conexão com MongoDB, validação de ambiente, tratamento centralizado de
 erros, modelo administrativo, proteção de senhas, inicialização controlada da
 primeira conta, sessões persistentes, autenticação administrativa integrada à
-API HTTP, limitação de tentativas repetidas e registro controlado do último
-acesso válido.
+API HTTP, limitação de tentativas repetidas, registro controlado do último
+acesso válido, autorização administrativa e consulta protegida da sessão.
 
 O administrador é preparado depois da conexão com o banco e antes da abertura
 da porta HTTP. O processo é idempotente: uma conta existente é preservada e
@@ -80,6 +80,10 @@ servidor e invalida o cookie no navegador.
 - resposta `429` padronizada para excesso de tentativas;
 - cabeçalhos modernos de informação do limite;
 - preservação do logout durante o bloqueio de novas entradas;
+- middleware de autorização administrativa;
+- respostas padronizadas para autenticação ausente e acesso insuficiente;
+- identidade autorizada mínima, imutável e protegida na requisição;
+- rota protegida `GET /api/auth/session`;
 - bloqueio do servidor HTTP quando a inicialização falha;
 - validações reais com MongoDB local;
 - testes HTTP, unitários e de integração controlada;
@@ -87,7 +91,6 @@ servidor e invalida o cookie no navegador.
 
 ### Ainda não implementado
 
-- autorização das futuras rotas administrativas;
 - cabeçalhos adicionais de segurança;
 - interface visual;
 - cadastro de aulas e atividades;
@@ -328,8 +331,8 @@ npm test
 No marco atual, a suíte possui:
 
 ```text
-289 testes
-45 suítes
+311 testes
+50 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -363,6 +366,11 @@ Os testes verificam, entre outros comportamentos:
 - remoção de logins bem-sucedidos da contagem;
 - resposta `429` pelo tratamento central de erros;
 - preservação do logout durante o bloqueio;
+- validação da identidade administrativa armazenada na sessão;
+- respostas `401` e `403` para acessos não autorizados;
+- exposição somente de identificador e papel na consulta protegida;
+- execução da autorização antes do controlador da sessão;
+- comportamento HTTP de `GET /api/auth/session`;
 - execução do middleware de sessão antes da autenticação;
 - composição das dependências antes da abertura HTTP;
 - bloqueio da inicialização diante de fábricas inválidas;
@@ -387,6 +395,11 @@ O registro do último acesso foi validado no mesmo ambiente real. Um login
 correto atualizou `lastLoginAt` com uma data válida sem expor o campo na
 resposta. Uma tentativa posterior com senha incorreta retornou `401` e não
 alterou o horário. A sessão criada foi removida normalmente pelo logout.
+
+A autorização também foi validada com a aplicação e o MongoDB locais. Uma
+consulta anônima retornou `401` sem emitir cookie. Depois do login, a consulta
+protegida retornou `200` com somente `id` e `role`. O logout removeu a
+sessão, e uma nova consulta com o cookie anterior voltou a retornar `401`.
 
 ## Auditoria das dependências
 
@@ -419,6 +432,7 @@ dionisio/
 │   ├── errors/
 │   │   └── AppError.js
 │   ├── middlewares/
+│   │   ├── administrativeAuthorization.js
 │   │   ├── authenticationRateLimiter.js
 │   │   └── errorHandler.js
 │   ├── models/
@@ -439,11 +453,13 @@ dionisio/
 │   ├── AuthenticationService.test.js
 │   ├── PasswordHasher.test.js
 │   ├── SessionManager.test.js
+│   ├── administrativeAuthorization.test.js
 │   ├── app.test.js
 │   ├── authenticationIntegration.test.js
 │   ├── authenticationRateLimitIntegration.test.js
 │   ├── authenticationRateLimiter.test.js
 │   ├── authenticationRoutes.test.js
+│   ├── authenticationSessionController.test.js
 │   ├── database.test.js
 │   ├── env.test.js
 │   ├── errorHandler.test.js
@@ -488,12 +504,17 @@ e os atributos de cookie apropriados ao ambiente.
 
 ### `src/controllers/AuthenticationController.js`
 
-Coordena as operações HTTP de login e logout, limita a resposta aos campos
-públicos autorizados e garante a limpeza coerente do cookie.
+Coordena as operações HTTP de login, consulta da sessão e logout, limita as
+respostas aos campos autorizados e garante a limpeza coerente do cookie.
 
 ### `src/errors/AppError.js`
 
 Representa erros operacionais conhecidos pela aplicação.
+
+### `src/middlewares/administrativeAuthorization.js`
+
+Valida a identidade mínima da sessão, exige o papel administrativo e anexa à
+requisição somente um identificador e um papel protegidos contra alterações.
 
 ### `src/middlewares/authenticationRateLimiter.js`
 
@@ -511,8 +532,8 @@ Define o usuário administrativo e protege o hash contra exposição acidental.
 
 ### `src/routes/authenticationRoutes.js`
 
-Registra as rotas `POST /login` e `POST /logout`, posteriormente montadas
-pelo app sob o prefixo `/api/auth`.
+Registra as rotas `POST /login`, `GET /session` e `POST /logout`,
+posteriormente montadas pelo app sob o prefixo `/api/auth`.
 
 ### `src/services/AdminBootstrapper.js`
 
@@ -617,6 +638,31 @@ POST /api/auth/logout
 
 O logout destrói a sessão, limpa o cookie e retorna `204 No Content`.
 
+### Consulta da sessão administrativa
+
+```http
+GET /api/auth/session
+```
+
+Uma sessão administrativa válida retorna `200` e somente a identidade mínima
+necessária para autorização:
+
+```json
+{
+  "data": {
+    "authenticated": true,
+    "user": {
+      "id": "identificador-do-usuario",
+      "role": "admin"
+    }
+  }
+}
+```
+
+Uma requisição sem sessão válida retorna `401 AUTHENTICATION_REQUIRED`. Uma
+sessão válida sem papel administrativo retorna
+`403 ADMINISTRATIVE_ACCESS_REQUIRED`.
+
 ### Rota inexistente
 
 Uma rota desconhecida retorna `404` com o código `ROUTE_NOT_FOUND`.
@@ -654,12 +700,17 @@ JSON malformado retorna `400` com o código `INVALID_JSON`. Corpos acima de
 - limitação de tentativas recusadas antes da consulta e do bcrypt;
 - respostas bem-sucedidas removidas da contagem;
 - logout preservado durante o bloqueio de novas entradas;
+- autorização baseada somente na identidade mantida no servidor;
+- exigência explícita do papel administrativo em rotas protegidas;
+- respostas seguras para autenticação ausente e acesso insuficiente;
+- identidade protegida contra enumeração e substituição na requisição;
+- consulta da sessão sem exposição de nome, e-mail, senha ou hash;
 - limpeza do banco após falhas de inicialização;
 - auditoria periódica das dependências.
 
 Essas medidas ainda não tornam a aplicação pronta para produção.
-Autorização, cabeçalhos adicionais, armazenamento compartilhado do limitador,
-HTTPS e implantação segura ainda serão implementados.
+Cabeçalhos adicionais, armazenamento compartilhado do limitador, HTTPS e
+implantação segura ainda serão implementados.
 
 ## Princípios de desenvolvimento
 
@@ -676,17 +727,16 @@ HTTPS e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. criar o middleware de autorização administrativa;
-2. proteger as futuras rotas administrativas;
-3. adicionar cabeçalhos HTTP de segurança;
-4. criar a primeira interface visual e a tela de login;
-5. criar os modelos do calendário;
-6. implementar as APIs de aulas, atividades e materiais;
-7. migrar com segurança os dados do protótipo;
-8. reconstruir a interface visual responsiva;
-9. realizar testes completos de integração e interface;
-10. preparar os guias técnico e didático;
-11. publicar e validar a aplicação em computador e celular.
+1. adicionar cabeçalhos HTTP de segurança;
+2. criar a primeira interface visual e a tela de login;
+3. criar os modelos do calendário;
+4. implementar as APIs de aulas, atividades e materiais;
+5. proteger as APIs administrativas com o middleware concluído;
+6. migrar com segurança os dados do protótipo;
+7. reconstruir a interface visual responsiva;
+8. realizar testes completos de integração e interface;
+9. preparar os guias técnico e didático;
+10. publicar e validar a aplicação em computador e celular.
 
 ## Fluxo de atualização pelo Git
 

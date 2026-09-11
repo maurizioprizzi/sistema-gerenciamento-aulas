@@ -1354,3 +1354,90 @@ nenhum cookie na recusa, logout `204` e remoção da sessão.
 
 Criar o middleware de autorização administrativa e preparar uma rota protegida
 de diagnóstico da sessão antes das futuras APIs do calendário.
+
+## 11 de setembro de 2026 — Autorização administrativa e consulta de sessão
+
+### Objetivo
+
+Impedir que rotas administrativas sejam acessadas sem uma sessão válida e
+disponibilizar uma consulta protegida que permita à futura interface confirmar
+o estado da autenticação sem expor dados desnecessários.
+
+### Implementação
+
+Foi criado o middleware `administrativeAuthorization.js`. Ele lê somente a
+identidade mínima persistida pelo `SessionManager`, valida o identificador e o
+papel e exige explicitamente o papel `admin`.
+
+Quando a autorização é aceita, o middleware anexa à requisição um objeto
+congelado contendo somente `id` e `role`. A propriedade não pode ser
+enumerada, substituída ou reconfigurada.
+
+O `AuthenticationController` recebeu a operação `getSession`, e o roteador
+passou a registrar:
+
+```http
+GET /api/auth/session
+```
+
+A autorização é executada antes do controlador. Login continua protegido pelo
+limitador de tentativas, enquanto logout permanece disponível para encerrar uma
+sessão existente.
+
+### Respostas seguras
+
+Uma requisição sem identidade válida recebe `401` com o código
+`AUTHENTICATION_REQUIRED`. Uma identidade válida sem papel administrativo
+recebe `403` com o código `ADMINISTRATIVE_ACCESS_REQUIRED`.
+
+Uma sessão administrativa válida recebe `200` e somente:
+
+```json
+{
+  "data": {
+    "authenticated": true,
+    "user": {
+      "id": "identificador-do-usuario",
+      "role": "admin"
+    }
+  }
+}
+```
+
+Nome, e-mail, senha, hash, cookie e identificador interno da sessão não são
+copiados para a identidade autorizada.
+
+### Testes automatizados
+
+Os testes verificam a criação dos erros operacionais, identidades ausentes ou
+malformadas, recusa de papéis não administrativos, proteção da propriedade da
+requisição, vinculação do controlador, ordem dos middlewares, contratos do
+roteador e respostas HTTP completas para `401`, `403` e `200`.
+
+O teste HTTP utiliza sessão controlada e componentes reais de roteamento,
+autorização e tratamento de erros, sem depender de MongoDB ou bcrypt.
+
+### Validação real
+
+A aplicação foi iniciada com MongoDB local e a conta administrativa existente.
+A consulta anônima retornou `401` sem emitir cookie. O login retornou `200` e
+criou exatamente uma sessão. A consulta autenticada retornou `200` com apenas
+`id` e `role`. O logout retornou `204`, removeu a sessão e tornou o cookie
+anterior inválido para uma nova consulta, que voltou a retornar `401`.
+
+### Verificação
+
+- 311 testes aprovados;
+- 50 suítes aprovadas;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas;
+- sintaxe validada;
+- integração isolada e HTTP confirmada;
+- validação real com MongoDB confirmada;
+- inicialização e encerramento seguros.
+
+### Próximo marco
+
+Adicionar cabeçalhos HTTP de segurança e iniciar a primeira interface visual
+com uma tela administrativa de login.

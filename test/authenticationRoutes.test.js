@@ -15,6 +15,7 @@ const {
 function createController(overrides = {}) {
     return {
         login() {},
+        getSession() {},
         logout() {},
         ...overrides,
     };
@@ -30,8 +31,28 @@ function createLoginRateLimiter() {
     };
 }
 
+function createAdministrativeAuthorization() {
+    return function administrativeAuthorization(
+        request,
+        response,
+        next,
+    ) {
+        next();
+    };
+}
+
 function createRouter(calls = []) {
     return {
+        get(path, ...handlers) {
+            calls.push({
+                method: 'get',
+                path,
+                handlers,
+            });
+
+            return this;
+        },
+
         post(path, ...handlers) {
             calls.push({
                 method: 'post',
@@ -48,6 +69,7 @@ describe('createAuthenticationRouter', () => {
     test('expõe caminhos e mensagens protegidos', () => {
         assert.deepEqual(AUTHENTICATION_ROUTE_PATHS, {
             LOGIN: '/login',
+            SESSION: '/session',
             LOGOUT: '/logout',
         });
         assert.equal(
@@ -60,16 +82,19 @@ describe('createAuthenticationRouter', () => {
         );
     });
 
-    test('limita o login e mantém o logout disponível', () => {
+    test('protege a sessão, limita o login e preserva o logout', () => {
         const calls = [];
         const controller = createController();
         const loginRateLimiter = createLoginRateLimiter();
+        const administrativeAuthorizationMiddleware =
+            createAdministrativeAuthorization();
         const router = createRouter(calls);
         let factoryCalls = 0;
 
         const result = createAuthenticationRouter({
             controller,
             loginRateLimiter,
+            administrativeAuthorizationMiddleware,
             routerFactory() {
                 factoryCalls += 1;
                 return router;
@@ -85,6 +110,14 @@ describe('createAuthenticationRouter', () => {
                 handlers: [
                     loginRateLimiter,
                     controller.login,
+                ],
+            },
+            {
+                method: 'get',
+                path: '/session',
+                handlers: [
+                    administrativeAuthorizationMiddleware,
+                    controller.getSession,
                 ],
             },
             {
@@ -105,6 +138,7 @@ describe('createAuthenticationRouter', () => {
             { logout() {} },
             { login: true, logout() {} },
             { login() {}, logout: true },
+            { login() {}, logout() {} },
         ];
 
         for (const controller of invalidControllers) {
@@ -152,7 +186,36 @@ describe('createAuthenticationRouter', () => {
         }
     });
 
-    test('valida controlador e limitador antes da fábrica', () => {
+    test('rejeita autorizações administrativas inválidas', () => {
+        const invalidMiddlewares = [
+            null,
+            42,
+            'authorization',
+            {},
+            [],
+        ];
+
+        for (const administrativeAuthorizationMiddleware
+            of invalidMiddlewares) {
+            assert.throws(
+                () => createAuthenticationRouter({
+                    controller: createController(),
+                    loginRateLimiter:
+                        createLoginRateLimiter(),
+                    administrativeAuthorizationMiddleware,
+                    routerFactory: createRouter,
+                }),
+                {
+                    name: 'TypeError',
+                    message:
+                        AUTHENTICATION_ROUTE_ERRORS
+                            .INVALID_ADMINISTRATIVE_AUTHORIZATION,
+                },
+            );
+        }
+    });
+
+    test('valida dependências antes da fábrica', () => {
         let factoryCalls = 0;
 
         function routerFactory() {
@@ -185,6 +248,21 @@ describe('createAuthenticationRouter', () => {
                 message:
                     AUTHENTICATION_ROUTE_ERRORS
                         .INVALID_LOGIN_RATE_LIMITER,
+            },
+        );
+
+        assert.throws(
+            () => createAuthenticationRouter({
+                controller: createController(),
+                loginRateLimiter: createLoginRateLimiter(),
+                administrativeAuthorizationMiddleware: null,
+                routerFactory,
+            }),
+            {
+                name: 'TypeError',
+                message:
+                    AUTHENTICATION_ROUTE_ERRORS
+                        .INVALID_ADMINISTRATIVE_AUTHORIZATION,
             },
         );
 
@@ -226,6 +304,7 @@ describe('createAuthenticationRouter', () => {
             'router',
             {},
             { post: true },
+            { post() {} },
         ];
 
         for (const router of invalidRouters) {
@@ -252,8 +331,13 @@ describe('createAuthenticationRouter', () => {
 
         function router() {}
 
+        router.get = (path, ...handlers) => {
+            calls.push({ method: 'get', path, handlers });
+            return router;
+        };
+
         router.post = (path, ...handlers) => {
-            calls.push({ path, handlers });
+            calls.push({ method: 'post', path, handlers });
             return router;
         };
 
@@ -266,9 +350,14 @@ describe('createAuthenticationRouter', () => {
         });
 
         assert.equal(result, router);
-        assert.equal(calls.length, 2);
+        assert.equal(calls.length, 3);
+        assert.deepEqual(
+            calls.map((call) => call.method),
+            ['post', 'get', 'post'],
+        );
         assert.equal(calls[0].handlers.length, 2);
-        assert.equal(calls[1].handlers.length, 1);
+        assert.equal(calls[1].handlers.length, 2);
+        assert.equal(calls[2].handlers.length, 1);
     });
 
     test('propaga uma falha real da fábrica', () => {
@@ -301,6 +390,7 @@ describe('createAuthenticationRouter', () => {
                     createLoginRateLimiter(),
                 routerFactory() {
                     return {
+                        get() {},
                         post() {
                             throw expectedError;
                         },

@@ -61,6 +61,18 @@ describe('limitação integrada às rotas de autenticação', () => {
                     });
                 },
 
+                getSession(request, response) {
+                    response.status(200).json({
+                        data: {
+                            authenticated: true,
+                            user: {
+                                id: 'usuario-teste',
+                                role: 'admin',
+                            },
+                        },
+                    });
+                },
+
                 logout(request, response) {
                     calls.logout += 1;
                     response.status(204).end();

@@ -1,5 +1,9 @@
 'use strict';
 
+const {
+    requireAdministrativeAuthentication,
+} = require('../middlewares/administrativeAuthorization');
+
 /**
  * Caminhos internos do roteador de autenticação.
  *
@@ -7,6 +11,7 @@
  */
 const AUTHENTICATION_ROUTE_PATHS = Object.freeze({
     LOGIN: '/login',
+    SESSION: '/session',
     LOGOUT: '/logout',
 });
 
@@ -18,6 +23,8 @@ const AUTHENTICATION_ROUTE_ERRORS = Object.freeze({
         'As rotas exigem um controlador de autenticação válido.',
     INVALID_LOGIN_RATE_LIMITER:
         'A rota de login exige um middleware de limitação válido.',
+    INVALID_ADMINISTRATIVE_AUTHORIZATION:
+        'A consulta de sessão exige um middleware de autorização válido.',
     INVALID_ROUTER_FACTORY:
         'As rotas exigem uma fábrica de roteador válida.',
     INVALID_ROUTER:
@@ -36,6 +43,7 @@ function validateController(controller) {
         && typeof controller === 'object'
         && !Array.isArray(controller)
         && typeof controller.login === 'function'
+        && typeof controller.getSession === 'function'
         && typeof controller.logout === 'function';
 
     if (!isValid) {
@@ -55,8 +63,10 @@ function validateController(controller) {
  * encerrada mesmo quando novas tentativas de entrada estiverem bloqueadas.
  *
  * @param {object} options Configuração da fábrica.
- * @param {object} options.controller Controlador com login() e logout().
+ * @param {object} options.controller Controlador de autenticação.
  * @param {Function} options.loginRateLimiter Middleware exclusivo do login.
+ * @param {Function} [options.administrativeAuthorizationMiddleware]
+ * Middleware que protege a consulta da sessão.
  * @param {Function} [options.routerFactory=defaultRouterFactory]
  * Fábrica do Router, substituível nos testes.
  * @returns {import('express').Router} Roteador configurado.
@@ -64,6 +74,8 @@ function validateController(controller) {
 function createAuthenticationRouter({
     controller,
     loginRateLimiter,
+    administrativeAuthorizationMiddleware =
+        requireAdministrativeAuthentication,
     routerFactory = defaultRouterFactory,
 } = {}) {
     validateController(controller);
@@ -72,6 +84,16 @@ function createAuthenticationRouter({
         throw new TypeError(
             AUTHENTICATION_ROUTE_ERRORS
                 .INVALID_LOGIN_RATE_LIMITER,
+        );
+    }
+
+    if (
+        typeof administrativeAuthorizationMiddleware
+            !== 'function'
+    ) {
+        throw new TypeError(
+            AUTHENTICATION_ROUTE_ERRORS
+                .INVALID_ADMINISTRATIVE_AUTHORIZATION,
         );
     }
 
@@ -90,6 +112,7 @@ function createAuthenticationRouter({
             && typeof router !== 'function'
         )
         || typeof router.post !== 'function'
+        || typeof router.get !== 'function'
     ) {
         throw new TypeError(
             AUTHENTICATION_ROUTE_ERRORS.INVALID_ROUTER,
@@ -100,6 +123,12 @@ function createAuthenticationRouter({
         AUTHENTICATION_ROUTE_PATHS.LOGIN,
         loginRateLimiter,
         controller.login,
+    );
+
+    router.get(
+        AUTHENTICATION_ROUTE_PATHS.SESSION,
+        administrativeAuthorizationMiddleware,
+        controller.getSession,
     );
 
     router.post(

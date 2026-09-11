@@ -17,6 +17,8 @@ const AUTHENTICATION_CONTROLLER_ERRORS = Object.freeze({
         'A indicação de ambiente de produção deve ser booleana.',
     INVALID_IDENTITY:
         'O serviço de autenticação retornou uma identidade inválida.',
+    INVALID_AUTHENTICATED_USER:
+        'A autorização não disponibilizou uma identidade válida.',
 });
 
 /**
@@ -109,6 +111,7 @@ class AuthenticationController {
          * privados.
          */
         this.login = this.login.bind(this);
+        this.getSession = this.getSession.bind(this);
         this.logout = this.logout.bind(this);
 
         Object.freeze(this);
@@ -212,6 +215,37 @@ class AuthenticationController {
     }
 
     /**
+     * Cria a representação mínima da sessão autorizada.
+     *
+     * A autorização já seleciona somente identificador e papel. Esta segunda
+     * seleção mantém a resposta protegida mesmo se outra implementação de
+     * middleware acrescentar campos à requisição.
+     *
+     * @param {unknown} authenticatedUser Identidade autorizada.
+     * @returns {Readonly<{ id: string, role: string }>} Identidade pública.
+     */
+    static createAuthenticatedUserResponse(authenticatedUser) {
+        const isValid =
+            isObject(authenticatedUser)
+            && typeof authenticatedUser.id === 'string'
+            && authenticatedUser.id.trim().length > 0
+            && typeof authenticatedUser.role === 'string'
+            && authenticatedUser.role.trim().length > 0;
+
+        if (!isValid) {
+            throw new TypeError(
+                AUTHENTICATION_CONTROLLER_ERRORS
+                    .INVALID_AUTHENTICATED_USER,
+            );
+        }
+
+        return Object.freeze({
+            id: authenticatedUser.id.trim(),
+            role: authenticatedUser.role.trim(),
+        });
+    }
+
+    /**
      * Autentica o administrador e estabelece uma nova sessão.
      *
      * @param {import('express').Request} request Requisição HTTP.
@@ -239,6 +273,36 @@ class AuthenticationController {
             response.status(200).json({
                 data: {
                     user: publicUser,
+                },
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * Informa que a sessão administrativa atual está autenticada.
+     *
+     * Este handler deve ser utilizado somente depois do middleware de
+     * autorização. Ele não consulta cookies nem o armazenamento diretamente.
+     *
+     * @param {import('express').Request} request Requisição autorizada.
+     * @param {import('express').Response} response Resposta HTTP.
+     * @param {import('express').NextFunction} next Tratamento seguinte.
+     * @returns {void}
+     */
+    getSession(request, response, next) {
+        try {
+            const authenticatedUser =
+                AuthenticationController
+                    .createAuthenticatedUserResponse(
+                        request?.authenticatedUser,
+                    );
+
+            response.status(200).json({
+                data: {
+                    authenticated: true,
+                    user: authenticatedUser,
                 },
             });
         } catch (error) {

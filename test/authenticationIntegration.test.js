@@ -16,6 +16,16 @@ const {
     createAdministrativeAuthenticationRouter,
     startServer,
 } = require('../src/server');
+const {
+    ADMINISTRATIVE_AUTHORIZATION_CODES,
+    ADMINISTRATIVE_AUTHORIZATION_ERRORS,
+} = require('../src/middlewares/administrativeAuthorization');
+const {
+    SESSION_AUTHENTICATION_KEY,
+} = require('../src/services/SessionManager');
+const {
+    createAuthenticationRouter,
+} = require('../src/routes/authenticationRoutes');
 
 const TEST_ENVIRONMENT = Object.freeze({
     NODE_ENV: 'test',
@@ -362,4 +372,163 @@ describe('integração da autenticação no ciclo de abertura', () => {
             });
         },
     );
+});
+
+/**
+ * Cria uma aplicação HTTP com uma sessão controlada pelo teste.
+ *
+ * A autorização e o roteador são os componentes reais da aplicação. Somente
+ * a preparação da sessão e os handlers que não participam da consulta são
+ * substituídos, mantendo o teste independente de MongoDB e bcrypt.
+ *
+ * @param {object | undefined} sessionIdentity Identidade colocada na sessão.
+ * @returns {import('express').Express} Aplicação configurada.
+ */
+function createProtectedSessionTestApp(sessionIdentity) {
+    const controller = {
+        login(request, response) {
+            response.status(204).end();
+        },
+
+        getSession(request, response) {
+            response.status(200).json({
+                data: {
+                    authenticated: true,
+                    user: request.authenticatedUser,
+                },
+            });
+        },
+
+        logout(request, response) {
+            response.status(204).end();
+        },
+    };
+
+    function loginRateLimiter(request, response, next) {
+        next();
+    }
+
+    const authenticationRouter = createAuthenticationRouter({
+        controller,
+        loginRateLimiter,
+    });
+
+    function sessionMiddleware(request, response, next) {
+        request.session = {};
+
+        if (sessionIdentity !== undefined) {
+            request.session[SESSION_AUTHENTICATION_KEY] = {
+                ...sessionIdentity,
+            };
+        }
+
+        next();
+    }
+
+    return createApp({
+        sessionMiddleware,
+        authenticationRouter,
+        logger: {
+            error() {},
+        },
+    });
+}
+
+describe('integração HTTP da autorização administrativa', () => {
+    test('recusa a consulta quando não existe autenticação', async () => {
+        const app = createProtectedSessionTestApp(undefined);
+
+        await listenTemporarily(app, async (baseUrl) => {
+            const response = await fetch(
+                `${baseUrl}/api/auth/session`,
+            );
+            const body = await response.json();
+
+            assert.equal(response.status, 401);
+            assert.equal(response.headers.get('set-cookie'), null);
+            assert.deepEqual(body, {
+                error: {
+                    code:
+                        ADMINISTRATIVE_AUTHORIZATION_CODES
+                            .AUTHENTICATION_REQUIRED,
+                    message:
+                        ADMINISTRATIVE_AUTHORIZATION_ERRORS
+                            .AUTHENTICATION_REQUIRED,
+                },
+            });
+        });
+    });
+
+    test('recusa uma sessão sem papel administrativo', async () => {
+        const app = createProtectedSessionTestApp({
+            userId: 'usuario-sem-autorizacao',
+            role: 'viewer',
+        });
+
+        await listenTemporarily(app, async (baseUrl) => {
+            const response = await fetch(
+                `${baseUrl}/api/auth/session`,
+            );
+            const body = await response.json();
+
+            assert.equal(response.status, 403);
+            assert.equal(response.headers.get('set-cookie'), null);
+            assert.deepEqual(body, {
+                error: {
+                    code:
+                        ADMINISTRATIVE_AUTHORIZATION_CODES
+                            .ADMINISTRATIVE_ACCESS_REQUIRED,
+                    message:
+                        ADMINISTRATIVE_AUTHORIZATION_ERRORS
+                            .ADMINISTRATIVE_ACCESS_REQUIRED,
+                },
+            });
+        });
+    });
+
+    test('retorna somente a identidade mínima do administrador', async () => {
+        const administrativeIdentity = {
+            userId: '507f1f77bcf86cd799439011',
+            role: 'admin',
+            name: 'Nome que não pode ser exposto',
+            email: 'nao-expor@example.com',
+            passwordHash: 'hash-que-nao-pode-ser-exposto',
+        };
+
+        const app = createProtectedSessionTestApp(
+            administrativeIdentity,
+        );
+
+        await listenTemporarily(app, async (baseUrl) => {
+            const response = await fetch(
+                `${baseUrl}/api/auth/session`,
+            );
+            const body = await response.json();
+
+            assert.equal(response.status, 200);
+            assert.equal(response.headers.get('set-cookie'), null);
+            assert.deepEqual(body, {
+                data: {
+                    authenticated: true,
+                    user: {
+                        id: '507f1f77bcf86cd799439011',
+                        role: 'admin',
+                    },
+                },
+            });
+
+            assert.equal(
+                JSON.stringify(body).includes(
+                    'nao-expor@example.com',
+                ),
+                false,
+            );
+            assert.equal(
+                JSON.stringify(body).includes(
+                    'hash-que-nao-pode-ser-exposto',
+                ),
+                false,
+            );
+        });
+    });
 });
