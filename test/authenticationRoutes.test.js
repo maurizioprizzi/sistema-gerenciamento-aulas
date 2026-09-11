@@ -20,13 +20,23 @@ function createController(overrides = {}) {
     };
 }
 
+function createLoginRateLimiter() {
+    return function loginRateLimiter(
+        request,
+        response,
+        next,
+    ) {
+        next();
+    };
+}
+
 function createRouter(calls = []) {
     return {
-        post(path, handler) {
+        post(path, ...handlers) {
             calls.push({
                 method: 'post',
                 path,
-                handler,
+                handlers,
             });
 
             return this;
@@ -50,17 +60,18 @@ describe('createAuthenticationRouter', () => {
         );
     });
 
-    test('registra login e logout na ordem esperada', () => {
+    test('limita o login e mantém o logout disponível', () => {
         const calls = [];
         const controller = createController();
+        const loginRateLimiter = createLoginRateLimiter();
         const router = createRouter(calls);
         let factoryCalls = 0;
 
         const result = createAuthenticationRouter({
             controller,
+            loginRateLimiter,
             routerFactory() {
                 factoryCalls += 1;
-
                 return router;
             },
         });
@@ -71,12 +82,15 @@ describe('createAuthenticationRouter', () => {
             {
                 method: 'post',
                 path: '/login',
-                handler: controller.login,
+                handlers: [
+                    loginRateLimiter,
+                    controller.login,
+                ],
             },
             {
                 method: 'post',
                 path: '/logout',
-                handler: controller.logout,
+                handlers: [controller.logout],
             },
         ]);
     });
@@ -97,6 +111,8 @@ describe('createAuthenticationRouter', () => {
             assert.throws(
                 () => createAuthenticationRouter({
                     controller,
+                    loginRateLimiter:
+                        createLoginRateLimiter(),
                     routerFactory: createRouter,
                 }),
                 {
@@ -109,23 +125,66 @@ describe('createAuthenticationRouter', () => {
         }
     });
 
-    test('valida o controlador antes da fábrica', () => {
+    test('rejeita limitadores de login inválidos', () => {
+        const invalidLimiters = [
+            undefined,
+            null,
+            42,
+            'limiter',
+            {},
+            [],
+        ];
+
+        for (const loginRateLimiter of invalidLimiters) {
+            assert.throws(
+                () => createAuthenticationRouter({
+                    controller: createController(),
+                    loginRateLimiter,
+                    routerFactory: createRouter,
+                }),
+                {
+                    name: 'TypeError',
+                    message:
+                        AUTHENTICATION_ROUTE_ERRORS
+                            .INVALID_LOGIN_RATE_LIMITER,
+                },
+            );
+        }
+    });
+
+    test('valida controlador e limitador antes da fábrica', () => {
         let factoryCalls = 0;
+
+        function routerFactory() {
+            factoryCalls += 1;
+            return createRouter();
+        }
 
         assert.throws(
             () => createAuthenticationRouter({
                 controller: null,
-                routerFactory() {
-                    factoryCalls += 1;
-
-                    return createRouter();
-                },
+                loginRateLimiter: null,
+                routerFactory,
             }),
             {
                 name: 'TypeError',
                 message:
                     AUTHENTICATION_ROUTE_ERRORS
                         .INVALID_CONTROLLER,
+            },
+        );
+
+        assert.throws(
+            () => createAuthenticationRouter({
+                controller: createController(),
+                loginRateLimiter: null,
+                routerFactory,
+            }),
+            {
+                name: 'TypeError',
+                message:
+                    AUTHENTICATION_ROUTE_ERRORS
+                        .INVALID_LOGIN_RATE_LIMITER,
             },
         );
 
@@ -145,6 +204,8 @@ describe('createAuthenticationRouter', () => {
             assert.throws(
                 () => createAuthenticationRouter({
                     controller: createController(),
+                    loginRateLimiter:
+                        createLoginRateLimiter(),
                     routerFactory,
                 }),
                 {
@@ -171,6 +232,8 @@ describe('createAuthenticationRouter', () => {
             assert.throws(
                 () => createAuthenticationRouter({
                     controller: createController(),
+                    loginRateLimiter:
+                        createLoginRateLimiter(),
                     routerFactory() {
                         return router;
                     },
@@ -189,16 +252,14 @@ describe('createAuthenticationRouter', () => {
 
         function router() {}
 
-        router.post = (path, handler) => {
-            calls.push({ path, handler });
-
+        router.post = (path, ...handlers) => {
+            calls.push({ path, handlers });
             return router;
         };
 
-        const controller = createController();
-
         const result = createAuthenticationRouter({
-            controller,
+            controller: createController(),
+            loginRateLimiter: createLoginRateLimiter(),
             routerFactory() {
                 return router;
             },
@@ -206,6 +267,8 @@ describe('createAuthenticationRouter', () => {
 
         assert.equal(result, router);
         assert.equal(calls.length, 2);
+        assert.equal(calls[0].handlers.length, 2);
+        assert.equal(calls[1].handlers.length, 1);
     });
 
     test('propaga uma falha real da fábrica', () => {
@@ -216,6 +279,8 @@ describe('createAuthenticationRouter', () => {
         assert.throws(
             () => createAuthenticationRouter({
                 controller: createController(),
+                loginRateLimiter:
+                    createLoginRateLimiter(),
                 routerFactory() {
                     throw expectedError;
                 },
@@ -232,6 +297,8 @@ describe('createAuthenticationRouter', () => {
         assert.throws(
             () => createAuthenticationRouter({
                 controller: createController(),
+                loginRateLimiter:
+                    createLoginRateLimiter(),
                 routerFactory() {
                     return {
                         post() {

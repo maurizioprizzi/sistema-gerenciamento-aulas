@@ -8,15 +8,15 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 10 de setembro de 2026.
+> Última atualização desta documentação: 11 de setembro de 2026.
 
 ## Estado atual
 
 A fundação técnica do backend está concluída. O projeto já possui servidor
 HTTP, conexão com MongoDB, validação de ambiente, tratamento centralizado de
 erros, modelo administrativo, proteção de senhas, inicialização controlada da
-primeira conta, sessões persistentes e autenticação administrativa integrada à
-API HTTP.
+primeira conta, sessões persistentes, autenticação administrativa integrada à
+API HTTP e limitação de tentativas repetidas de login.
 
 O administrador é preparado depois da conexão com o banco e antes da abertura
 da porta HTTP. O processo é idempotente: uma conta existente é preservada e
@@ -72,6 +72,10 @@ servidor e invalida o cookie no navegador.
 - persistência somente do identificador e do papel;
 - rotas `POST /api/auth/login` e `POST /api/auth/logout`;
 - destruição da sessão e limpeza do cookie no logout;
+- limitação de cinco tentativas recusadas em quinze minutos;
+- resposta `429` padronizada para excesso de tentativas;
+- cabeçalhos modernos de informação do limite;
+- preservação do logout durante o bloqueio de novas entradas;
 - bloqueio do servidor HTTP quando a inicialização falha;
 - validações reais com MongoDB local;
 - testes HTTP, unitários e de integração controlada;
@@ -80,7 +84,6 @@ servidor e invalida o cookie no navegador.
 ### Ainda não implementado
 
 - atualização do último acesso durante o login;
-- limitação de tentativas repetidas de autenticação;
 - autorização das futuras rotas administrativas;
 - cabeçalhos adicionais de segurança;
 - interface visual;
@@ -113,6 +116,7 @@ conteúdo.
 - bcryptjs 3;
 - express-session 1;
 - connect-mongo 6;
+- express-rate-limit 8;
 - dotenv 17;
 - Zod 4;
 - test runner nativo do Node.js;
@@ -131,6 +135,7 @@ Mongoose 9.9.4
 bcryptjs 3.0.3
 express-session 1.19.0
 connect-mongo 6.0.0
+express-rate-limit 8.7.0
 dotenv 17.3.1
 Zod 4.5.4
 ```
@@ -320,8 +325,8 @@ npm test
 No marco atual, a suíte possui:
 
 ```text
-271 testes
-41 suítes
+282 testes
+44 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -345,6 +350,11 @@ Os testes verificam, entre outros comportamentos:
 - limpeza coerente do cookie em desenvolvimento e produção;
 - registro das rotas de entrada e saída;
 - montagem do roteador sob `/api/auth`;
+- limitação aplicada somente ao login;
+- bloqueio da sexta tentativa recusada;
+- remoção de logins bem-sucedidos da contagem;
+- resposta `429` pelo tratamento central de erros;
+- preservação do logout durante o bloqueio;
 - execução do middleware de sessão antes da autenticação;
 - composição das dependências antes da abertura HTTP;
 - bloqueio da inicialização diante de fábricas inválidas;
@@ -359,6 +369,11 @@ sessão. O logout retornou `204`, invalidou o cookie e removeu a sessão.
 
 Tentativas com senha incorreta e com e-mail inexistente retornaram a mesma
 resposta `401`, não emitiram cookies e não criaram sessões.
+
+O limitador também foi validado com a aplicação e o MongoDB locais. As cinco
+primeiras tentativas recusadas retornaram `401`; a sexta retornou `429` com
+o código `AUTHENTICATION_RATE_LIMITED`. Nenhuma tentativa criou cookie ou
+sessão, e o logout permaneceu disponível com resposta `204`.
 
 ## Auditoria das dependências
 
@@ -391,6 +406,7 @@ dionisio/
 │   ├── errors/
 │   │   └── AppError.js
 │   ├── middlewares/
+│   │   ├── authenticationRateLimiter.js
 │   │   └── errorHandler.js
 │   ├── models/
 │   │   └── User.js
@@ -412,6 +428,8 @@ dionisio/
 │   ├── SessionManager.test.js
 │   ├── app.test.js
 │   ├── authenticationIntegration.test.js
+│   ├── authenticationRateLimitIntegration.test.js
+│   ├── authenticationRateLimiter.test.js
 │   ├── authenticationRoutes.test.js
 │   ├── database.test.js
 │   ├── env.test.js
@@ -463,6 +481,11 @@ públicos autorizados e garante a limpeza coerente do cookie.
 ### `src/errors/AppError.js`
 
 Representa erros operacionais conhecidos pela aplicação.
+
+### `src/middlewares/authenticationRateLimiter.js`
+
+Limita tentativas recusadas de login por endereço de origem, emite cabeçalhos
+modernos e encaminha bloqueios ao tratamento central de erros.
 
 ### `src/middlewares/errorHandler.js`
 
@@ -557,6 +580,22 @@ Credenciais recusadas retornam `401` com uma mensagem genérica:
 }
 ```
 
+### Excesso de tentativas
+
+Depois de cinco tentativas recusadas dentro de quinze minutos, novas entradas
+da mesma origem retornam `429 Too Many Requests`:
+
+```json
+{
+  "error": {
+    "code": "AUTHENTICATION_RATE_LIMITED",
+    "message": "Muitas tentativas de acesso foram realizadas. Aguarde alguns minutos e tente novamente."
+  }
+}
+```
+
+O bloqueio não impede o acesso à rota de saída.
+
 ### Saída administrativa
 
 ```http
@@ -596,12 +635,15 @@ JSON malformado retorna `400` com o código `INVALID_JSON`. Corpos acima de
 - regeneração da sessão depois da autenticação;
 - persistência somente do identificador e do papel;
 - destruição da sessão e limpeza do cookie durante o logout;
+- limitação de tentativas recusadas antes da consulta e do bcrypt;
+- respostas bem-sucedidas removidas da contagem;
+- logout preservado durante o bloqueio de novas entradas;
 - limpeza do banco após falhas de inicialização;
 - auditoria periódica das dependências.
 
-Essas medidas ainda não tornam a aplicação pronta para produção. Limitação de
-tentativas, autorização, cabeçalhos adicionais, HTTPS e implantação segura
-ainda serão implementados.
+Essas medidas ainda não tornam a aplicação pronta para produção.
+Autorização, cabeçalhos adicionais, armazenamento compartilhado do limitador,
+HTTPS e implantação segura ainda serão implementados.
 
 ## Princípios de desenvolvimento
 
@@ -618,11 +660,11 @@ ainda serão implementados.
 
 ## Próximos marcos
 
-1. limitar tentativas repetidas de autenticação;
-2. atualizar controladamente o último acesso;
-3. criar o middleware de autorização administrativa;
-4. proteger as futuras rotas administrativas;
-5. adicionar cabeçalhos HTTP de segurança;
+1. atualizar controladamente o último acesso;
+2. criar o middleware de autorização administrativa;
+3. proteger as futuras rotas administrativas;
+4. adicionar cabeçalhos HTTP de segurança;
+5. criar a primeira interface visual e a tela de login;
 6. criar os modelos do calendário;
 7. implementar as APIs de aulas, atividades e materiais;
 8. migrar com segurança os dados do protótipo;

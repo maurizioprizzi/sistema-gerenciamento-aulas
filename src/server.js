@@ -16,6 +16,9 @@ const {
 } = require('./controllers/AuthenticationController');
 const { User } = require('./models/User');
 const {
+    createAuthenticationRateLimiter,
+} = require('./middlewares/authenticationRateLimiter');
+const {
     createAuthenticationRouter,
 } = require('./routes/authenticationRoutes');
 const {
@@ -176,7 +179,17 @@ function createAdministrativeAuthenticationRouter({
         isProduction,
     });
 
-    return createAuthenticationRouter({ controller });
+    /**
+     * O limitador é construído no ponto de composição e aplicado somente ao
+     * login. O logout permanece disponível mesmo quando novas tentativas de
+     * entrada estiverem temporariamente bloqueadas.
+     */
+    const loginRateLimiter = createAuthenticationRateLimiter();
+
+    return createAuthenticationRouter({
+        controller,
+        loginRateLimiter,
+    });
 }
 
 /**

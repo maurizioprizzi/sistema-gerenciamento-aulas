@@ -1189,3 +1189,98 @@ cookie e não criaram sessão.
 
 Limitar tentativas repetidas de autenticação, atualizar o último acesso e criar
 o middleware de autorização das futuras rotas administrativas.
+
+## 11 de setembro de 2026 — Limitação de tentativas de autenticação
+
+### Objetivo
+
+Reduzir tentativas automatizadas contra a conta administrativa sem revelar
+credenciais, bloquear o logout ou espalhar regras de segurança pelas rotas.
+
+### Implementação
+
+Foi adicionada a dependência `express-rate-limit` na versão 8.7.0.
+
+O novo módulo `authenticationRateLimiter.js` centraliza:
+
+- janela padrão de quinze minutos;
+- máximo de cinco tentativas recusadas;
+- validação defensiva das configurações;
+- cabeçalhos modernos `RateLimit`;
+- desativação dos cabeçalhos antigos `X-RateLimit-*`;
+- remoção das respostas bem-sucedidas da contagem;
+- comportamento fechado diante de falha do armazenamento;
+- resposta operacional encaminhada ao tratamento central de erros.
+
+O roteador recebe o limitador por dependência e o coloca antes do controlador
+de login. Uma requisição bloqueada não consulta o usuário e não executa bcrypt.
+
+O logout não utiliza o limitador. Assim, uma sessão existente pode ser
+encerrada mesmo durante o bloqueio temporário de novas entradas.
+
+### Decisão sobre armazenamento
+
+O contador utiliza o armazenamento em memória fornecido pela biblioteca neste
+estágio. Essa configuração é adequada enquanto a aplicação executar em uma
+única instância.
+
+Antes de utilizar múltiplas instâncias, o contador deverá migrar para um
+armazenamento compartilhado. Essa limitação está documentada e não impede o
+desenvolvimento local nem a futura primeira implantação controlada.
+
+### Segurança
+
+- o endereço de origem é tratado pela implementação segura da biblioteca;
+- nenhum gerador manual de chave enfraquece o suporte a IPv6;
+- e-mail, senha, cookie e endereço não aparecem na resposta;
+- as tentativas recusadas continuam produzindo a mensagem genérica;
+- o bloqueio utiliza código estável e status `429`;
+- nenhum cookie ou documento de sessão é criado durante as recusas;
+- o logout permanece disponível.
+
+### Testes automatizados
+
+Os testes verificam:
+
+- constantes e mensagens imutáveis;
+- valores padrão;
+- limites mínimos e máximos;
+- rejeição de configurações inválidas;
+- contrato da fábrica do middleware;
+- ausência de um gerador de chave personalizado;
+- criação segura do `AppError`;
+- bloqueio da sexta tentativa recusada;
+- remoção de respostas bem-sucedidas da contagem;
+- cabeçalho moderno e ausência do legado;
+- posição do limitador antes do controlador;
+- ausência do limitador no logout;
+- comportamento HTTP integrado sob `/api/auth`.
+
+### Validação real
+
+A aplicação foi iniciada com MongoDB local e conta administrativa real.
+
+O teste confirmou:
+
+- tentativas 1 a 5 com resposta `401 INVALID_CREDENTIALS`;
+- tentativa 6 com resposta `429 AUTHENTICATION_RATE_LIMITED`;
+- cabeçalho `RateLimit` presente;
+- nenhum cookie emitido;
+- zero sessões criadas;
+- logout disponível com resposta `204`;
+- inicialização e encerramento seguros.
+
+### Verificação
+
+- 282 testes aprovados;
+- 44 suítes aprovadas;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas;
+- integração isolada e HTTP confirmada;
+- validação real concluída.
+
+### Próximo marco
+
+Atualizar controladamente o último acesso do administrador e criar o middleware
+de autorização das futuras rotas administrativas.
