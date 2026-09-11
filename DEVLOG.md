@@ -1284,3 +1284,73 @@ O teste confirmou:
 
 Atualizar controladamente o último acesso do administrador e criar o middleware
 de autorização das futuras rotas administrativas.
+
+## 11 de setembro de 2026 — Registro controlado do último acesso
+
+### Objetivo
+
+Registrar o instante da última autenticação administrativa válida sem alterar
+o banco em tentativas recusadas, expor informações internas ou permitir uma
+sessão quando a persistência falhar.
+
+### Implementação
+
+O `AuthenticationService` passou a receber uma fonte de tempo injetável. A
+aplicação real utiliza a data atual e os testes fornecem datas determinísticas.
+
+Depois de validar credenciais, estado e identidade, o serviço executa uma
+atualização específica que:
+
+- filtra pelo identificador interno do usuário;
+- exige que a conta continue ativa;
+- altera somente `lastLoginAt`;
+- executa as validações do Mongoose;
+- confirma o resultado devolvido pelo MongoDB.
+
+A data é validada e copiada antes da persistência, impedindo alterações por
+uma referência externa.
+
+### Ordem e segurança
+
+O registro ocorre depois da confirmação das credenciais e antes da sessão.
+Assim:
+
+- credenciais recusadas não modificam `lastLoginAt`;
+- falhas de atualização impedem o estabelecimento da sessão;
+- uma desativação concorrente produz o mesmo erro genérico;
+- documentos inconsistentes não produzem escrita;
+- senha, hash e horário não entram na sessão nem na resposta pública.
+
+O campo representa o instante em que as credenciais válidas foram aceitas. Se
+a criação posterior da sessão falhar, o acesso não será concedido, embora a
+autenticação válida já tenha sido registrada.
+
+### Testes automatizados
+
+Os testes cobrem o contrato de `findOne` e `updateOne`, a fonte de tempo, a
+cópia defensiva da data, o filtro pela conta ativa, a escrita exclusiva de
+`lastLoginAt`, a ausência de escrita em recusas, falhas reais do banco,
+resultados inconsistentes e desativação concorrente.
+
+### Validação real
+
+A aplicação foi iniciada com MongoDB local e a conta administrativa existente.
+O teste confirmou login `200`, data válida atualizada, campo ausente da
+resposta, sessão persistida, recusa posterior com `401`, horário inalterado,
+nenhum cookie na recusa, logout `204` e remoção da sessão.
+
+### Verificação
+
+- 289 testes aprovados;
+- 45 suítes aprovadas;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas;
+- sintaxe validada;
+- integração real com MongoDB confirmada;
+- inicialização e encerramento seguros.
+
+### Próximo marco
+
+Criar o middleware de autorização administrativa e preparar uma rota protegida
+de diagnóstico da sessão antes das futuras APIs do calendário.

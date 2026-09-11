@@ -16,7 +16,8 @@ A fundação técnica do backend está concluída. O projeto já possui servidor
 HTTP, conexão com MongoDB, validação de ambiente, tratamento centralizado de
 erros, modelo administrativo, proteção de senhas, inicialização controlada da
 primeira conta, sessões persistentes, autenticação administrativa integrada à
-API HTTP e limitação de tentativas repetidas de login.
+API HTTP, limitação de tentativas repetidas e registro controlado do último
+acesso válido.
 
 O administrador é preparado depois da conexão com o banco e antes da abertura
 da porta HTTP. O processo é idempotente: uma conta existente é preservada e
@@ -72,6 +73,9 @@ servidor e invalida o cookie no navegador.
 - persistência somente do identificador e do papel;
 - rotas `POST /api/auth/login` e `POST /api/auth/logout`;
 - destruição da sessão e limpeza do cookie no logout;
+- atualização de `lastLoginAt` somente depois de credenciais válidas;
+- relógio injetável e data defensivamente copiada;
+- confirmação de que a conta continua ativa antes de concluir o login;
 - limitação de cinco tentativas recusadas em quinze minutos;
 - resposta `429` padronizada para excesso de tentativas;
 - cabeçalhos modernos de informação do limite;
@@ -83,7 +87,6 @@ servidor e invalida o cookie no navegador.
 
 ### Ainda não implementado
 
-- atualização do último acesso durante o login;
 - autorização das futuras rotas administrativas;
 - cabeçalhos adicionais de segurança;
 - interface visual;
@@ -325,8 +328,8 @@ npm test
 No marco atual, a suíte possui:
 
 ```text
-282 testes
-44 suítes
+289 testes
+45 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -350,6 +353,11 @@ Os testes verificam, entre outros comportamentos:
 - limpeza coerente do cookie em desenvolvimento e produção;
 - registro das rotas de entrada e saída;
 - montagem do roteador sob `/api/auth`;
+- atualização de `lastLoginAt` depois de credenciais válidas;
+- ausência de atualização em tentativas recusadas;
+- validação determinística e cópia defensiva da data;
+- propagação de falhas reais da atualização;
+- proteção contra desativação concorrente da conta;
 - limitação aplicada somente ao login;
 - bloqueio da sexta tentativa recusada;
 - remoção de logins bem-sucedidos da contagem;
@@ -374,6 +382,11 @@ O limitador também foi validado com a aplicação e o MongoDB locais. As cinco
 primeiras tentativas recusadas retornaram `401`; a sexta retornou `429` com
 o código `AUTHENTICATION_RATE_LIMITED`. Nenhuma tentativa criou cookie ou
 sessão, e o logout permaneceu disponível com resposta `204`.
+
+O registro do último acesso foi validado no mesmo ambiente real. Um login
+correto atualizou `lastLoginAt` com uma data válida sem expor o campo na
+resposta. Uma tentativa posterior com senha incorreta retornou `401` e não
+alterou o horário. A sessão criada foi removida normalmente pelo logout.
 
 ## Auditoria das dependências
 
@@ -635,6 +648,9 @@ JSON malformado retorna `400` com o código `INVALID_JSON`. Corpos acima de
 - regeneração da sessão depois da autenticação;
 - persistência somente do identificador e do papel;
 - destruição da sessão e limpeza do cookie durante o logout;
+- atualização do último acesso somente após credenciais válidas;
+- conta novamente confirmada como ativa durante a atualização;
+- horário ausente da identidade pública e da sessão;
 - limitação de tentativas recusadas antes da consulta e do bcrypt;
 - respostas bem-sucedidas removidas da contagem;
 - logout preservado durante o bloqueio de novas entradas;
@@ -660,18 +676,17 @@ HTTPS e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. atualizar controladamente o último acesso;
-2. criar o middleware de autorização administrativa;
-3. proteger as futuras rotas administrativas;
-4. adicionar cabeçalhos HTTP de segurança;
-5. criar a primeira interface visual e a tela de login;
-6. criar os modelos do calendário;
-7. implementar as APIs de aulas, atividades e materiais;
-8. migrar com segurança os dados do protótipo;
-9. reconstruir a interface visual responsiva;
-10. realizar testes completos de integração e interface;
-11. preparar os guias técnico e didático;
-12. publicar e validar a aplicação em computador e celular.
+1. criar o middleware de autorização administrativa;
+2. proteger as futuras rotas administrativas;
+3. adicionar cabeçalhos HTTP de segurança;
+4. criar a primeira interface visual e a tela de login;
+5. criar os modelos do calendário;
+6. implementar as APIs de aulas, atividades e materiais;
+7. migrar com segurança os dados do protótipo;
+8. reconstruir a interface visual responsiva;
+9. realizar testes completos de integração e interface;
+10. preparar os guias técnico e didático;
+11. publicar e validar a aplicação em computador e celular.
 
 ## Fluxo de atualização pelo Git
 

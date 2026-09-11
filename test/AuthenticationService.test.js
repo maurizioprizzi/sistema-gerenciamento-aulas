@@ -66,10 +66,17 @@ function createFakeUserModel({
     user = createUser(),
     findOneError = null,
     queryError = null,
+    updateResult = {
+        acknowledged: true,
+        matchedCount: 1,
+        modifiedCount: 1,
+    },
+    updateError = null,
 } = {}) {
     const calls = {
         findOne: [],
         select: [],
+        updateOne: [],
     };
 
     const UserModel = {
@@ -91,6 +98,20 @@ function createFakeUserModel({
                     return Promise.resolve(user);
                 },
             };
+        },
+
+        async updateOne(filter, update, options) {
+            calls.updateOne.push({
+                filter,
+                update,
+                options,
+            });
+
+            if (updateError) {
+                throw updateError;
+            }
+
+            return updateResult;
         },
     };
 
@@ -205,7 +226,9 @@ describe('configuração do AuthenticationService', () => {
             null,
             false,
             {},
-            { findOne: 'não é função' },
+            { findOne: 'não é função', updateOne() {} },
+            { findOne() {} },
+            { findOne() {}, updateOne: 'não é função' },
         ];
 
         for (const UserModel of invalidModels) {
@@ -215,6 +238,28 @@ describe('configuração do AuthenticationService', () => {
                     name: 'TypeError',
                     message:
                         AUTHENTICATION_MESSAGES.INVALID_USER_MODEL,
+                },
+            );
+        }
+    });
+
+    test('rejeita relógios inválidos', () => {
+        const invalidClocks = [
+            null,
+            false,
+            42,
+            'relógio',
+            {},
+            [],
+        ];
+
+        for (const clock of invalidClocks) {
+            assert.throws(
+                () => new AuthenticationService({ clock }),
+                {
+                    name: 'TypeError',
+                    message:
+                        AUTHENTICATION_MESSAGES.INVALID_CLOCK,
                 },
             );
         }
@@ -472,9 +517,18 @@ describe('autenticação administrativa', () => {
             calls: passwordCalls,
         } = createFakePasswordHasher({ matches: true });
 
+        const loginInstant =
+            new Date('2026-09-11T18:45:00.000Z');
+        let clockCalls = 0;
+
         const service = new AuthenticationService({
             UserModel,
             passwordHasherService,
+            clock() {
+                clockCalls += 1;
+
+                return loginInstant;
+            },
         });
 
         const identity = await service.authenticate(
@@ -495,6 +549,27 @@ describe('autenticação administrativa', () => {
                 passwordHash: STORED_PASSWORD_HASH,
             },
         ]);
+        assert.equal(clockCalls, 1);
+        assert.deepEqual(userCalls.updateOne, [
+            {
+                filter: {
+                    _id: user._id,
+                    active: true,
+                },
+                update: {
+                    $set: {
+                        lastLoginAt: loginInstant,
+                    },
+                },
+                options: {
+                    runValidators: true,
+                },
+            },
+        ]);
+        assert.notStrictEqual(
+            userCalls.updateOne[0].update.$set.lastLoginAt,
+            loginInstant,
+        );
         assert.deepEqual(identity, {
             id: 'usuario-123',
             name: 'Administrador de Teste',
@@ -712,5 +787,212 @@ describe('autenticação administrativa', () => {
                     AUTHENTICATION_MESSAGES.INVALID_USER_DOCUMENT,
             },
         );
+    });
+});
+
+describe('registro do último acesso', () => {
+    test('não consulta o relógio nem atualiza credenciais recusadas', async () => {
+        const refusedCases = [
+            {
+                user: null,
+                matches: true,
+            },
+            {
+                user: createUser(),
+                matches: false,
+            },
+            {
+                user: createUser({ active: false }),
+                matches: true,
+            },
+        ];
+
+        for (const refusedCase of refusedCases) {
+            const {
+                UserModel,
+                calls,
+            } = createFakeUserModel({
+                user: refusedCase.user,
+            });
+            const { passwordHasherService } =
+                createFakePasswordHasher({
+                    matches: refusedCase.matches,
+                });
+            let clockCalls = 0;
+
+            const service = new AuthenticationService({
+                UserModel,
+                passwordHasherService,
+                clock() {
+                    clockCalls += 1;
+
+                    return new Date();
+                },
+            });
+
+            await assertInvalidCredentials(
+                service.authenticate(VALID_CREDENTIALS),
+            );
+
+            assert.equal(clockCalls, 0);
+            assert.deepEqual(calls.updateOne, []);
+        }
+    });
+
+    test('rejeita instantes inválidos antes de atualizar', async () => {
+        const invalidTimestamps = [
+            undefined,
+            null,
+            '2026-09-11T18:45:00.000Z',
+            new Date(Number.NaN),
+        ];
+
+        for (const timestamp of invalidTimestamps) {
+            const {
+                UserModel,
+                calls,
+            } = createFakeUserModel();
+            const { passwordHasherService } =
+                createFakePasswordHasher();
+
+            const service = new AuthenticationService({
+                UserModel,
+                passwordHasherService,
+                clock() {
+                    return timestamp;
+                },
+            });
+
+            await assert.rejects(
+                service.authenticate(VALID_CREDENTIALS),
+                {
+                    name: 'TypeError',
+                    message:
+                        AUTHENTICATION_MESSAGES.INVALID_TIMESTAMP,
+                },
+            );
+
+            assert.deepEqual(calls.updateOne, []);
+        }
+    });
+
+    test('propaga uma falha real da atualização', async () => {
+        const expectedError = new Error(
+            'Falha controlada ao registrar o último acesso.',
+        );
+        const { UserModel } = createFakeUserModel({
+            updateError: expectedError,
+        });
+        const { passwordHasherService } =
+            createFakePasswordHasher();
+
+        const service = new AuthenticationService({
+            UserModel,
+            passwordHasherService,
+        });
+
+        await assert.rejects(
+            service.authenticate(VALID_CREDENTIALS),
+            (error) => {
+                assert.strictEqual(error, expectedError);
+
+                return true;
+            },
+        );
+    });
+
+    test('recusa a conta desativada durante a autenticação', async () => {
+        const {
+            UserModel,
+            calls,
+        } = createFakeUserModel({
+            updateResult: {
+                acknowledged: true,
+                matchedCount: 0,
+                modifiedCount: 0,
+            },
+        });
+        const { passwordHasherService } =
+            createFakePasswordHasher();
+
+        const service = new AuthenticationService({
+            UserModel,
+            passwordHasherService,
+        });
+
+        await assertInvalidCredentials(
+            service.authenticate(VALID_CREDENTIALS),
+        );
+
+        assert.equal(calls.updateOne.length, 1);
+    });
+
+    test('rejeita resultados de atualização inconsistentes', async () => {
+        const invalidResults = [
+            null,
+            {},
+            {
+                acknowledged: false,
+                matchedCount: 1,
+            },
+            {
+                acknowledged: true,
+                matchedCount: -1,
+            },
+            {
+                acknowledged: true,
+                matchedCount: 1.5,
+            },
+        ];
+
+        for (const updateResult of invalidResults) {
+            const { UserModel } = createFakeUserModel({
+                updateResult,
+            });
+            const { passwordHasherService } =
+                createFakePasswordHasher();
+
+            const service = new AuthenticationService({
+                UserModel,
+                passwordHasherService,
+            });
+
+            await assert.rejects(
+                service.authenticate(VALID_CREDENTIALS),
+                {
+                    name: 'TypeError',
+                    message:
+                        AUTHENTICATION_MESSAGES
+                            .INVALID_UPDATE_RESULT,
+                },
+            );
+        }
+    });
+
+    test('valida a identidade antes de escrever no banco', async () => {
+        const {
+            UserModel,
+            calls,
+        } = createFakeUserModel({
+            user: createUser({ name: undefined }),
+        });
+        const { passwordHasherService } =
+            createFakePasswordHasher();
+
+        const service = new AuthenticationService({
+            UserModel,
+            passwordHasherService,
+        });
+
+        await assert.rejects(
+            service.authenticate(VALID_CREDENTIALS),
+            {
+                name: 'TypeError',
+                message:
+                    AUTHENTICATION_MESSAGES.INVALID_USER_DOCUMENT,
+            },
+        );
+
+        assert.deepEqual(calls.updateOne, []);
     });
 });

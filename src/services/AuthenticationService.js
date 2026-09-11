@@ -40,6 +40,12 @@ const AUTHENTICATION_MESSAGES = Object.freeze({
         'Um serviço de comparação de senhas válido é necessário para autenticar.',
     INVALID_DUMMY_HASH:
         'Um hash substituto válido é necessário para autenticar.',
+    INVALID_CLOCK:
+        'Um relógio válido é necessário para registrar o último acesso.',
+    INVALID_TIMESTAMP:
+        'O relógio retornou um instante inválido para o último acesso.',
+    INVALID_UPDATE_RESULT:
+        'O modelo retornou um resultado inválido ao registrar o último acesso.',
     INVALID_USER_DOCUMENT:
         'O usuário autenticado não possui uma identidade válida.',
 });
@@ -80,7 +86,8 @@ const MAX_PASSWORD_BYTES = 72;
  * 3. solicitar explicitamente o hash protegido;
  * 4. comparar a senha;
  * 5. recusar contas inexistentes ou inativas;
- * 6. retornar somente a identidade pública necessária para a sessão.
+ * 6. registrar controladamente o instante do último acesso;
+ * 7. retornar somente a identidade pública necessária para a sessão.
  */
 class AuthenticationService {
     /**
@@ -105,15 +112,24 @@ class AuthenticationService {
     #dummyPasswordHash;
 
     /**
+     * Fonte de tempo substituível para testes determinísticos.
+     *
+     * @type {Function}
+     */
+    #clock;
+
+    /**
      * @param {object} dependencies Dependências do serviço.
      * @param {object} dependencies.UserModel Modelo Mongoose de usuário.
      * @param {object} dependencies.passwordHasherService Comparador de senhas.
      * @param {string} dependencies.dummyPasswordHash Hash substituto.
+     * @param {Function} dependencies.clock Fonte do horário atual.
      */
     constructor({
         UserModel = User,
         passwordHasherService = passwordHasher,
         dummyPasswordHash = DEFAULT_DUMMY_PASSWORD_HASH,
+        clock = () => new Date(),
     } = {}) {
         AuthenticationService.validateUserModel(UserModel);
         AuthenticationService.validatePasswordHasher(
@@ -122,22 +138,25 @@ class AuthenticationService {
         AuthenticationService.validateDummyPasswordHash(
             dummyPasswordHash,
         );
+        AuthenticationService.validateClock(clock);
 
         this.#UserModel = UserModel;
         this.#passwordHasher = passwordHasherService;
         this.#dummyPasswordHash = dummyPasswordHash;
+        this.#clock = clock;
     }
 
     /**
      * Verifica as operações exigidas do modelo.
      *
      * @param {object} UserModel Modelo que será validado.
-     * @throws {TypeError} Quando o modelo não oferece findOne().
+     * @throws {TypeError} Quando o modelo não oferece as operações exigidas.
      */
     static validateUserModel(UserModel) {
         const isValid =
             UserModel &&
-            typeof UserModel.findOne === 'function';
+            typeof UserModel.findOne === 'function' &&
+            typeof UserModel.updateOne === 'function';
 
         if (!isValid) {
             throw new TypeError(
@@ -181,6 +200,61 @@ class AuthenticationService {
         if (!isValid) {
             throw new TypeError(
                 AUTHENTICATION_MESSAGES.INVALID_DUMMY_HASH,
+            );
+        }
+    }
+
+    /**
+     * Verifica a fonte de tempo utilizada pelo serviço.
+     *
+     * @param {unknown} clock Função recebida.
+     * @throws {TypeError} Quando o relógio não é uma função.
+     */
+    static validateClock(clock) {
+        if (typeof clock !== 'function') {
+            throw new TypeError(
+                AUTHENTICATION_MESSAGES.INVALID_CLOCK,
+            );
+        }
+    }
+
+    /**
+     * Cria uma cópia segura do instante fornecido pelo relógio.
+     *
+     * @param {unknown} value Valor produzido pela fonte de tempo.
+     * @returns {Date} Data válida que poderá ser persistida.
+     * @throws {TypeError} Quando o valor não representa uma data válida.
+     */
+    static createLoginTimestamp(value) {
+        const isValidDate =
+            value instanceof Date
+            && !Number.isNaN(value.getTime());
+
+        if (!isValidDate) {
+            throw new TypeError(
+                AUTHENTICATION_MESSAGES.INVALID_TIMESTAMP,
+            );
+        }
+
+        return new Date(value.getTime());
+    }
+
+    /**
+     * Verifica a confirmação devolvida pela atualização do MongoDB.
+     *
+     * @param {unknown} updateResult Resultado de updateOne().
+     * @throws {TypeError} Quando o formato retornado é inesperado.
+     */
+    static validateUpdateResult(updateResult) {
+        const isValid =
+            updateResult
+            && updateResult.acknowledged === true
+            && Number.isInteger(updateResult.matchedCount)
+            && updateResult.matchedCount >= 0;
+
+        if (!isValid) {
+            throw new TypeError(
+                AUTHENTICATION_MESSAGES.INVALID_UPDATE_RESULT,
             );
         }
     }
@@ -307,7 +381,9 @@ class AuthenticationService {
      * 3. inclui explicitamente passwordHash na consulta;
      * 4. executa uma comparação real ou substituta;
      * 5. verifica senha e estado da conta;
-     * 6. retorna somente a identidade pública.
+     * 6. valida a identidade autenticada;
+     * 7. registra o horário do último acesso;
+     * 8. retorna somente a identidade pública.
      *
      * Falhas reais do banco ou do bcrypt não são convertidas em credenciais
      * inválidas. Elas continuam sendo propagadas para o tratamento central,
@@ -362,7 +438,48 @@ class AuthenticationService {
                 .createInvalidCredentialsError();
         }
 
-        return AuthenticationService.createIdentity(user);
+        /**
+         * A identidade é validada antes de qualquer escrita. Um documento
+         * inconsistente não pode alterar o banco nem estabelecer sessão.
+         */
+        const identity =
+            AuthenticationService.createIdentity(user);
+
+        const lastLoginAt =
+            AuthenticationService.createLoginTimestamp(
+                this.#clock(),
+            );
+
+        /**
+         * O filtro confirma que a conta continua ativa no momento da
+         * atualização. Isso cobre uma desativação ocorrida entre a consulta
+         * inicial e a conclusão da comparação bcrypt.
+         */
+        const updateResult = await this.#UserModel.updateOne(
+            {
+                _id: user._id,
+                active: true,
+            },
+            {
+                $set: {
+                    lastLoginAt,
+                },
+            },
+            {
+                runValidators: true,
+            },
+        );
+
+        AuthenticationService.validateUpdateResult(
+            updateResult,
+        );
+
+        if (updateResult.matchedCount !== 1) {
+            throw AuthenticationService
+                .createInvalidCredentialsError();
+        }
+
+        return identity;
     }
 }
 
