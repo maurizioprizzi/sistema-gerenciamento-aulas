@@ -157,23 +157,24 @@ noscript {
     overflow: hidden;
     font-variant-numeric: tabular-nums;
     line-height: 1;
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 1);
     border: 1px solid rgba(255, 255, 255, 0.28);
-    border-radius: 1.25rem;
+    border-radius: .5rem;
     box-shadow: 0 16px 36px rgba(31, 24, 86, 0.18);
 }
 
 .app-symbol-month {
     font-size: 0.62rem;
-    font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+    color: #202238;
 }
 
 .app-symbol-day {
     margin-top: 0.2rem;
-    font-size: 2rem;
-    font-weight: 750;
+    font-size: 1.8rem;
+    font-weight: 900;
+    color: #D50000;
 }
 
 .app-context,
