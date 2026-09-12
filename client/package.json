@@ -1,0 +1,30 @@
+{
+  "name": "calendario-dionisio-client",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "description": "Interface administrativa do Calendário do Prof. Dionísio",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20.20.0"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "jsdom": "^27.4.0",
+    "vite": "^8.3.0",
+    "vitest": "^4.1.11"
+  }
+}

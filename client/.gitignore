@@ -1,0 +1,11 @@
+# Dependências instaladas localmente pelo npm.
+node_modules/
+
+# Resultado gerado pela compilação de produção do Vite.
+dist/
+
+# Cache local criado pelas ferramentas do Vite.
+.vite/
+
+# Arquivos de configuração exclusivamente locais.
+*.local

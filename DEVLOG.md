@@ -1554,3 +1554,64 @@ conexão MongoDB.
 
 Criar a primeira interface visual responsiva e a tela administrativa de login,
 revisando a política CSP conforme os recursos locais efetivamente utilizados.
+
+## 12 de setembro de 2026 — Fundação visual com React e Vite
+
+### Objetivo
+
+Iniciar a reconstrução da interface do protótipo original em uma base
+modular, responsiva, testável e preparada para consumir a API já existente.
+
+O escopo funcional permanece limitado ao que foi previsto no HTML entregue
+pelo Prof. Dionísio. Funcionalidades destinadas a um futuro produto comercial
+não fazem parte deste marco.
+
+### Workspace do frontend
+
+Foi criado o diretório `client/` como workspace independente. Ele utiliza
+React 19.3.0, React DOM 19.3.0 e Vite 8.3.0, com arquivos próprios de
+dependências e comandos para desenvolvimento, compilação e preview.
+
+Durante o desenvolvimento, o Vite utiliza a porta 5173 e encaminha caminhos
+iniciados por `/api` ao backend na porta 3000. A compilação é produzida em
+`client/dist`, diretório explicitamente excluído do Git junto com
+`node_modules` e os caches locais.
+
+### Primeira estrutura visual
+
+A aplicação React possui um ponto de montagem explícito, utiliza `StrictMode`
+e apresenta uma tela inicial responsiva para a futura entrada administrativa.
+A identidade visual informa o Senac Ceilândia, o calendário de aulas e o Prof.
+Dionísio Pereira.
+
+O símbolo genérico de calendário foi substituído por um elemento semântico
+`time`, que apresenta o mês e o dia reais no idioma português. A data é
+montada no fuso local do navegador, evitando deslocamentos causados por uma
+conversão antecipada para UTC.
+
+### Testes do frontend
+
+Foram adicionados Vitest 4.1.11, jsdom 27.4.0 e Testing Library. O ambiente de
+teste mantém globais desativados e restaura mocks entre os cenários.
+
+Os dois primeiros testes verificam a estrutura semântica, os textos da
+identidade visual e a apresentação determinística de 12 de setembro de 2026.
+A compilação de produção processou 16 módulos e gerou HTML, CSS e JavaScript
+sem erros.
+
+### Verificação
+
+- 327 testes do backend aprovados em 53 suítes;
+- 2 testes do frontend aprovados em 1 suíte;
+- 329 testes aprovados em 54 suítes no total;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- compilação e preview de produção confirmados;
+- atualização automática durante o desenvolvimento confirmada;
+- `node_modules` e `dist` ausentes do controle de versão.
+
+### Próximo marco
+
+Construir o formulário administrativo de login, testá-lo isoladamente e
+integrá-lo às rotas de autenticação já disponíveis no backend.

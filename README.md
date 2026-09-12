@@ -20,6 +20,11 @@ API HTTP, limitação de tentativas repetidas, registro controlado do último
 acesso válido, autorização administrativa, consulta protegida da sessão e
 cabeçalhos HTTP de segurança configurados conforme o ambiente.
 
+A fundação do frontend também está disponível em um workspace independente
+em `client/`. Ela utiliza React e Vite, apresenta a primeira estrutura visual
+responsiva da área administrativa e exibe a data local em português. O login
+ainda não foi implementado na interface.
+
 O administrador é preparado depois da conexão com o banco e antes da abertura
 da porta HTTP. O processo é idempotente: uma conta existente é preservada e
 não é duplicada nem tem sua senha substituída.
@@ -89,6 +94,13 @@ servidor e invalida o cookie no navegador.
 - política CSP sem atualização forçada para HTTPS no desenvolvimento;
 - HSTS e atualização de recursos inseguros habilitados somente em produção;
 - middleware de segurança executado antes de sessões e rotas;
+- workspace de frontend independente em `client/`;
+- fundação React 19 com Vite 8;
+- estrutura visual inicial responsiva para a área administrativa;
+- data local apresentada em português com marcação semântica;
+- proxy de desenvolvimento para os caminhos da API;
+- compilação e preview locais da versão de produção;
+- testes de componentes com Vitest, jsdom e Testing Library;
 - bloqueio do servidor HTTP quando a inicialização falha;
 - validações reais com MongoDB local;
 - testes HTTP, unitários e de integração controlada;
@@ -96,7 +108,8 @@ servidor e invalida o cookie no navegador.
 
 ### Ainda não implementado
 
-- interface visual;
+- formulário administrativo de login integrado à API;
+- disponibilização do frontend compilado pelo Express;
 - cadastro de aulas e atividades;
 - cadastro de unidades curriculares;
 - armazenamento de materiais;
@@ -128,6 +141,12 @@ conteúdo.
 - connect-mongo 6;
 - express-rate-limit 8;
 - Helmet 8;
+- React 19;
+- React DOM 19;
+- Vite 8;
+- Vitest 4;
+- jsdom 27;
+- Testing Library;
 - dotenv 17;
 - Zod 4;
 - test runner nativo do Node.js;
@@ -148,6 +167,15 @@ express-session 1.19.0
 connect-mongo 6.0.0
 express-rate-limit 8.7.0
 Helmet 8.3.0
+React 19.3.0
+React DOM 19.3.0
+Vite 8.3.0
+@vitejs/plugin-react 6.1.1
+Vitest 4.1.11
+jsdom 27.4.0
+@testing-library/react 16.3.3
+@testing-library/dom 10.4.1
+@testing-library/user-event 14.6.7
 dotenv 17.3.1
 Zod 4.5.4
 ```
@@ -179,17 +207,20 @@ cd /home/maurizio/eclipse-workspace/dionisio
 
 ## Instalar as dependências
 
-Para reproduzir exatamente as versões registradas no `package-lock.json`:
+O backend e o frontend possuem arquivos `package-lock.json` independentes.
+Para reproduzir exatamente as duas instalações registradas:
 
 ```bash
 npm ci
+npm --prefix client ci
 ```
 
 Durante o desenvolvimento, quando for necessário adicionar ou atualizar uma
-dependência:
+dependência no workspace correspondente:
 
 ```bash
 npm install
+npm --prefix client install
 ```
 
 Não é necessário executar `npm ci` e `npm install` em sequência. Utilize apenas
@@ -290,8 +321,18 @@ O endereço local do servidor é:
 http://localhost:3000
 ```
 
-Neste estágio, ainda não existe uma interface visual na rota principal. O
-endereço disponível para diagnóstico é:
+O backend continua disponível em `http://localhost:3000`. Em outro terminal,
+inicie o frontend em desenvolvimento:
+
+```bash
+npm --prefix client run dev
+```
+
+A interface inicial estará em `http://127.0.0.1:5173`. O Vite encaminha os
+caminhos iniciados por `/api` ao backend local. A tela ainda não possui o
+formulário funcional de login.
+
+O diagnóstico do backend permanece disponível em:
 
 ```text
 http://localhost:3000/api/health
@@ -325,20 +366,25 @@ sessões falhar, o servidor não será disponibilizado.
 | `npm run dev` | Inicia com reinicialização automática |
 | `npm test` | Executa todos os testes |
 | `npm run check` | Verifica a sintaxe da entrada do servidor |
+| `npm --prefix client run dev` | Inicia o frontend com atualização automática |
+| `npm --prefix client test` | Executa os testes do frontend |
+| `npm --prefix client run build` | Compila o frontend para produção |
+| `npm --prefix client run preview` | Serve localmente a compilação produzida |
 
 ## Testes automatizados
 
-Execute todos os testes:
+Execute as suítes do backend e do frontend:
 
 ```bash
 npm test
+npm --prefix client test
 ```
 
-No marco atual, a suíte possui:
+No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-327 testes
-53 suítes
+329 testes
+54 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -379,6 +425,9 @@ Os testes verificam, entre outros comportamentos:
 - execução da autorização antes do controlador da sessão;
 - comportamento HTTP de `GET /api/auth/session`;
 - configuração dos cabeçalhos para desenvolvimento e produção;
+- estrutura semântica da primeira interface React;
+- identidade visual e contexto administrativo apresentados;
+- data local determinística e formatada em português;
 - criação do middleware real do Helmet;
 - execução da segurança antes da sessão e das rotas;
 - integração da segurança ao ciclo de abertura do servidor;
@@ -420,10 +469,11 @@ permaneceram ausentes para não forçar HTTPS no endereço local.
 
 ## Auditoria das dependências
 
-Execute:
+Execute as auditorias dos dois workspaces:
 
 ```bash
 npm audit
+npm --prefix client audit
 ```
 
 No marco documentado, a auditoria apresentou:
@@ -439,6 +489,19 @@ executada novamente após alterações nas dependências e antes da implantaçã
 
 ```text
 dionisio/
+├── client/
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── App.jsx
+│   │   │   └── App.test.jsx
+│   │   ├── styles/
+│   │   │   └── global.css
+│   │   └── main.jsx
+│   ├── .gitignore
+│   ├── index.html
+│   ├── package-lock.json
+│   ├── package.json
+│   └── vite.config.js
 ├── src/
 │   ├── config/
 │   │   ├── database.js
@@ -496,6 +559,26 @@ dionisio/
 ```
 
 ## Responsabilidades dos módulos
+
+### `client/`
+
+Mantém o frontend React como workspace independente, com suas próprias
+dependências, testes, comandos de desenvolvimento e compilação.
+
+### `client/src/app/App.jsx`
+
+Compõe a estrutura visual inicial da área administrativa e apresenta a data
+local do navegador em português.
+
+### `client/src/styles/global.css`
+
+Define a base visual responsiva, as cores, o foco visível e a adaptação para
+telas menores sem recursos externos.
+
+### `client/vite.config.js`
+
+Configura React, desenvolvimento, proxy da API, preview, compilação e o
+ambiente jsdom utilizado pelos testes de componentes.
 
 ### `src/app.js`
 
@@ -758,7 +841,7 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. criar a primeira interface visual e a tela de login;
+1. concluir o formulário de login e integrá-lo à API existente;
 2. criar os modelos do calendário;
 3. implementar as APIs de aulas, atividades e materiais;
 4. proteger as APIs administrativas com o middleware concluído;
