@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 11 de setembro de 2026.
+> Última atualização desta documentação: 12 de setembro de 2026.
 
 ## Estado atual
 
@@ -17,7 +17,8 @@ HTTP, conexão com MongoDB, validação de ambiente, tratamento centralizado de
 erros, modelo administrativo, proteção de senhas, inicialização controlada da
 primeira conta, sessões persistentes, autenticação administrativa integrada à
 API HTTP, limitação de tentativas repetidas, registro controlado do último
-acesso válido, autorização administrativa e consulta protegida da sessão.
+acesso válido, autorização administrativa, consulta protegida da sessão e
+cabeçalhos HTTP de segurança configurados conforme o ambiente.
 
 O administrador é preparado depois da conexão com o banco e antes da abertura
 da porta HTTP. O processo é idempotente: uma conta existente é preservada e
@@ -84,6 +85,10 @@ servidor e invalida o cookie no navegador.
 - respostas padronizadas para autenticação ausente e acesso insuficiente;
 - identidade autorizada mínima, imutável e protegida na requisição;
 - rota protegida `GET /api/auth/session`;
+- cabeçalhos HTTP de segurança centralizados com Helmet;
+- política CSP sem atualização forçada para HTTPS no desenvolvimento;
+- HSTS e atualização de recursos inseguros habilitados somente em produção;
+- middleware de segurança executado antes de sessões e rotas;
 - bloqueio do servidor HTTP quando a inicialização falha;
 - validações reais com MongoDB local;
 - testes HTTP, unitários e de integração controlada;
@@ -91,7 +96,6 @@ servidor e invalida o cookie no navegador.
 
 ### Ainda não implementado
 
-- cabeçalhos adicionais de segurança;
 - interface visual;
 - cadastro de aulas e atividades;
 - cadastro de unidades curriculares;
@@ -123,6 +127,7 @@ conteúdo.
 - express-session 1;
 - connect-mongo 6;
 - express-rate-limit 8;
+- Helmet 8;
 - dotenv 17;
 - Zod 4;
 - test runner nativo do Node.js;
@@ -142,6 +147,7 @@ bcryptjs 3.0.3
 express-session 1.19.0
 connect-mongo 6.0.0
 express-rate-limit 8.7.0
+Helmet 8.3.0
 dotenv 17.3.1
 Zod 4.5.4
 ```
@@ -331,8 +337,8 @@ npm test
 No marco atual, a suíte possui:
 
 ```text
-313 testes
-50 suítes
+327 testes
+53 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -372,6 +378,11 @@ Os testes verificam, entre outros comportamentos:
 - exposição somente de identificador e papel na consulta protegida;
 - execução da autorização antes do controlador da sessão;
 - comportamento HTTP de `GET /api/auth/session`;
+- configuração dos cabeçalhos para desenvolvimento e produção;
+- criação do middleware real do Helmet;
+- execução da segurança antes da sessão e das rotas;
+- integração da segurança ao ciclo de abertura do servidor;
+- rejeição de fábricas e middlewares de segurança inválidos;
 - execução do middleware de sessão antes da autenticação;
 - composição das dependências antes da abertura HTTP;
 - bloqueio da inicialização diante de fábricas inválidas;
@@ -401,6 +412,11 @@ A autorização também foi validada com a aplicação e o MongoDB locais. Uma
 consulta anônima retornou `401` sem emitir cookie. Depois do login, a consulta
 protegida retornou `200` com somente `id` e `role`. O logout removeu a
 sessão, e uma nova consulta com o cookie anterior voltou a retornar `401`.
+
+Os cabeçalhos foram verificados em uma requisição real a `/api/health`. A
+resposta `200` apresentou CSP, políticas de isolamento, referência, conteúdo
+e enquadramento. Em desenvolvimento, HSTS e `upgrade-insecure-requests`
+permaneceram ausentes para não forçar HTTPS no endereço local.
 
 ## Auditoria das dependências
 
@@ -435,7 +451,8 @@ dionisio/
 │   ├── middlewares/
 │   │   ├── administrativeAuthorization.js
 │   │   ├── authenticationRateLimiter.js
-│   │   └── errorHandler.js
+│   │   ├── errorHandler.js
+│   │   └── securityHeaders.js
 │   ├── models/
 │   │   └── User.js
 │   ├── routes/
@@ -464,6 +481,8 @@ dionisio/
 │   ├── database.test.js
 │   ├── env.test.js
 │   ├── errorHandler.test.js
+│   ├── securityHeaders.test.js
+│   ├── securityHeadersServerIntegration.test.js
 │   ├── server.test.js
 │   ├── session.test.js
 │   └── user.test.js
@@ -480,13 +499,15 @@ dionisio/
 
 ### `src/app.js`
 
-Configura o Express, instala o middleware de sessão, monta as rotas de
-autenticação sob `/api/auth` e mantém o tratamento de erros por último.
+Configura o Express, instala os cabeçalhos de segurança antes da sessão,
+monta as rotas de autenticação sob `/api/auth` e mantém o tratamento de erros
+por último.
 
 ### `src/server.js`
 
-Compõe banco, administrador, sessões, autenticação e Express. A porta HTTP
-somente é aberta depois que todas as dependências obrigatórias estão prontas.
+Compõe cabeçalhos de segurança, banco, administrador, sessões, autenticação
+e Express. A porta HTTP somente é aberta depois que todas as dependências
+obrigatórias estão prontas.
 
 ### `src/config/env.js`
 
@@ -526,6 +547,11 @@ modernos e encaminha bloqueios ao tratamento central de erros.
 
 Converte erros conhecidos em respostas JSON seguras e oculta detalhes de
 falhas inesperadas.
+
+### `src/middlewares/securityHeaders.js`
+
+Encapsula o Helmet e aplica políticas de segurança adequadas ao ambiente,
+mantendo HSTS e atualização forçada para HTTPS somente em produção.
 
 ### `src/models/User.js`
 
@@ -678,6 +704,10 @@ JSON malformado retorna `400` com o código `INVALID_JSON`. Corpos acima de
 - variáveis de ambiente validadas antes da inicialização;
 - segredos excluídos do Git e ausentes das mensagens de erro;
 - cabeçalho `X-Powered-By` removido;
+- Content Security Policy aplicada com diretivas restritivas;
+- proteção contra enquadramento e interpretação incorreta de conteúdo;
+- políticas de origem e referência aplicadas pelo Helmet;
+- HSTS habilitado somente quando a aplicação utiliza produção e HTTPS;
 - limite de `100kb` para corpos JSON;
 - erros inesperados ocultados das respostas;
 - logs sem corpo, cookies ou cabeçalhos da requisição;
@@ -710,8 +740,8 @@ JSON malformado retorna `400` com o código `INVALID_JSON`. Corpos acima de
 - auditoria periódica das dependências.
 
 Essas medidas ainda não tornam a aplicação pronta para produção.
-Cabeçalhos adicionais, armazenamento compartilhado do limitador, HTTPS e
-implantação segura ainda serão implementados.
+Armazenamento compartilhado do limitador, HTTPS, revisão das políticas para os
+recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Princípios de desenvolvimento
 
@@ -728,16 +758,15 @@ implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. adicionar cabeçalhos HTTP de segurança;
-2. criar a primeira interface visual e a tela de login;
-3. criar os modelos do calendário;
-4. implementar as APIs de aulas, atividades e materiais;
-5. proteger as APIs administrativas com o middleware concluído;
-6. migrar com segurança os dados do protótipo;
-7. reconstruir a interface visual responsiva;
-8. realizar testes completos de integração e interface;
-9. preparar os guias técnico e didático;
-10. publicar e validar a aplicação em computador e celular.
+1. criar a primeira interface visual e a tela de login;
+2. criar os modelos do calendário;
+3. implementar as APIs de aulas, atividades e materiais;
+4. proteger as APIs administrativas com o middleware concluído;
+5. migrar com segurança os dados do protótipo;
+6. reconstruir a interface visual responsiva;
+7. realizar testes completos de integração e interface;
+8. preparar os guias técnico e didático;
+9. publicar e validar a aplicação em computador e celular.
 
 ## Fluxo de atualização pelo Git
 

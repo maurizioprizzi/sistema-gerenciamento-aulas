@@ -1484,3 +1484,73 @@ senha maior que o limite antes de gerar ou comparar hashes.
 
 Adicionar cabeçalhos HTTP de segurança e iniciar a primeira interface visual
 com uma tela administrativa de login.
+
+## 12 de setembro de 2026 — Cabeçalhos HTTP de segurança
+
+### Objetivo
+
+Reduzir a exposição da aplicação a comportamentos inseguros do navegador por
+meio de cabeçalhos HTTP centralizados, testáveis e apropriados para os
+ambientes de desenvolvimento e produção.
+
+### Implementação
+
+Foi adicionada a dependência `helmet` 8.3.0 e criado o middleware
+`securityHeaders.js`. Sua fábrica recebe a indicação validada do ambiente e
+encapsula a configuração do Helmet, preservando a possibilidade de usar uma
+fábrica controlada nos testes.
+
+O middleware é construído no ciclo de abertura antes da conexão com o banco.
+Uma fábrica inválida ou um retorno que não seja função impede a inicialização
+antes que recursos externos sejam abertos. A instância validada é entregue ao
+`createApp` e executada antes do parser JSON, das sessões e das rotas.
+
+### Políticas por ambiente
+
+Nos dois ambientes, o Helmet aplica CSP, isolamento de origem, política de
+referência, proteção contra enquadramento e interpretação incorreta de
+conteúdo, além dos demais cabeçalhos padrão compatíveis.
+
+Em desenvolvimento, HSTS e a diretiva `upgrade-insecure-requests` ficam
+desativados. Isso evita que o navegador tente transformar o endereço local em
+HTTPS. Em produção, HSTS utiliza duração de um ano e inclui subdomínios, sem
+solicitar preload; a atualização de recursos inseguros também é ativada.
+
+### Testes automatizados
+
+Os testes verificam constantes imutáveis, configurações de desenvolvimento e
+produção, criação real do middleware, dependências inválidas, propagação de
+falhas, posição anterior às sessões e rotas e integração completa ao ciclo de
+abertura do servidor.
+
+A suíte completa passou a possuir 327 testes distribuídos em 53 suítes.
+
+### Validação real
+
+A aplicação foi iniciada com o MongoDB local e a conta administrativa
+existente. Uma requisição real a `GET /api/health` retornou `200` e confirmou
+CSP, políticas de isolamento, referência, conteúdo e enquadramento.
+
+No ambiente de desenvolvimento, a resposta não apresentou HSTS nem a diretiva
+`upgrade-insecure-requests`, confirmando que o acesso local não será forçado
+para HTTPS. O cabeçalho `X-Powered-By` continuou ausente.
+
+O processo também foi encerrado por `SIGINT`, com fechamento seguro da
+conexão MongoDB.
+
+### Verificação
+
+- 327 testes aprovados;
+- 53 suítes aprovadas;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas;
+- sintaxe validada;
+- integração isolada, HTTP e de inicialização confirmada;
+- cabeçalhos reais confirmados em desenvolvimento;
+- inicialização e encerramento seguros.
+
+### Próximo marco
+
+Criar a primeira interface visual responsiva e a tela administrativa de login,
+revisando a política CSP conforme os recursos locais efetivamente utilizados.

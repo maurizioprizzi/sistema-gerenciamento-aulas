@@ -12,6 +12,110 @@ const {
     createApp
 } = require('../src/app');
 
+describe('configuração dos cabeçalhos de segurança no app', () => {
+    test('permite criar a aplicação sem middleware de segurança', () => {
+        assert.doesNotThrow(() => createApp());
+    });
+
+    test('rejeita um middleware de segurança inválido', () => {
+        const invalidMiddlewares = [
+            'middleware',
+            42,
+            {},
+            []
+        ];
+
+        for (const securityHeadersMiddleware of invalidMiddlewares) {
+            assert.throws(
+                () => createApp({ securityHeadersMiddleware }),
+                {
+                    name: 'TypeError',
+                    message:
+                        APP_ERROR_MESSAGES
+                            .INVALID_SECURITY_HEADERS_MIDDLEWARE
+                }
+            );
+        }
+    });
+
+    test(
+        'executa a segurança antes da sessão e das rotas',
+        async () => {
+            const order = [];
+
+            function securityHeadersMiddleware(
+                request,
+                response,
+                next
+            ) {
+                order.push('security');
+                response.setHeader(
+                    'x-security-middleware',
+                    'active'
+                );
+                next();
+            }
+
+            function sessionMiddleware(request, response, next) {
+                order.push('session');
+                next();
+            }
+
+            function authenticationRouter(request, response) {
+                order.push('authentication');
+                response.status(204).end();
+            }
+
+            const app = createApp({
+                securityHeadersMiddleware,
+                sessionMiddleware,
+                authenticationRouter
+            });
+            const temporaryServer = http.createServer(app);
+
+            await new Promise((resolve, reject) => {
+                temporaryServer.once('error', reject);
+                temporaryServer.listen(
+                    0,
+                    '127.0.0.1',
+                    resolve
+                );
+            });
+
+            try {
+                const address = temporaryServer.address();
+                const response = await fetch(
+                    `http://127.0.0.1:${address.port}/api/auth/test`
+                );
+
+                assert.equal(response.status, 204);
+                assert.equal(
+                    response.headers.get(
+                        'x-security-middleware'
+                    ),
+                    'active'
+                );
+                assert.deepEqual(order, [
+                    'security',
+                    'session',
+                    'authentication'
+                ]);
+            } finally {
+                await new Promise((resolve, reject) => {
+                    temporaryServer.close((error) => {
+                        if (error) {
+                            reject(error);
+                            return;
+                        }
+
+                        resolve();
+                    });
+                });
+            }
+        }
+    );
+});
+
 describe('configuração do middleware de sessão', () => {
     test('permite criar a aplicação sem middleware de sessão', () => {
         assert.doesNotThrow(() => createApp());

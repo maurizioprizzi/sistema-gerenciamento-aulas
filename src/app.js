@@ -11,6 +11,8 @@ const {
  * Mensagens relacionadas à configuração da aplicação.
  */
 const APP_ERROR_MESSAGES = Object.freeze({
+    INVALID_SECURITY_HEADERS_MIDDLEWARE:
+        'A aplicação exige um middleware de segurança válido quando ele é informado.',
     INVALID_SESSION_MIDDLEWARE:
         'A aplicação exige um middleware de sessão válido quando ele é informado.',
     INVALID_AUTHENTICATION_ROUTER:
@@ -37,6 +39,8 @@ const APP_ERROR_MESSAGES = Object.freeze({
  * @param {object} options Opções da aplicação.
  * @param {{ error: Function }} [options.logger=console]
  * Serviço utilizado para registrar erros inesperados.
+ * @param {Function | null} [options.securityHeadersMiddleware=null]
+ * Middleware de cabeçalhos HTTP previamente configurado.
  * @param {Function | null} [options.sessionMiddleware=null]
  * Middleware de sessão previamente configurado.
  * @param {Function | null} [options.authenticationRouter=null]
@@ -46,9 +50,20 @@ const APP_ERROR_MESSAGES = Object.freeze({
  */
 function createApp({
     logger = console,
+    securityHeadersMiddleware = null,
     sessionMiddleware = null,
     authenticationRouter = null,
 } = {}) {
+    if (
+        securityHeadersMiddleware !== null
+        && typeof securityHeadersMiddleware !== 'function'
+    ) {
+        throw new TypeError(
+            APP_ERROR_MESSAGES
+                .INVALID_SECURITY_HEADERS_MIDDLEWARE,
+        );
+    }
+
     if (
         sessionMiddleware !== null
         && typeof sessionMiddleware !== 'function'
@@ -78,6 +93,16 @@ function createApp({
     app.disable('x-powered-by');
 
     /**
+     * Os cabeçalhos de segurança devem proteger todas as respostas, inclusive
+     * diagnóstico, autenticação, erros de validação e rotas inexistentes.
+     *
+     * Eles são instalados antes de qualquer parser, sessão ou rota.
+     */
+    if (securityHeadersMiddleware) {
+        app.use(securityHeadersMiddleware);
+    }
+
+    /**
      * Permite que a aplicação receba corpos de requisição no formato JSON.
      *
      * O limite evita que uma requisição excessivamente grande consuma
@@ -104,6 +129,7 @@ function createApp({
      *
      * Endereços resultantes:
      * - POST /api/auth/login;
+     * - GET /api/auth/session;
      * - POST /api/auth/logout.
      */
     if (authenticationRouter) {

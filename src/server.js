@@ -19,6 +19,9 @@ const {
     createAuthenticationRateLimiter,
 } = require('./middlewares/authenticationRateLimiter');
 const {
+    createSecurityHeadersMiddleware,
+} = require('./middlewares/securityHeaders');
+const {
     createAuthenticationRouter,
 } = require('./routes/authenticationRoutes');
 const {
@@ -50,6 +53,10 @@ const SERVER_ERROR_MESSAGES = Object.freeze({
         'A fábrica do roteador de autenticação deve ser uma função.',
     INVALID_AUTHENTICATION_ROUTER:
         'A fábrica de autenticação deve retornar um roteador válido.',
+    INVALID_SECURITY_HEADERS_MIDDLEWARE_FACTORY:
+        'A fábrica dos cabeçalhos de segurança deve ser uma função.',
+    INVALID_SECURITY_HEADERS_MIDDLEWARE:
+        'A fábrica de segurança deve retornar um middleware válido.',
 });
 
 /**
@@ -209,6 +216,8 @@ function createAdministrativeAuthenticationRouter({
  * Fábrica do middleware de sessão.
  * @param {Function} [options.authenticationRouterFactory]
  * Fábrica da composição de autenticação.
+ * @param {Function} [options.securityHeadersMiddlewareFactory]
+ * Fábrica dos cabeçalhos HTTP de segurança.
  * @param {object} [options.logger=console] Logger operacional.
  * @returns {Promise<import('node:http').Server>} Servidor iniciado.
  */
@@ -220,6 +229,8 @@ async function startServer({
     sessionMiddlewareFactory = createSessionMiddleware,
     authenticationRouterFactory =
         createAdministrativeAuthenticationRouter,
+    securityHeadersMiddlewareFactory =
+        createSecurityHeadersMiddleware,
     logger = console,
 } = {}) {
     dotenv.config({ quiet: true });
@@ -250,6 +261,29 @@ async function startServer({
     if (typeof authenticationRouterFactory !== 'function') {
         throw new TypeError(
             SERVER_ERROR_MESSAGES.INVALID_AUTHENTICATION_ROUTER_FACTORY,
+        );
+    }
+
+    if (typeof securityHeadersMiddlewareFactory !== 'function') {
+        throw new TypeError(
+            SERVER_ERROR_MESSAGES
+                .INVALID_SECURITY_HEADERS_MIDDLEWARE_FACTORY,
+        );
+    }
+
+    /**
+     * Esta fábrica não abre recursos externos. Sua execução antecipada
+     * permite rejeitar uma configuração inválida antes de conectar o banco.
+     */
+    const securityHeadersMiddleware =
+        securityHeadersMiddlewareFactory({
+            isProduction: environment.IS_PRODUCTION,
+        });
+
+    if (typeof securityHeadersMiddleware !== 'function') {
+        throw new TypeError(
+            SERVER_ERROR_MESSAGES
+                .INVALID_SECURITY_HEADERS_MIDDLEWARE,
         );
     }
 
@@ -323,6 +357,7 @@ async function startServer({
 
         const app = appFactory({
             logger,
+            securityHeadersMiddleware,
             sessionMiddleware,
             authenticationRouter,
         });
