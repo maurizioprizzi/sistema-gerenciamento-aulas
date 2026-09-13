@@ -29,6 +29,9 @@
     --color-text-muted: #60647a;
     --color-border: #dedff0;
     --color-focus: #f59e0b;
+    --color-error: #b42318;
+    --color-error-surface: #fef3f2;
+    --color-error-border: #fecdca;
 
     --shadow-panel: 0 24px 64px rgba(39, 34, 91, 0.16);
     --radius-large: 24px;
@@ -88,8 +91,8 @@ noscript {
 /**
  * Tela inicial dividida em apresentação e autenticação.
  *
- * O painel branco permanece sem formulário nesta etapa. Ele receberá o
- * componente de login quando a fundação visual estiver validada.
+ * O painel branco reúne a verificação da sessão, o formulário de entrada e a
+ * confirmação do acesso sem misturar essas responsabilidades à apresentação.
  */
 .app-shell {
     display: grid;
@@ -231,6 +234,161 @@ noscript {
     font-size: 1rem;
     line-height: 1.7;
     color: var(--color-text-muted);
+}
+
+/**
+ * Formulário administrativo.
+ *
+ * Os estados de foco, erro, envio e desativação permanecem perceptíveis sem
+ * depender exclusivamente de cor. Os campos utilizam dimensões confortáveis
+ * para teclado, toque e tecnologias assistivas.
+ */
+.login-form {
+    display: grid;
+    gap: 1.25rem;
+    margin-top: 2rem;
+}
+
+.login-form-field {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.login-form-field label {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--color-text);
+}
+
+.login-form-field input {
+    width: 100%;
+    min-height: 3.25rem;
+    padding: 0.8rem 0.95rem;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.8rem;
+    transition:
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        background-color 160ms ease;
+}
+
+.login-form-field input:hover:not(:disabled) {
+    border-color: var(--color-brand-300);
+}
+
+.login-form-field input:focus-visible {
+    border-color: var(--color-brand-600);
+    outline: 3px solid var(--color-focus);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12);
+}
+
+.login-form-field input:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background: var(--color-surface-muted);
+    opacity: 0.75;
+}
+
+.login-form-error {
+    padding: 0.85rem 1rem;
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--color-error);
+    background: var(--color-error-surface);
+    border: 1px solid var(--color-error-border);
+    border-radius: 0.8rem;
+}
+
+.login-form-submit {
+    min-height: 3.25rem;
+    padding: 0.8rem 1.25rem;
+    font-weight: 750;
+    color: #ffffff;
+    cursor: pointer;
+    background: var(--color-brand-600);
+    border: 0;
+    border-radius: 0.8rem;
+    box-shadow: 0 10px 24px rgba(67, 56, 202, 0.2);
+    transition:
+        background-color 160ms ease,
+        box-shadow 160ms ease,
+        transform 160ms ease;
+}
+
+.login-form-submit:hover:not(:disabled) {
+    background: var(--color-brand-700);
+    box-shadow: 0 12px 28px rgba(67, 56, 202, 0.28);
+    transform: translateY(-1px);
+}
+
+.login-form-submit:active:not(:disabled) {
+    box-shadow: 0 7px 18px rgba(67, 56, 202, 0.22);
+    transform: translateY(0);
+}
+
+.login-form-submit:disabled {
+    cursor: not-allowed;
+    background: var(--color-text-muted);
+    box-shadow: none;
+    opacity: 0.62;
+}
+
+/**
+ * Estado autenticado e encerramento da sessão.
+ */
+.authentication-session {
+    display: grid;
+    gap: 1.25rem;
+    margin-top: 1.5rem;
+}
+
+.authentication-success {
+    padding: 1rem;
+    margin: 0;
+    line-height: 1.6;
+    color: var(--color-brand-700);
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px solid var(--color-brand-300);
+    border-radius: 0.8rem;
+}
+
+.authentication-logout {
+    width: 100%;
+    min-height: 3.25rem;
+    padding: 0.8rem 1.25rem;
+    font-weight: 750;
+    color: var(--color-brand-700);
+    cursor: pointer;
+    background: var(--color-surface);
+    border: 1px solid var(--color-brand-300);
+    border-radius: 0.8rem;
+    transition:
+        color 160ms ease,
+        background-color 160ms ease,
+        border-color 160ms ease,
+        transform 160ms ease;
+}
+
+.authentication-logout:hover:not(:disabled) {
+    color: #ffffff;
+    background: var(--color-brand-700);
+    border-color: var(--color-brand-700);
+    transform: translateY(-1px);
+}
+
+.authentication-logout:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.authentication-logout:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background: var(--color-surface-muted);
+    border-color: var(--color-border);
+    opacity: 0.7;
 }
 
 /**

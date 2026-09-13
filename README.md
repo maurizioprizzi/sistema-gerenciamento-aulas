@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 12 de setembro de 2026.
+> Última atualização desta documentação: 13 de setembro de 2026.
 
 ## Estado atual
 
@@ -20,10 +20,10 @@ API HTTP, limitação de tentativas repetidas, registro controlado do último
 acesso válido, autorização administrativa, consulta protegida da sessão e
 cabeçalhos HTTP de segurança configurados conforme o ambiente.
 
-A fundação do frontend também está disponível em um workspace independente
-em `client/`. Ela utiliza React e Vite, apresenta a primeira estrutura visual
-responsiva da área administrativa e exibe a data local em português. O login
-ainda não foi implementado na interface.
+O frontend está disponível em um workspace independente em `client/`. Ele
+utiliza React e Vite, apresenta uma interface responsiva e exibe a data local
+em português. O formulário administrativo já consome a API real, restaura a
+sessão depois de uma atualização da página e permite encerrá-la com segurança.
 
 O administrador é preparado depois da conexão com o banco e antes da abertura
 da porta HTTP. O processo é idempotente: uma conta existente é preservada e
@@ -101,6 +101,11 @@ servidor e invalida o cookie no navegador.
 - proxy de desenvolvimento para os caminhos da API;
 - compilação e preview locais da versão de produção;
 - testes de componentes com Vitest, jsdom e Testing Library;
+- serviço isolado para consumir a API de autenticação no navegador;
+- formulário administrativo acessível com estados de envio e erro;
+- login real integrado ao backend sem armazenar credenciais em App;
+- restauração da sessão administrativa depois de recarregar a página;
+- encerramento da sessão com confirmação do backend antes de remover o acesso;
 - bloqueio do servidor HTTP quando a inicialização falha;
 - validações reais com MongoDB local;
 - testes HTTP, unitários e de integração controlada;
@@ -108,7 +113,6 @@ servidor e invalida o cookie no navegador.
 
 ### Ainda não implementado
 
-- formulário administrativo de login integrado à API;
 - disponibilização do frontend compilado pelo Express;
 - cadastro de aulas e atividades;
 - cadastro de unidades curriculares;
@@ -328,9 +332,9 @@ inicie o frontend em desenvolvimento:
 npm --prefix client run dev
 ```
 
-A interface inicial estará em `http://127.0.0.1:5173`. O Vite encaminha os
-caminhos iniciados por `/api` ao backend local. A tela ainda não possui o
-formulário funcional de login.
+A interface estará em `http://127.0.0.1:5173`. O Vite encaminha os caminhos
+iniciados por `/api` ao backend local. O formulário utiliza a conta
+administrativa configurada no arquivo `.env`.
 
 O diagnóstico do backend permanece disponível em:
 
@@ -364,7 +368,7 @@ sessões falhar, o servidor não será disponibilizado.
 | --- | --- |
 | `npm start` | Inicia a aplicação sem monitoramento |
 | `npm run dev` | Inicia com reinicialização automática |
-| `npm test` | Executa todos os testes |
+| `npm test` | Executa os testes do backend |
 | `npm run check` | Verifica a sintaxe da entrada do servidor |
 | `npm --prefix client run dev` | Inicia o frontend com atualização automática |
 | `npm --prefix client test` | Executa os testes do frontend |
@@ -383,8 +387,8 @@ npm --prefix client test
 No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-329 testes
-54 suítes
+385 testes
+57 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -428,6 +432,11 @@ Os testes verificam, entre outros comportamentos:
 - estrutura semântica da primeira interface React;
 - identidade visual e contexto administrativo apresentados;
 - data local determinística e formatada em português;
+- contratos HTTP de login, consulta da sessão e logout no frontend;
+- formulário acessível, validação dos campos e bloqueio durante o envio;
+- mensagens públicas seguras para recusas e falhas inesperadas;
+- restauração da sessão válida e retorno ao formulário para visitantes;
+- encerramento confirmado e preservação do acesso quando o logout falha;
 - criação do middleware real do Helmet;
 - execução da segurança antes da sessão e das rotas;
 - integração da segurança ao ciclo de abertura do servidor;
@@ -462,6 +471,12 @@ consulta anônima retornou `401` sem emitir cookie. Depois do login, a consulta
 protegida retornou `200` com somente `id` e `role`. O logout removeu a
 sessão, e uma nova consulta com o cookie anterior voltou a retornar `401`.
 
+O frontend foi validado no navegador contra o mesmo backend. Credenciais
+incorretas foram recusadas, a conta configurada no `.env` entrou normalmente,
+a sessão permaneceu ativa depois de recarregar a página e o botão de saída
+removeu o acesso. Uma nova atualização depois do logout manteve o formulário,
+confirmando que a sessão também havia sido encerrada no servidor.
+
 Os cabeçalhos foram verificados em uma requisição real a `/api/health`. A
 resposta `200` apresentou CSP, políticas de isolamento, referência, conteúdo
 e enquadramento. Em desenvolvimento, HSTS e `upgrade-insecure-requests`
@@ -494,6 +509,15 @@ dionisio/
 │   │   ├── app/
 │   │   │   ├── App.jsx
 │   │   │   └── App.test.jsx
+│   │   ├── components/
+│   │   │   └── authentication/
+│   │   │       ├── LoginForm.jsx
+│   │   │       ├── LoginForm.test.jsx
+│   │   │       ├── LogoutButton.jsx
+│   │   │       └── LogoutButton.test.jsx
+│   │   ├── services/
+│   │   │   ├── AuthenticationApi.js
+│   │   │   └── AuthenticationApi.test.js
 │   │   ├── styles/
 │   │   │   └── global.css
 │   │   └── main.jsx
@@ -567,8 +591,28 @@ dependências, testes, comandos de desenvolvimento e compilação.
 
 ### `client/src/app/App.jsx`
 
-Compõe a estrutura visual inicial da área administrativa e apresenta a data
-local do navegador em português.
+Coordena a apresentação da data local, a verificação inicial da sessão, o
+login e o logout. O componente alterna entre os estados de verificação,
+formulário e acesso confirmado sem armazenar as credenciais recebidas.
+
+### `client/src/components/authentication/LoginForm.jsx`
+
+Mantém os campos de e-mail e senha, valida quando o envio pode ocorrer e
+apresenta estados de processamento e mensagens públicas de forma acessível.
+
+### `client/src/components/authentication/LogoutButton.jsx`
+
+Representa a solicitação de saída e impede novos cliques enquanto o
+encerramento da sessão está em andamento.
+
+### `client/src/services/AuthenticationApi.js`
+
+Encapsula os contratos HTTP de login, consulta da sessão e logout. Valida as
+respostas do backend e converte falhas em erros públicos seguros para a
+interface.
+
+Os arquivos de teste mantidos ao lado desses módulos cobrem seus contratos e
+interações sem depender de um navegador aberto ou de um backend externo.
 
 ### `client/src/styles/global.css`
 
@@ -819,6 +863,10 @@ JSON malformado retorna `400` com o código `INVALID_JSON`. Corpos acima de
 - respostas seguras para autenticação ausente e acesso insuficiente;
 - identidade protegida contra enumeração e substituição na requisição;
 - consulta da sessão sem exposição de nome, e-mail, senha ou hash;
+- credenciais mantidas somente no estado interno do formulário;
+- comunicação do frontend restrita aos contratos públicos da API;
+- mensagens técnicas e causas de rede ocultadas da interface;
+- acesso visual removido somente depois da confirmação do logout;
 - limpeza do banco após falhas de inicialização;
 - auditoria periódica das dependências.
 
@@ -841,12 +889,12 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. concluir o formulário de login e integrá-lo à API existente;
+1. disponibilizar o frontend compilado pelo Express;
 2. criar os modelos do calendário;
 3. implementar as APIs de aulas, atividades e materiais;
 4. proteger as APIs administrativas com o middleware concluído;
 5. migrar com segurança os dados do protótipo;
-6. reconstruir a interface visual responsiva;
+6. reconstruir a área autenticada conforme o HTML original;
 7. realizar testes completos de integração e interface;
 8. preparar os guias técnico e didático;
 9. publicar e validar a aplicação em computador e celular.

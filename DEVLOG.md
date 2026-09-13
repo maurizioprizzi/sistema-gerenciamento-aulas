@@ -1615,3 +1615,84 @@ sem erros.
 
 Construir o formulário administrativo de login, testá-lo isoladamente e
 integrá-lo às rotas de autenticação já disponíveis no backend.
+
+## 13 de setembro de 2026 — Autenticação administrativa no frontend
+
+### Objetivo
+
+Conectar a primeira interface React às rotas administrativas já existentes,
+sem ampliar o escopo funcional definido no HTML original do Prof. Dionísio.
+
+### Serviço de comunicação
+
+Foi criado o `AuthenticationApi`, responsável exclusivamente pelos contratos
+HTTP de entrada, consulta da sessão e saída. O serviço utiliza caminhos
+relativos, envia cookies pela mesma origem, impede cache das respostas e
+seleciona somente os campos públicos esperados.
+
+Falhas conhecidas preservam o código e a mensagem segura enviados pelo
+backend. Respostas malformadas, falhas de rede e erros inesperados são
+convertidos em mensagens genéricas, sem incorporar credenciais ou causas
+técnicas à interface.
+
+### Formulário administrativo
+
+O `LoginForm` mantém e-mail e senha em estado local, normaliza apenas os
+espaços externos do e-mail e preserva integralmente a senha. O envio permanece
+bloqueado enquanto os campos estão incompletos ou uma requisição está em
+andamento.
+
+Rótulos, autocompletar, estados de ocupação, mensagens com função de alerta e
+foco visível foram implementados para manter o formulário acessível. Os
+estilos respeitam a estrutura responsiva iniciada no marco anterior.
+
+### Ciclo da sessão
+
+Ao iniciar, `App` consulta `GET /api/auth/session` antes de decidir qual
+conteúdo apresentar. Uma sessão válida restaura o acesso depois de atualizar
+a página. A ausência de autenticação apresenta o formulário normalmente e
+outras falhas recebem uma mensagem pública sem impedir uma nova tentativa.
+
+Depois do login, a tela confirma a entrada. O `LogoutButton` solicita o
+encerramento ao backend e remove o acesso visual somente depois da resposta
+`204`. Se a operação falhar, a sessão permanece representada e o usuário pode
+tentar novamente.
+
+### Testes automatizados
+
+O frontend passou a possuir 58 testes em quatro arquivos. Eles cobrem o
+serviço HTTP, os contratos das respostas, o formulário, o botão de saída, os
+estados pendentes, as mensagens seguras, a restauração da sessão e os fluxos
+completos de login e logout dentro da aplicação.
+
+O comando de testes do projeto principal foi restringido a
+`test/*.test.js`. Essa fronteira impede que o test runner nativo do Node.js
+tente interpretar arquivos do Vitest encontrados no workspace `client/`.
+
+### Validação real
+
+O frontend foi executado pelo Vite enquanto o backend utilizava o MongoDB
+local. Credenciais diferentes das configuradas foram recusadas e a conta
+administrativa do `.env` entrou normalmente.
+
+Depois da autenticação, uma atualização da página restaurou a sessão e exibiu
+que o acesso permanecia ativo. O botão de saída devolveu o formulário e uma
+nova atualização confirmou que a sessão também havia sido removida do
+servidor.
+
+### Verificação
+
+- 327 testes do backend aprovados em 53 suítes;
+- 58 testes do frontend aprovados em quatro arquivos;
+- 385 testes aprovados em 57 suítes no total;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- compilação de produção concluída com 19 módulos;
+- login, restauração por atualização e logout confirmados no navegador;
+- contrato original do Prof. Dionísio preservado sem funcionalidades extras.
+
+### Próximo marco
+
+Disponibilizar pelo Express a compilação de produção do frontend e preparar a
+estrutura inicial da área autenticada conforme o HTML original.

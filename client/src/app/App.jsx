@@ -1,13 +1,33 @@
-/**
- * Composição principal da interface administrativa.
- *
- * Neste primeiro incremento, o componente estabelece somente a estrutura
- * semântica da tela de acesso. A autenticação será adicionada por componentes
- * próprios, mantendo App livre de detalhes de formulário e comunicação HTTP.
- *
- * @returns {import('react').ReactElement} Estrutura principal da aplicação.
- */
+import {
+    useEffect,
+    useState,
+} from 'react';
+
+import {
+    AuthenticationApiError,
+    authenticationApi,
+} from '../services/AuthenticationApi.js';
+import { LoginForm } from '../components/authentication/LoginForm.jsx';
+import { LogoutButton } from '../components/authentication/LogoutButton.jsx';
+
 const DATE_LOCALE = 'pt-BR';
+const AUTHENTICATION_REQUIRED_CODE = 'AUTHENTICATION_REQUIRED';
+
+/**
+ * Mensagens estáveis relacionadas à composição principal da interface.
+ */
+const APP_MESSAGES = Object.freeze({
+    INVALID_AUTHENTICATION_SERVICE:
+        'A aplicação exige um serviço de autenticação válido.',
+    CHECKING_SESSION:
+        'Verificando sua sessão...',
+    SESSION_CHECK_FAILED:
+        'Não foi possível verificar a sessão anterior. Você ainda pode entrar novamente.',
+    UNEXPECTED_LOGIN_ERROR:
+        'Não foi possível entrar agora. Tente novamente em instantes.',
+    UNEXPECTED_LOGOUT_ERROR:
+        'Não foi possível sair agora. Tente novamente em instantes.',
+});
 
 /**
  * Produz os textos exibidos pelo pequeno calendário da tela de acesso.
@@ -56,8 +76,182 @@ function createCurrentDatePresentation(date = new Date()) {
     };
 }
 
-function App() {
+/**
+ * Verifica se a consulta encontrou apenas a ausência normal de autenticação.
+ *
+ * Uma resposta 401 com o código documentado significa que o visitante pode
+ * receber o formulário. Outros problemas continuam sendo tratados como falha
+ * de verificação, sem exposição de detalhes técnicos.
+ *
+ * @param {unknown} error Falha recebida da API.
+ * @returns {boolean} Verdadeiro apenas para ausência de sessão válida.
+ */
+function isAuthenticationRequiredError(error) {
+    return (
+        error instanceof AuthenticationApiError
+        && error.statusCode === 401
+        && error.code === AUTHENTICATION_REQUIRED_CODE
+    );
+}
+
+/**
+ * Composição principal da interface administrativa.
+ *
+ * App consulta a sessão existente e coordena a entrada administrativa. A
+ * comunicação HTTP permanece encapsulada em AuthenticationApi e os campos
+ * continuam isolados em LoginForm.
+ *
+ * @param {object} props Propriedades da aplicação.
+ * @param {{ login: Function, getSession: Function, logout: Function }}
+ * [props.authenticationService] Serviço substituível nos testes.
+ * @returns {import('react').ReactElement} Estrutura principal da aplicação.
+ */
+function App({
+    authenticationService = authenticationApi,
+} = {}) {
+    const isValidAuthenticationService =
+        authenticationService !== null
+        && typeof authenticationService === 'object'
+        && !Array.isArray(authenticationService)
+        && typeof authenticationService.login === 'function'
+        && typeof authenticationService.getSession === 'function'
+        && typeof authenticationService.logout === 'function';
+
+    if (!isValidAuthenticationService) {
+        throw new TypeError(
+            APP_MESSAGES.INVALID_AUTHENTICATION_SERVICE,
+        );
+    }
+
+    const [isCheckingSession, setIsCheckingSession] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
+    const [errorMessage, setErrorMessage] = useState(null);
+    const [authenticatedUser, setAuthenticatedUser] = useState(null);
+
     const currentDate = createCurrentDatePresentation();
+
+    /**
+     * Verifica uma sessão persistida antes de apresentar o formulário.
+     *
+     * A função de limpeza impede que uma resposta tardia altere uma instância
+     * do componente que já tenha sido desmontada. Isso também mantém o efeito
+     * seguro durante as verificações adicionais do StrictMode.
+     */
+    useEffect(() => {
+        let isCurrentInstance = true;
+
+        async function restoreSession() {
+            try {
+                const session =
+                    await authenticationService.getSession();
+
+                if (isCurrentInstance) {
+                    setAuthenticatedUser(session.user);
+                }
+            } catch (error) {
+                if (
+                    isCurrentInstance
+                    && !isAuthenticationRequiredError(error)
+                ) {
+                    setErrorMessage(
+                        APP_MESSAGES.SESSION_CHECK_FAILED,
+                    );
+                }
+            } finally {
+                if (isCurrentInstance) {
+                    setIsCheckingSession(false);
+                }
+            }
+        }
+
+        restoreSession();
+
+        return () => {
+            isCurrentInstance = false;
+        };
+    }, [authenticationService]);
+
+    /**
+     * Solicita a autenticação sem armazenar as credenciais no estado de App.
+     *
+     * Erros reconhecidos pelo serviço já possuem mensagens públicas seguras.
+     * Uma falha inesperada recebe texto genérico e não expõe detalhes técnicos
+     * ao navegador.
+     *
+     * @param {Readonly<{ email: string, password: string }>} credentials
+     * Credenciais preparadas pelo formulário.
+     * @returns {Promise<void>}
+     */
+    async function handleLogin(credentials) {
+        if (isSubmitting) {
+            return;
+        }
+
+        setIsSubmitting(true);
+        setErrorMessage(null);
+
+        try {
+            const user = await authenticationService.login(
+                credentials,
+            );
+
+            setAuthenticatedUser(user);
+        } catch (error) {
+            const publicMessage =
+                error instanceof AuthenticationApiError
+                    ? error.message
+                    : APP_MESSAGES.UNEXPECTED_LOGIN_ERROR;
+
+            setErrorMessage(publicMessage);
+        } finally {
+            setIsSubmitting(false);
+        }
+    }
+
+    /**
+     * Encerra a sessão no servidor antes de remover o acesso da interface.
+     *
+     * Uma falha mantém o estado autenticado e permite uma nova tentativa. A
+     * mensagem técnica nunca é apresentada diretamente ao usuário.
+     *
+     * @returns {Promise<void>}
+     */
+    async function handleLogout() {
+        if (isLoggingOut) {
+            return;
+        }
+
+        setIsLoggingOut(true);
+        setErrorMessage(null);
+
+        try {
+            await authenticationService.logout();
+            setAuthenticatedUser(null);
+        } catch (error) {
+            const publicMessage =
+                error instanceof AuthenticationApiError
+                    ? error.message
+                    : APP_MESSAGES.UNEXPECTED_LOGOUT_ERROR;
+
+            setErrorMessage(publicMessage);
+        } finally {
+            setIsLoggingOut(false);
+        }
+    }
+
+    const authenticatedUserName =
+        typeof authenticatedUser?.name === 'string'
+            ? authenticatedUser.name.trim()
+            : '';
+
+    let authenticationTitle = 'Acesso ao calendário';
+
+    if (isCheckingSession) {
+        authenticationTitle = 'Verificando acesso';
+    } else if (authenticatedUser) {
+        authenticationTitle = 'Acesso confirmado';
+    }
 
     return (
         <main className="app-shell">
@@ -107,15 +301,64 @@ function App() {
                 </p>
 
                 <h2 id="authentication-title">
-                    Acesso ao calendário
+                    {authenticationTitle}
                 </h2>
 
-                <p className="authentication-description">
-                    Entre com sua conta para consultar e organizar as aulas.
-                </p>
+                {isCheckingSession ? (
+                    <p
+                        className="authentication-description"
+                        role="status"
+                    >
+                        {APP_MESSAGES.CHECKING_SESSION}
+                    </p>
+                ) : authenticatedUser ? (
+                    <div className="authentication-session">
+                        <p
+                            className="authentication-success"
+                            role="status"
+                        >
+                            {authenticatedUserName
+                                ? 'Olá, '
+                                    + authenticatedUserName
+                                    + '. Sua entrada foi confirmada com segurança.'
+                                : 'Sua sessão administrativa permanece ativa.'}
+                        </p>
+
+                        {errorMessage && (
+                            <p
+                                className="login-form-error"
+                                role="alert"
+                            >
+                                {errorMessage}
+                            </p>
+                        )}
+
+                        <LogoutButton
+                            onLogout={handleLogout}
+                            isSubmitting={isLoggingOut}
+                        />
+                    </div>
+                ) : (
+                    <>
+                        <p className="authentication-description">
+                            Entre com sua conta para consultar e organizar
+                            as aulas.
+                        </p>
+
+                        <LoginForm
+                            onSubmit={handleLogin}
+                            isSubmitting={isSubmitting}
+                            errorMessage={errorMessage}
+                        />
+                    </>
+                )}
             </section>
         </main>
     );
 }
 
-export { App };
+export {
+    APP_MESSAGES,
+    App,
+    createCurrentDatePresentation,
+};
