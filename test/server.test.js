@@ -105,6 +105,24 @@ function createFakeLogger() {
     };
 }
 
+/**
+ * Cria um middleware neutro para os testes do ciclo do servidor.
+ *
+ * A compilação real do frontend possui testes próprios. Aqui precisamos
+ * apenas representar sua dependência sem acessar client/dist.
+ *
+ * @returns {Function} Middleware Express controlado.
+ */
+function createTestFrontendAssetsMiddleware() {
+    return function frontendAssetsMiddleware(
+        request,
+        response,
+        next,
+    ) {
+        next();
+    };
+}
+
 describe('resolvePort', () => {
     test('usa a porta 3000 quando PORT não foi informada', () => {
         const port = resolvePort(undefined);
@@ -243,6 +261,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        frontendAssetsMiddlewareFactory:
+                            createTestFrontendAssetsMiddleware,
                         database,
                         appFactory,
                         adminBootstrapperFactory,
@@ -306,6 +326,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        frontendAssetsMiddlewareFactory:
+                            createTestFrontendAssetsMiddleware,
                         database,
                         appFactory,
                         adminBootstrapperFactory: null,
@@ -357,6 +379,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        frontendAssetsMiddlewareFactory:
+                            createTestFrontendAssetsMiddleware,
                         database,
                         appFactory,
                         adminBootstrapperFactory,
@@ -427,6 +451,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        frontendAssetsMiddlewareFactory:
+                            createTestFrontendAssetsMiddleware,
                         database,
                         appFactory,
                         adminBootstrapperFactory,
@@ -500,6 +526,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        frontendAssetsMiddlewareFactory:
+                            createTestFrontendAssetsMiddleware,
                         database,
                         sessionStoreFactory: null,
                         logger,
@@ -544,6 +572,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        frontendAssetsMiddlewareFactory:
+                            createTestFrontendAssetsMiddleware,
                         database,
                         sessionMiddlewareFactory: null,
                         logger,
@@ -641,6 +671,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        frontendAssetsMiddlewareFactory:
+                            createTestFrontendAssetsMiddleware,
                         database,
                         appFactory,
                         adminBootstrapperFactory,
@@ -770,6 +802,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        frontendAssetsMiddlewareFactory:
+                            createTestFrontendAssetsMiddleware,
                         database,
                         appFactory,
                         adminBootstrapperFactory,
@@ -955,6 +989,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        frontendAssetsMiddlewareFactory:
+                            createTestFrontendAssetsMiddleware,
                         database,
                         appFactory,
                         adminBootstrapperFactory,
@@ -1023,6 +1059,8 @@ describe('startServer', () => {
 
                     await assert.rejects(
                         startServer({
+                            frontendAssetsMiddlewareFactory:
+                                createTestFrontendAssetsMiddleware,
                             database,
                             adminBootstrapperFactory,
                             logger,

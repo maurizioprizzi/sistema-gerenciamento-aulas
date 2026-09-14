@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 13 de setembro de 2026.
+> Última atualização desta documentação: 14 de setembro de 2026.
 
 ## Estado atual
 
@@ -22,8 +22,10 @@ cabeçalhos HTTP de segurança configurados conforme o ambiente.
 
 O frontend está disponível em um workspace independente em `client/`. Ele
 utiliza React e Vite, apresenta uma interface responsiva e exibe a data local
-em português. O formulário administrativo já consome a API real, restaura a
+em português. O formulário administrativo consome a API real, restaura a
 sessão depois de uma atualização da página e permite encerrá-la com segurança.
+A compilação de produção é validada e servida pelo próprio Express sob a mesma
+origem da API.
 
 O administrador é preparado depois da conexão com o banco e antes da abertura
 da porta HTTP. O processo é idempotente: uma conta existente é preservada e
@@ -100,6 +102,10 @@ servidor e invalida o cookie no navegador.
 - data local apresentada em português com marcação semântica;
 - proxy de desenvolvimento para os caminhos da API;
 - compilação e preview locais da versão de produção;
+- compilação automática do frontend antes de `npm start`;
+- arquivos de produção servidos pelo Express na mesma origem da API;
+- fallback visual restrito a rotas compatíveis com a interface;
+- separação entre rotas da API, arquivos estáticos e caminhos visuais;
 - testes de componentes com Vitest, jsdom e Testing Library;
 - serviço isolado para consumir a API de autenticação no navegador;
 - formulário administrativo acessível com estados de envio e erro;
@@ -113,7 +119,6 @@ servidor e invalida o cookie no navegador.
 
 ### Ainda não implementado
 
-- disponibilização do frontend compilado pelo Express;
 - cadastro de aulas e atividades;
 - cadastro de unidades curriculares;
 - armazenamento de materiais;
@@ -356,18 +361,27 @@ Para encerrar o servidor, pressione `Ctrl+C`.
 npm start
 ```
 
-A aplicação valida o ambiente e estabelece a conexão com o MongoDB antes de
-abrir a porta HTTP.
+O npm executa automaticamente `npm run build` antes da inicialização. A
+compilação React é gerada em `client/dist` e validada antes de qualquer
+conexão com o MongoDB.
 
-Se a configuração, o banco, a conta administrativa ou a infraestrutura de
-sessões falhar, o servidor não será disponibilizado.
+Depois das preparações obrigatórias, o Express disponibiliza a interface e a
+API na mesma origem:
+
+```text
+http://localhost:3000
+```
+
+Se a compilação, a configuração, o banco, a conta administrativa ou a
+infraestrutura de sessões falhar, o servidor não será disponibilizado.
 
 ## Scripts disponíveis
 
 | Comando | Finalidade |
 | --- | --- |
-| `npm start` | Inicia a aplicação sem monitoramento |
-| `npm run dev` | Inicia com reinicialização automática |
+| `npm start` | Compila o frontend e inicia a aplicação sem monitoramento |
+| `npm run build` | Compila o frontend para ser servido pelo Express |
+| `npm run dev` | Inicia o backend com reinicialização automática |
 | `npm test` | Executa os testes do backend |
 | `npm run check` | Verifica a sintaxe da entrada do servidor |
 | `npm --prefix client run dev` | Inicia o frontend com atualização automática |
@@ -387,8 +401,8 @@ npm --prefix client test
 No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-385 testes
-57 suítes
+411 testes
+61 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -437,6 +451,11 @@ Os testes verificam, entre outros comportamentos:
 - mensagens públicas seguras para recusas e falhas inesperadas;
 - restauração da sessão válida e retorno ao formulário para visitantes;
 - encerramento confirmado e preservação do acesso quando o logout falha;
+- validação da compilação e do arquivo `index.html`;
+- entrega HTTP do HTML, CSS e JavaScript compilados;
+- fallback visual sem interceptar API, arquivos ou métodos incompatíveis;
+- integração dos arquivos do frontend ao ciclo de abertura do servidor;
+- rejeição de fábricas e middlewares de frontend inválidos antes do banco;
 - criação do middleware real do Helmet;
 - execução da segurança antes da sessão e das rotas;
 - integração da segurança ao ciclo de abertura do servidor;
@@ -476,6 +495,12 @@ incorretas foram recusadas, a conta configurada no `.env` entrou normalmente,
 a sessão permaneceu ativa depois de recarregar a página e o botão de saída
 removeu o acesso. Uma nova atualização depois do logout manteve o formulário,
 confirmando que a sessão também havia sido encerrada no servidor.
+
+A compilação de produção também foi servida diretamente pelo Express na porta
+`3000`. A raiz entregou o HTML com os cabeçalhos de segurança, os arquivos CSS
+e JavaScript retornaram `200`, uma rota visual recebeu o fallback da interface
+e caminhos desconhecidos da API e de arquivos permaneceram respostas JSON
+`404`. Login, restauração da sessão e logout funcionaram na mesma origem.
 
 Os cabeçalhos foram verificados em uma requisição real a `/api/health`. A
 resposta `200` apresentou CSP, políticas de isolamento, referência, conteúdo
@@ -539,6 +564,7 @@ dionisio/
 │   │   ├── administrativeAuthorization.js
 │   │   ├── authenticationRateLimiter.js
 │   │   ├── errorHandler.js
+│   │   ├── frontendAssets.js
 │   │   └── securityHeaders.js
 │   ├── models/
 │   │   └── User.js
@@ -568,6 +594,8 @@ dionisio/
 │   ├── database.test.js
 │   ├── env.test.js
 │   ├── errorHandler.test.js
+│   ├── frontendAssets.test.js
+│   ├── frontendAssetsServerIntegration.test.js
 │   ├── securityHeaders.test.js
 │   ├── securityHeadersServerIntegration.test.js
 │   ├── server.test.js
@@ -627,14 +655,14 @@ ambiente jsdom utilizado pelos testes de componentes.
 ### `src/app.js`
 
 Configura o Express, instala os cabeçalhos de segurança antes da sessão,
-monta as rotas de autenticação sob `/api/auth` e mantém o tratamento de erros
-por último.
+monta as rotas de autenticação sob `/api/auth`, disponibiliza o frontend
+depois da API e mantém o tratamento de erros por último.
 
 ### `src/server.js`
 
-Compõe cabeçalhos de segurança, banco, administrador, sessões, autenticação
-e Express. A porta HTTP somente é aberta depois que todas as dependências
-obrigatórias estão prontas.
+Compõe cabeçalhos de segurança, arquivos compilados do frontend, banco,
+administrador, sessões, autenticação e Express. A porta HTTP somente é aberta
+depois que todas as dependências obrigatórias estão prontas.
 
 ### `src/config/env.js`
 
@@ -674,6 +702,13 @@ modernos e encaminha bloqueios ao tratamento central de erros.
 
 Converte erros conhecidos em respostas JSON seguras e oculta detalhes de
 falhas inesperadas.
+
+### `src/middlewares/frontendAssets.js`
+
+Valida a compilação do React, entrega arquivos estáticos e fornece o
+`index.html` somente para requisições compatíveis com rotas visuais. Caminhos
+da API, arquivos inexistentes e métodos diferentes de `GET` e `HEAD` seguem
+para o tratamento normal do Express.
 
 ### `src/middlewares/securityHeaders.js`
 
@@ -865,6 +900,9 @@ JSON malformado retorna `400` com o código `INVALID_JSON`. Corpos acima de
 - consulta da sessão sem exposição de nome, e-mail, senha ou hash;
 - credenciais mantidas somente no estado interno do formulário;
 - comunicação do frontend restrita aos contratos públicos da API;
+- arquivos compilados servidos na mesma origem da API;
+- fallback visual impedido de ocultar rotas desconhecidas da API;
+- validação da compilação antes da abertura de recursos externos;
 - mensagens técnicas e causas de rede ocultadas da interface;
 - acesso visual removido somente depois da confirmação do logout;
 - limpeza do banco após falhas de inicialização;
@@ -889,12 +927,12 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. disponibilizar o frontend compilado pelo Express;
+1. reconstruir a estrutura inicial da área autenticada conforme o HTML original;
 2. criar os modelos do calendário;
 3. implementar as APIs de aulas, atividades e materiais;
-4. proteger as APIs administrativas com o middleware concluído;
-5. migrar com segurança os dados do protótipo;
-6. reconstruir a área autenticada conforme o HTML original;
+4. proteger as novas APIs administrativas com o middleware concluído;
+5. integrar a interface original às APIs implementadas;
+6. migrar com segurança os dados do protótipo;
 7. realizar testes completos de integração e interface;
 8. preparar os guias técnico e didático;
 9. publicar e validar a aplicação em computador e celular.

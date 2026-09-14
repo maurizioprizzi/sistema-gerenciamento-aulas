@@ -1696,3 +1696,97 @@ servidor.
 
 Disponibilizar pelo Express a compilação de produção do frontend e preparar a
 estrutura inicial da área autenticada conforme o HTML original.
+
+## 14 de setembro de 2026 — Frontend de produção servido pelo Express
+
+### Objetivo
+
+Disponibilizar a compilação React pelo próprio servidor Express, mantendo
+interface e API na mesma origem e preservando o escopo funcional definido
+no HTML original do Prof. Dionísio.
+
+### Middleware dos arquivos do frontend
+
+Foi criado o `frontendAssets.js`, responsável por validar o diretório
+absoluto da compilação e confirmar que `index.html` existe como arquivo
+antes da abertura dos recursos externos da aplicação.
+
+O middleware entrega HTML, CSS e JavaScript compilados. O fallback da
+interface aceita somente requisições `GET` e `HEAD` compatíveis com HTML,
+sem interceptar caminhos iniciados por `/api`, arquivos inexistentes ou
+requisições destinadas exclusivamente a JSON.
+
+Dessa forma, uma rota visual pode receber o `index.html`, enquanto rotas
+desconhecidas da API e arquivos ausentes continuam chegando ao tratamento
+padronizado de erros do Express.
+
+### Integração ao ciclo do servidor
+
+O `createApp` passou a receber o middleware do frontend por injeção de
+dependência. Ele é instalado depois das rotas da API e do diagnóstico, mas
+antes dos middlewares de rota inexistente e tratamento final de erros.
+
+O ponto de composição resolve `client/dist` a partir da localização de
+`src/server.js`, cria o middleware antes de conectar o MongoDB e entrega o
+resultado validado ao Express.
+
+O projeto principal também recebeu o script `npm run build`. O ciclo
+`prestart` executa essa compilação automaticamente antes de `npm start`,
+evitando que o servidor utilize uma versão ausente ou desatualizada do
+frontend.
+
+### Testes automatizados
+
+Os testes isolados validam diretórios, sistemas de arquivos, `index.html`,
+implementações Express, roteadores, middlewares estáticos e a ordem de
+instalação.
+
+Os cenários HTTP confirmam a entrega da raiz, de um arquivo estático real,
+de rotas visuais e de requisições `HEAD`. Também comprovam que API, JSON,
+arquivos inexistentes e métodos diferentes dos permitidos não recebem o
+fallback visual.
+
+A integração ao `createApp` verifica a ordem entre segurança, sessão, API
+e frontend. O ciclo do servidor rejeita fábricas e resultados inválidos
+antes da conexão com o MongoDB.
+
+O backend passou de 327 para 353 testes, distribuídos em 57 suítes. Os 58
+testes do frontend permaneceram aprovados em quatro arquivos.
+
+### Validação real
+
+A aplicação foi iniciada com `npm start`. O `prestart` compilou 19 módulos
+do frontend e somente depois abriu o Express e a conexão com o MongoDB.
+
+Na porta `3000`, a raiz retornou HTML com os cabeçalhos de segurança, os
+arquivos CSS e JavaScript retornaram `200` e uma rota visual recebeu o
+`index.html`. Uma rota desconhecida da API e um arquivo inexistente
+permaneceram respostas JSON `404`.
+
+No navegador, login, restauração da sessão depois de `F5` e logout
+funcionaram utilizando a mesma origem. Uma atualização posterior ao logout
+manteve o formulário administrativo, confirmando o encerramento da sessão.
+
+O processo foi encerrado por `SIGINT`, com fechamento seguro da conexão
+MongoDB.
+
+### Verificação
+
+- 353 testes do backend aprovados em 57 suítes;
+- 58 testes do frontend aprovados em quatro arquivos;
+- 411 testes aprovados em 61 suítes no total;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- sintaxe validada;
+- compilação de produção concluída com 19 módulos;
+- HTML, CSS, JavaScript, fallback visual e API confirmados na porta 3000;
+- login, restauração da sessão e logout confirmados na mesma origem;
+- inicialização e encerramento seguros;
+- contrato original do Prof. Dionísio preservado sem funcionalidades extras.
+
+### Próximo marco
+
+Reconstruir a estrutura inicial da área autenticada conforme o HTML original,
+sem acrescentar funcionalidades que não tenham sido solicitadas pelo Prof.
+Dionísio.

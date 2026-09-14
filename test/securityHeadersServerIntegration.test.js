@@ -7,6 +7,7 @@ const {
 } = require('node:test');
 
 const {
+    FRONTEND_BUILD_DIRECTORY,
     SERVER_ERROR_MESSAGES,
     startServer,
 } = require('../src/server');
@@ -131,6 +132,11 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
                         response,
                         next,
                     ) => next();
+                    const frontendAssetsMiddleware = (
+                        request,
+                        response,
+                        next,
+                    ) => next();
                     const sessionMiddleware = (
                         request,
                         response,
@@ -174,6 +180,19 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
                         return securityHeadersMiddleware;
                     }
 
+                    function frontendAssetsMiddlewareFactory(
+                        options,
+                    ) {
+                        order.push('frontend.assets.factory');
+
+                        assert.deepEqual(options, {
+                            directory:
+                                FRONTEND_BUILD_DIRECTORY,
+                        });
+
+                        return frontendAssetsMiddleware;
+                    }
+
                     function adminBootstrapperFactory() {
                         order.push('admin.factory');
                         return {
@@ -214,6 +233,10 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
                             securityHeadersMiddleware,
                         );
                         assert.strictEqual(
+                            options.frontendAssetsMiddleware,
+                            frontendAssetsMiddleware,
+                        );
+                        assert.strictEqual(
                             options.sessionMiddleware,
                             sessionMiddleware,
                         );
@@ -239,6 +262,7 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
                             sessionMiddlewareFactory,
                             authenticationRouterFactory,
                             securityHeadersMiddlewareFactory,
+                            frontendAssetsMiddlewareFactory,
                             logger,
                         }),
                         expectedError,
@@ -246,6 +270,7 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
 
                     assert.deepEqual(order, [
                         'security.headers.factory',
+                        'frontend.assets.factory',
                         'database.connect',
                         'admin.factory',
                         'admin.ensure',

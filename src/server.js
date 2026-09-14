@@ -1,6 +1,7 @@
 'use strict';
 
 const http = require('node:http');
+const path = require('node:path');
 const dotenv = require('dotenv');
 
 const { createApp } = require('./app');
@@ -19,6 +20,9 @@ const {
     createAuthenticationRateLimiter,
 } = require('./middlewares/authenticationRateLimiter');
 const {
+    createFrontendAssetsMiddleware,
+} = require('./middlewares/frontendAssets');
+const {
     createSecurityHeadersMiddleware,
 } = require('./middlewares/securityHeaders');
 const {
@@ -36,6 +40,19 @@ const {
 const {
     SessionManager,
 } = require('./services/SessionManager');
+
+/**
+ * Caminho absoluto da compilação produzida pelo Vite.
+ *
+ * A resolução utiliza __dirname para não depender do diretório em que o
+ * comando de inicialização foi executado.
+ */
+const FRONTEND_BUILD_DIRECTORY = path.resolve(
+    __dirname,
+    '..',
+    'client',
+    'dist',
+);
 
 /**
  * Mensagens estáveis relacionadas ao ponto de composição.
@@ -57,6 +74,10 @@ const SERVER_ERROR_MESSAGES = Object.freeze({
         'A fábrica dos cabeçalhos de segurança deve ser uma função.',
     INVALID_SECURITY_HEADERS_MIDDLEWARE:
         'A fábrica de segurança deve retornar um middleware válido.',
+    INVALID_FRONTEND_ASSETS_MIDDLEWARE_FACTORY:
+        'A fábrica dos arquivos do frontend deve ser uma função.',
+    INVALID_FRONTEND_ASSETS_MIDDLEWARE:
+        'A fábrica do frontend deve retornar um middleware válido.',
 });
 
 /**
@@ -202,8 +223,9 @@ function createAdministrativeAuthenticationRouter({
 /**
  * Carrega a configuração e inicia todos os componentes da aplicação.
  *
- * A ordem é intencional: ambiente, MongoDB, administrador, armazenamento de
- * sessões, middleware, autenticação, Express e servidor HTTP.
+ * A ordem é intencional: ambiente, segurança, frontend, MongoDB,
+ * administrador, armazenamento de sessões, middleware, autenticação,
+ * Express e servidor HTTP.
  *
  * @param {object} options Dependências de inicialização.
  * @param {object} [options.database=databaseConnection] Banco de dados.
@@ -218,6 +240,8 @@ function createAdministrativeAuthenticationRouter({
  * Fábrica da composição de autenticação.
  * @param {Function} [options.securityHeadersMiddlewareFactory]
  * Fábrica dos cabeçalhos HTTP de segurança.
+ * @param {Function} [options.frontendAssetsMiddlewareFactory]
+ * Fábrica dos arquivos compilados do frontend.
  * @param {object} [options.logger=console] Logger operacional.
  * @returns {Promise<import('node:http').Server>} Servidor iniciado.
  */
@@ -231,6 +255,8 @@ async function startServer({
         createAdministrativeAuthenticationRouter,
     securityHeadersMiddlewareFactory =
         createSecurityHeadersMiddleware,
+    frontendAssetsMiddlewareFactory =
+        createFrontendAssetsMiddleware,
     logger = console,
 } = {}) {
     dotenv.config({ quiet: true });
@@ -271,8 +297,15 @@ async function startServer({
         );
     }
 
+    if (typeof frontendAssetsMiddlewareFactory !== 'function') {
+        throw new TypeError(
+            SERVER_ERROR_MESSAGES
+                .INVALID_FRONTEND_ASSETS_MIDDLEWARE_FACTORY,
+        );
+    }
+
     /**
-     * Esta fábrica não abre recursos externos. Sua execução antecipada
+     * Estas fábricas não abrem recursos externos. Sua execução antecipada
      * permite rejeitar uma configuração inválida antes de conectar o banco.
      */
     const securityHeadersMiddleware =
@@ -284,6 +317,18 @@ async function startServer({
         throw new TypeError(
             SERVER_ERROR_MESSAGES
                 .INVALID_SECURITY_HEADERS_MIDDLEWARE,
+        );
+    }
+
+    const frontendAssetsMiddleware =
+        frontendAssetsMiddlewareFactory({
+            directory: FRONTEND_BUILD_DIRECTORY,
+        });
+
+    if (typeof frontendAssetsMiddleware !== 'function') {
+        throw new TypeError(
+            SERVER_ERROR_MESSAGES
+                .INVALID_FRONTEND_ASSETS_MIDDLEWARE,
         );
     }
 
@@ -360,6 +405,7 @@ async function startServer({
             securityHeadersMiddleware,
             sessionMiddleware,
             authenticationRouter,
+            frontendAssetsMiddleware,
         });
 
         if (environment.TRUST_PROXY) {
@@ -444,6 +490,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+    FRONTEND_BUILD_DIRECTORY,
     SERVER_ERROR_MESSAGES,
     createAdminBootstrapper,
     createAdministrativeAuthenticationRouter,

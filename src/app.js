@@ -17,6 +17,8 @@ const APP_ERROR_MESSAGES = Object.freeze({
         'A aplicação exige um middleware de sessão válido quando ele é informado.',
     INVALID_AUTHENTICATION_ROUTER:
         'A aplicação exige um roteador de autenticação válido quando ele é informado.',
+    INVALID_FRONTEND_ASSETS_MIDDLEWARE:
+        'A aplicação exige um middleware de frontend válido quando ele é informado.',
 });
 
 /**
@@ -31,7 +33,8 @@ const APP_ERROR_MESSAGES = Object.freeze({
  * - o MongoClient;
  * - o connect-mongo;
  * - as regras de autenticação;
- * - o serviço de proteção de senhas.
+ * - o serviço de proteção de senhas;
+ * - o caminho físico da compilação do frontend.
  *
  * Essa separação mantém a infraestrutura e as regras de negócio fora da
  * camada responsável por organizar os middlewares e as rotas.
@@ -45,6 +48,8 @@ const APP_ERROR_MESSAGES = Object.freeze({
  * Middleware de sessão previamente configurado.
  * @param {Function | null} [options.authenticationRouter=null]
  * Roteador responsável pela entrada e saída administrativas.
+ * @param {Function | null} [options.frontendAssetsMiddleware=null]
+ * Middleware responsável pela compilação do frontend.
  *
  * @returns {import('express').Express} Aplicação Express configurada.
  */
@@ -53,6 +58,7 @@ function createApp({
     securityHeadersMiddleware = null,
     sessionMiddleware = null,
     authenticationRouter = null,
+    frontendAssetsMiddleware = null,
 } = {}) {
     if (
         securityHeadersMiddleware !== null
@@ -79,6 +85,16 @@ function createApp({
     ) {
         throw new TypeError(
             APP_ERROR_MESSAGES.INVALID_AUTHENTICATION_ROUTER,
+        );
+    }
+
+    if (
+        frontendAssetsMiddleware !== null
+        && typeof frontendAssetsMiddleware !== 'function'
+    ) {
+        throw new TypeError(
+            APP_ERROR_MESSAGES
+                .INVALID_FRONTEND_ASSETS_MIDDLEWARE,
         );
     }
 
@@ -147,6 +163,17 @@ function createApp({
             timestamp: new Date().toISOString(),
         });
     });
+
+    /**
+     * O frontend é instalado somente depois de todas as rotas da API.
+     *
+     * O middleware recebido também preserva caminhos desconhecidos sob
+     * `/api`, permitindo que eles cheguem ao tratamento JSON de rota ausente.
+     * Arquivos reais e navegações visuais são atendidos antes do 404.
+     */
+    if (frontendAssetsMiddleware) {
+        app.use(frontendAssetsMiddleware);
+    }
 
     /**
      * Este middleware deve permanecer depois de todas as rotas válidas.

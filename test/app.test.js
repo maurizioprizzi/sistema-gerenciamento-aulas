@@ -116,6 +116,126 @@ describe('configuração dos cabeçalhos de segurança no app', () => {
     );
 });
 
+describe('configuração dos arquivos do frontend no app', () => {
+    test('permite criar a aplicação sem middleware de frontend', () => {
+        assert.doesNotThrow(() => createApp());
+    });
+
+    test('rejeita um middleware de frontend inválido', () => {
+        const invalidMiddlewares = [
+            'middleware',
+            42,
+            {},
+            []
+        ];
+
+        for (const frontendAssetsMiddleware of invalidMiddlewares) {
+            assert.throws(
+                () => createApp({ frontendAssetsMiddleware }),
+                {
+                    name: 'TypeError',
+                    message:
+                        APP_ERROR_MESSAGES
+                            .INVALID_FRONTEND_ASSETS_MIDDLEWARE
+                }
+            );
+        }
+    });
+
+    test(
+        'executa o frontend depois da segurança, sessão e API',
+        async () => {
+            const order = [];
+
+            function securityHeadersMiddleware(
+                request,
+                response,
+                next
+            ) {
+                order.push('security');
+                next();
+            }
+
+            function sessionMiddleware(
+                request,
+                response,
+                next
+            ) {
+                order.push('session');
+                next();
+            }
+
+            function authenticationRouter(
+                request,
+                response,
+                next
+            ) {
+                order.push('authentication');
+                next();
+            }
+
+            function frontendAssetsMiddleware(
+                request,
+                response
+            ) {
+                order.push('frontend');
+
+                response.status(200).json({
+                    order
+                });
+            }
+
+            const app = createApp({
+                securityHeadersMiddleware,
+                sessionMiddleware,
+                authenticationRouter,
+                frontendAssetsMiddleware
+            });
+
+            const temporaryServer = http.createServer(app);
+
+            await new Promise((resolve, reject) => {
+                temporaryServer.once('error', reject);
+                temporaryServer.listen(
+                    0,
+                    '127.0.0.1',
+                    resolve
+                );
+            });
+
+            try {
+                const address = temporaryServer.address();
+
+                const response = await fetch(
+                    `http://127.0.0.1:${address.port}/api/auth/test`
+                );
+
+                const body = await response.json();
+
+                assert.equal(response.status, 200);
+                assert.deepEqual(body.order, [
+                    'security',
+                    'session',
+                    'authentication',
+                    'frontend'
+                ]);
+                assert.deepEqual(order, body.order);
+            } finally {
+                await new Promise((resolve, reject) => {
+                    temporaryServer.close((error) => {
+                        if (error) {
+                            reject(error);
+                            return;
+                        }
+
+                        resolve();
+                    });
+                });
+            }
+        }
+    );
+});
+
 describe('configuração do middleware de sessão', () => {
     test('permite criar a aplicação sem middleware de sessão', () => {
         assert.doesNotThrow(() => createApp());

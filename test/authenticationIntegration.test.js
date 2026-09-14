@@ -12,6 +12,7 @@ const {
     createApp,
 } = require('../src/app');
 const {
+    FRONTEND_BUILD_DIRECTORY,
     SERVER_ERROR_MESSAGES,
     createAdministrativeAuthenticationRouter,
     startServer,
@@ -88,6 +89,21 @@ async function listenTemporarily(app, callback) {
             });
         });
     }
+}
+
+/**
+ * Cria um middleware neutro para cenários que não testam o frontend.
+ *
+ * @returns {Function} Middleware Express controlado.
+ */
+function createTestFrontendAssetsMiddleware() {
+    return function frontendAssetsMiddleware(
+        request,
+        response,
+        next,
+    ) {
+        next();
+    };
 }
 
 describe('integração das rotas de autenticação no Express', () => {
@@ -247,6 +263,8 @@ describe('integração da autenticação no ciclo de abertura', () => {
                 startServer({
                     database,
                     authenticationRouterFactory: {},
+                    frontendAssetsMiddlewareFactory:
+                        createTestFrontendAssetsMiddleware,
                 }),
                 {
                     name: 'TypeError',
@@ -280,6 +298,11 @@ describe('integração da autenticação no ciclo de abertura', () => {
                 const sessionMiddleware = (request, response, next) =>
                     next();
                 const authenticationRouter = (
+                    request,
+                    response,
+                    next,
+                ) => next();
+                const frontendAssetsMiddleware = (
                     request,
                     response,
                     next,
@@ -326,6 +349,19 @@ describe('integração da autenticação no ciclo de abertura', () => {
                     return authenticationRouter;
                 }
 
+                function frontendAssetsMiddlewareFactory(
+                    options,
+                ) {
+                    order.push('frontend.factory');
+
+                    assert.deepEqual(options, {
+                        directory:
+                            FRONTEND_BUILD_DIRECTORY,
+                    });
+
+                    return frontendAssetsMiddleware;
+                }
+
                 function appFactory(options) {
                     order.push('app.factory');
                     assert.strictEqual(
@@ -335,6 +371,10 @@ describe('integração da autenticação no ciclo de abertura', () => {
                     assert.strictEqual(
                         options.authenticationRouter,
                         authenticationRouter,
+                    );
+                    assert.strictEqual(
+                        options.frontendAssetsMiddleware,
+                        frontendAssetsMiddleware,
                     );
                     throw expectedError;
                 }
@@ -353,12 +393,14 @@ describe('integração da autenticação no ciclo de abertura', () => {
                         sessionStoreFactory,
                         sessionMiddlewareFactory,
                         authenticationRouterFactory,
+                        frontendAssetsMiddlewareFactory,
                         logger,
                     }),
                     expectedError,
                 );
 
                 assert.deepEqual(order, [
+                    'frontend.factory',
                     'database.connect',
                     'admin.factory',
                     'admin.ensure',
