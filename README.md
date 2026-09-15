@@ -14,8 +14,8 @@ por computadores e celulares.
 
 A fundação técnica do backend está concluída. O projeto já possui servidor
 HTTP, conexão com MongoDB, validação de ambiente, tratamento centralizado de
-erros, modelo administrativo, proteção de senhas, inicialização controlada da
-primeira conta, sessões persistentes, autenticação administrativa integrada à
+erros, modelos do usuário e do calendário, proteção de senhas,
+inicialização controlada da primeira conta, sessões persistentes, autenticação administrativa integrada à
 API HTTP, limitação de tentativas repetidas, registro controlado do último
 acesso válido, autorização administrativa, consulta protegida da sessão e
 cabeçalhos HTTP de segurança configurados conforme o ambiente.
@@ -44,6 +44,11 @@ hash protegido, compara a senha com bcrypt, regenera a sessão e persiste apenas
 o identificador e o papel do administrador. O logout destrói a sessão no
 servidor e invalida o cookie no navegador.
 
+Os registros do calendário possuem modelos Mongoose próprios para aulas e
+materiais mensais. Atividade e avaliação permanecem tipos de aula, conforme o
+protótipo original. Esses modelos definem e validam os dados persistentes, mas
+ainda não estão expostos por API nem utilizados pelos formulários da interface.
+
 ### Funcionalidades concluídas
 
 - servidor Node.js com Express;
@@ -61,6 +66,13 @@ servidor e invalida o cookie no navegador.
 - validação e normalização das configurações com Zod;
 - proteção do arquivo `.env` contra inclusão no Git;
 - modelo Mongoose para o usuário administrativo;
+- modelo Mongoose para aulas, atividades e avaliações do calendário;
+- modelo Mongoose para os materiais aplicáveis a um mês inteiro;
+- cursos e tipos limitados aos valores existentes no protótipo original;
+- datas civis preservadas sem conversão dependente de fuso horário;
+- links de materiais limitados a HTTP e HTTPS sem credenciais incorporadas;
+- índice de consulta das aulas por data e curso;
+- um único conjunto determinístico de materiais para cada mês;
 - normalização e índice único para o e-mail;
 - ocultação do hash da senha em consultas e serializações;
 - hashing assíncrono de senhas com bcrypt;
@@ -410,8 +422,8 @@ npm --prefix client test
 No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-431 testes
-63 suítes
+483 testes
+75 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -422,6 +434,11 @@ Os testes verificam, entre outros comportamentos:
 - ambiente, porta e ciclo de vida do servidor;
 - conexão, cliente nativo e encerramento do MongoDB;
 - modelo administrativo e índice único do e-mail;
+- contratos dos registros de aula, atividade e avaliação;
+- validação de cursos, tipos, datas civis e campos opcionais das aulas;
+- contrato mensal dos materiais e unicidade de cada período;
+- normalização e validação segura dos links de PA e GD+AD;
+- fábricas isoladas dos modelos sem conexão externa;
 - proteção e comparação de senhas com bcrypt;
 - medição independente do limite bcrypt em bytes UTF-8;
 - inicialização idempotente do administrador;
@@ -591,6 +608,8 @@ dionisio/
 │   │   ├── frontendAssets.js
 │   │   └── securityHeaders.js
 │   ├── models/
+│   │   ├── Lesson.js
+│   │   ├── MonthlyMaterial.js
 │   │   └── User.js
 │   ├── routes/
 │   │   └── authenticationRoutes.js
@@ -620,6 +639,8 @@ dionisio/
 │   ├── errorHandler.test.js
 │   ├── frontendAssets.test.js
 │   ├── frontendAssetsServerIntegration.test.js
+│   ├── lesson.test.js
+│   ├── monthlyMaterial.test.js
 │   ├── securityHeaders.test.js
 │   ├── securityHeadersServerIntegration.test.js
 │   ├── server.test.js
@@ -752,6 +773,18 @@ para o tratamento normal do Express.
 
 Encapsula o Helmet e aplica políticas de segurança adequadas ao ambiente,
 mantendo HSTS e atualização forçada para HTTPS somente em produção.
+
+### `src/models/Lesson.js`
+
+Define os registros de aula, atividade e avaliação com os oito dados previstos
+no protótipo. Preserva a data civil como texto, limita cursos e tipos, valida
+links opcionais e mantém um índice de consulta por data e curso.
+
+### `src/models/MonthlyMaterial.js`
+
+Define os links de PA e GD+AD aplicáveis a um mês inteiro. Mantém o período no
+formato civil `YYYY-MM` e garante no banco apenas um conjunto de materiais
+para cada mês.
 
 ### `src/models/User.js`
 
@@ -965,14 +998,13 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. criar os modelos do calendário;
-2. implementar as APIs de aulas, atividades e materiais;
-3. proteger as novas APIs administrativas com o middleware concluído;
-4. integrar a interface original às APIs implementadas;
-5. migrar com segurança os dados do protótipo;
-6. realizar testes completos de integração e interface;
-7. preparar os guias técnico e didático;
-8. publicar e validar a aplicação em computador e celular.
+1. implementar as APIs de aulas, atividades e materiais;
+2. proteger as novas APIs administrativas com o middleware concluído;
+3. integrar a interface original às APIs implementadas;
+4. migrar com segurança os dados do protótipo;
+5. realizar testes completos de integração e interface;
+6. preparar os guias técnico e didático;
+7. publicar e validar a aplicação em computador e celular.
 
 ## Fluxo de atualização pelo Git
 

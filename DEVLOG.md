@@ -1882,3 +1882,90 @@ por `SIGINT`, com fechamento seguro da conexão MongoDB.
 
 Criar os modelos persistentes necessários ao calendário, definindo os dados e
 as regras de aulas, atividades e materiais antes de implementar suas APIs.
+
+## 15 de setembro de 2026 — Modelos persistentes do calendário
+
+### Objetivo
+
+Definir no Mongoose os dados e as regras persistentes presentes no protótipo
+original antes de criar APIs, formulários funcionais ou migração de conteúdo.
+
+### Análise do protótipo
+
+O armazenamento local original possui duas coleções: aulas e materiais
+mensais. Cada aula contém data, curso, UC, tipo, número, indicação de revisão e
+links específicos de PA e GD+AD. O material mensal contém somente mês e os dois
+links aplicáveis ao período inteiro.
+
+Atividade e avaliação foram mantidas como tipos do registro de aula, em vez de
+modelos separados. A UC também permanece um campo da aula. Dessa forma, a
+modelagem conserva a estrutura funcional existente sem criar entidades que o
+Prof. Dionísio não solicitou.
+
+### Modelo de aula
+
+Foi criado o `Lesson`, com fábricas independentes para schema e modelo. Os
+nomes internos `date`, `course`, `curricularUnit`, `type`,
+`lessonNumber`, `needsReview`, `lessonPlanUrl` e `studentGuideUrl`
+correspondem diretamente aos oito campos do protótipo.
+
+Os cursos APQSA, TECMKT e TECADM e os tipos Aula, Atividade e Avaliação foram
+reunidos em contratos imutáveis. A data é armazenada como texto `YYYY-MM-DD`
+e validada como dia civil existente, inclusive quanto a anos bissextos. Isso
+evita que uma conversão de fuso horário altere o dia apresentado.
+
+Textos são normalizados, campos opcionais utilizam `null` e os links aceitam
+somente HTTP ou HTTPS sem credenciais incorporadas. Um índice não exclusivo
+por data e curso atende às consultas esperadas sem impedir vários registros do
+mesmo curso no mesmo dia.
+
+### Modelo de material mensal
+
+Foi criado o `MonthlyMaterial`, limitado a `month`, `lessonPlanUrl` e
+`studentGuideUrl`. O mês permanece no formato civil `YYYY-MM`, e os links
+seguem a mesma política do modelo de aula.
+
+O protótipo procura apenas um material para o mês da aula. Para impedir uma
+escolha ambígua, o schema declara um índice único por período. Os dois links
+continuam opcionais, preservando o contrato do formulário original.
+
+### Isolamento e segurança
+
+As fábricas seguem o padrão estabelecido no modelo de usuário: validam a
+instância do Mongoose, reutilizam modelos registrados e permitem construir
+documentos inteiramente em memória. Importar ou testar os módulos não abre
+conexão com o MongoDB.
+
+Limites de tamanho impedem documentos descontrolados. Protocolos locais,
+executáveis ou de transferência de arquivos são recusados, assim como
+endereços que incluam usuário ou senha. Nenhum segredo ou dado administrativo
+foi acrescentado aos registros do calendário.
+
+### Testes automatizados
+
+O modelo de aula recebeu 31 testes em sete suítes. Eles cobrem contratos,
+normalização, datas civis, URLs, campos exatos, índice, timestamps, fábricas,
+valores padrão, cursos, tipos e limites.
+
+O material mensal recebeu 21 testes em cinco suítes. Eles validam o mês, a
+normalização, os três campos funcionais, a unicidade declarada, os links
+opcionais, as fábricas e os limites. Todos os testes utilizam instâncias
+isoladas e dispensam MongoDB externo.
+
+### Verificação
+
+- 405 testes do backend aprovados em 69 suítes;
+- 78 testes do frontend aprovados em seis arquivos;
+- 483 testes aprovados em 75 suítes no total;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- sintaxe dos dois modelos e dos dois testes validada;
+- compilação de produção concluída com 21 módulos;
+- nenhuma conexão externa exigida pelos novos testes;
+- contrato original preservado sem entidades ou funcionalidades adicionais.
+
+### Próximo marco
+
+Implementar progressivamente as APIs administrativas do calendário, começando
+pelas regras de aplicação e pelos contratos de criação e consulta das aulas.
