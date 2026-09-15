@@ -105,6 +105,21 @@ async function findLoginForm() {
 }
 
 /**
+ * Aguarda a navegação que identifica a área autenticada do calendário.
+ *
+ * O componente substituiu a antiga confirmação intermediária de acesso. A
+ * presença da navegação comprova que App entregou o fluxo ao workspace sem
+ * depender de classes CSS ou de detalhes internos do componente.
+ *
+ * @returns {Promise<HTMLElement>} Navegação principal do calendário.
+ */
+async function findCalendarWorkspace() {
+    return screen.findByRole('navigation', {
+        name: 'Seções do calendário',
+    });
+}
+
+/**
  * Preenche e envia o formulário administrativo.
  *
  * @param {ReturnType<typeof userEvent.setup>} user Usuário simulado.
@@ -276,13 +291,10 @@ describe('restauração da sessão administrativa', () => {
             <App authenticationService={authenticationService} />,
         );
 
-        expect(await screen.findByRole('heading', {
-            level: 2,
-            name: 'Acesso confirmado',
-        })).toBeTruthy();
-        expect(screen.getByRole('status').textContent).toBe(
-            'Sua sessão administrativa permanece ativa.',
-        );
+        expect(await findCalendarWorkspace()).toBeTruthy();
+        expect(
+            screen.getByText('Sessão administrativa ativa'),
+        ).toBeTruthy();
         expect(screen.queryByRole('form')).toBeNull();
         expect(authenticationService.getSession).toHaveBeenCalledTimes(1);
     });
@@ -353,13 +365,12 @@ describe('entrada administrativa pela aplicação', () => {
         });
         expect(Object.isFrozen(credentials)).toBe(true);
 
-        expect(await screen.findByRole('heading', {
-            level: 2,
-            name: 'Acesso confirmado',
-        })).toBeTruthy();
-        expect(screen.getByRole('status').textContent).toContain(
-            authenticatedUser.name,
-        );
+        expect(await findCalendarWorkspace()).toBeTruthy();
+        expect(
+            screen.getByText(
+                'Sessão de ' + authenticatedUser.name,
+            ),
+        ).toBeTruthy();
         expect(screen.queryByRole('form')).toBeNull();
     });
 
@@ -397,10 +408,7 @@ describe('entrada administrativa pela aplicação', () => {
             await pendingLogin;
         });
 
-        expect(await screen.findByRole('heading', {
-            level: 2,
-            name: 'Acesso confirmado',
-        })).toBeTruthy();
+        expect(await findCalendarWorkspace()).toBeTruthy();
     });
 
     test('apresenta a mensagem pública de uma recusa conhecida', async () => {
@@ -519,10 +527,7 @@ describe('encerramento da sessão pela aplicação', () => {
         });
 
         expect(pendingButton.disabled).toBe(true);
-        expect(screen.getByRole('heading', {
-            level: 2,
-            name: 'Acesso confirmado',
-        })).toBeTruthy();
+        expect(await findCalendarWorkspace()).toBeTruthy();
 
         await act(async () => {
             resolveLogout();
@@ -560,10 +565,7 @@ describe('encerramento da sessão pela aplicação', () => {
         expect((await screen.findByRole('alert')).textContent).toBe(
             publicMessage,
         );
-        expect(screen.getByRole('heading', {
-            level: 2,
-            name: 'Acesso confirmado',
-        })).toBeTruthy();
+        expect(await findCalendarWorkspace()).toBeTruthy();
         expect(
             screen.getByRole('button', { name: 'Sair' }).disabled,
         ).toBe(false);
@@ -598,9 +600,6 @@ describe('encerramento da sessão pela aplicação', () => {
         expect(document.body.textContent).not.toContain(
             technicalMessage,
         );
-        expect(screen.getByRole('heading', {
-            level: 2,
-            name: 'Acesso confirmado',
-        })).toBeTruthy();
+        expect(await findCalendarWorkspace()).toBeTruthy();
     });
 });

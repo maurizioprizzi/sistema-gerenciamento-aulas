@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 14 de setembro de 2026.
+> Última atualização desta documentação: 15 de setembro de 2026.
 
 ## Estado atual
 
@@ -24,6 +24,10 @@ O frontend está disponível em um workspace independente em `client/`. Ele
 utiliza React e Vite, apresenta uma interface responsiva e exibe a data local
 em português. O formulário administrativo consome a API real, restaura a
 sessão depois de uma atualização da página e permite encerrá-la com segurança.
+Depois da autenticação, a interface apresenta a estrutura inicial da área do
+calendário com painel geral, navegação entre as quatro seções originais e
+estados vazios coerentes com a ausência atual de aulas persistidas.
+
 A compilação de produção é validada e servida pelo próprio Express sob a mesma
 origem da API.
 
@@ -112,6 +116,11 @@ servidor e invalida o cookie no navegador.
 - login real integrado ao backend sem armazenar credenciais em App;
 - restauração da sessão administrativa depois de recarregar a página;
 - encerramento da sessão com confirmação do backend antes de remover o acesso;
+- área autenticada separada da tela de entrada;
+- navegação acessível entre painel, aulas, materiais e calendário visual;
+- painel geral inicial com contagem e estados vazios do protótipo original;
+- preservação da sessão e dos erros públicos dentro da área autenticada;
+- apresentação responsiva da área do calendário em computador e celular;
 - bloqueio do servidor HTTP quando a inicialização falha;
 - validações reais com MongoDB local;
 - testes HTTP, unitários e de integração controlada;
@@ -401,8 +410,8 @@ npm --prefix client test
 No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-411 testes
-61 suítes
+431 testes
+63 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -451,6 +460,11 @@ Os testes verificam, entre outros comportamentos:
 - mensagens públicas seguras para recusas e falhas inesperadas;
 - restauração da sessão válida e retorno ao formulário para visitantes;
 - encerramento confirmado e preservação do acesso quando o logout falha;
+- contrato das quatro seções originais da área autenticada;
+- indicação acessível da seção atualmente selecionada;
+- painel inicial sem dados inventados ou operações ainda indisponíveis;
+- integração do workspace ao ciclo de login, restauração e logout;
+- validação de propriedades e estados públicos dos novos componentes;
 - validação da compilação e do arquivo `index.html`;
 - entrega HTTP do HTML, CSS e JavaScript compilados;
 - fallback visual sem interceptar API, arquivos ou métodos incompatíveis;
@@ -496,6 +510,11 @@ a sessão permaneceu ativa depois de recarregar a página e o botão de saída
 removeu o acesso. Uma nova atualização depois do logout manteve o formulário,
 confirmando que a sessão também havia sido encerrada no servidor.
 
+A área autenticada também foi validada no navegador. O painel geral apresentou
+a contagem inicial igual a zero e os estados vazios esperados. As quatro seções
+puderam ser selecionadas, a sessão foi restaurada depois de atualizar a página,
+o layout respondeu à redução da janela e a saída retornou ao formulário.
+
 A compilação de produção também foi servida diretamente pelo Express na porta
 `3000`. A raiz entregou o HTML com os cabeçalhos de segurança, os arquivos CSS
 e JavaScript retornaram `200`, uma rota visual recebeu o fallback da interface
@@ -535,11 +554,16 @@ dionisio/
 │   │   │   ├── App.jsx
 │   │   │   └── App.test.jsx
 │   │   ├── components/
-│   │   │   └── authentication/
-│   │   │       ├── LoginForm.jsx
-│   │   │       ├── LoginForm.test.jsx
-│   │   │       ├── LogoutButton.jsx
-│   │   │       └── LogoutButton.test.jsx
+│   │   │   ├── authentication/
+│   │   │   │   ├── LoginForm.jsx
+│   │   │   │   ├── LoginForm.test.jsx
+│   │   │   │   ├── LogoutButton.jsx
+│   │   │   │   └── LogoutButton.test.jsx
+│   │   │   └── calendar/
+│   │   │       ├── CalendarNavigation.jsx
+│   │   │       ├── CalendarNavigation.test.jsx
+│   │   │       ├── CalendarWorkspace.jsx
+│   │   │       └── CalendarWorkspace.test.jsx
 │   │   ├── services/
 │   │   │   ├── AuthenticationApi.js
 │   │   │   └── AuthenticationApi.test.js
@@ -620,8 +644,9 @@ dependências, testes, comandos de desenvolvimento e compilação.
 ### `client/src/app/App.jsx`
 
 Coordena a apresentação da data local, a verificação inicial da sessão, o
-login e o logout. O componente alterna entre os estados de verificação,
-formulário e acesso confirmado sem armazenar as credenciais recebidas.
+login e o logout. O componente mantém a tela de entrada para visitantes e
+entrega a apresentação autenticada ao workspace do calendário sem armazenar
+as credenciais recebidas.
 
 ### `client/src/components/authentication/LoginForm.jsx`
 
@@ -632,6 +657,18 @@ apresenta estados de processamento e mensagens públicas de forma acessível.
 
 Representa a solicitação de saída e impede novos cliques enquanto o
 encerramento da sessão está em andamento.
+
+### `client/src/components/calendar/CalendarNavigation.jsx`
+
+Mantém o contrato das quatro seções previstas no HTML original, identifica de
+forma acessível a seleção atual e comunica mudanças sem carregar ou alterar
+dados do calendário.
+
+### `client/src/components/calendar/CalendarWorkspace.jsx`
+
+Compõe o cabeçalho autenticado, a saída, a navegação e o conteúdo da seção
+ativa. O painel geral representa somente a coleção vazia atual, enquanto as
+demais seções mantêm seus títulos até a implementação dos dados reais.
 
 ### `client/src/services/AuthenticationApi.js`
 
@@ -644,8 +681,9 @@ interações sem depender de um navegador aberto ou de um backend externo.
 
 ### `client/src/styles/global.css`
 
-Define a base visual responsiva, as cores, o foco visível e a adaptação para
-telas menores sem recursos externos.
+Define a base visual responsiva, as cores, o foco visível e a adaptação das
+telas de entrada e da área autenticada para diferentes dimensões, sem recursos
+externos.
 
 ### `client/vite.config.js`
 
@@ -927,15 +965,14 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. reconstruir a estrutura inicial da área autenticada conforme o HTML original;
-2. criar os modelos do calendário;
-3. implementar as APIs de aulas, atividades e materiais;
-4. proteger as novas APIs administrativas com o middleware concluído;
-5. integrar a interface original às APIs implementadas;
-6. migrar com segurança os dados do protótipo;
-7. realizar testes completos de integração e interface;
-8. preparar os guias técnico e didático;
-9. publicar e validar a aplicação em computador e celular.
+1. criar os modelos do calendário;
+2. implementar as APIs de aulas, atividades e materiais;
+3. proteger as novas APIs administrativas com o middleware concluído;
+4. integrar a interface original às APIs implementadas;
+5. migrar com segurança os dados do protótipo;
+6. realizar testes completos de integração e interface;
+7. preparar os guias técnico e didático;
+8. publicar e validar a aplicação em computador e celular.
 
 ## Fluxo de atualização pelo Git
 

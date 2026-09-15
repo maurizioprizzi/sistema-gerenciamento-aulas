@@ -8,7 +8,7 @@ import {
     authenticationApi,
 } from '../services/AuthenticationApi.js';
 import { LoginForm } from '../components/authentication/LoginForm.jsx';
-import { LogoutButton } from '../components/authentication/LogoutButton.jsx';
+import { CalendarWorkspace } from '../components/calendar/CalendarWorkspace.jsx';
 
 const DATE_LOCALE = 'pt-BR';
 const AUTHENTICATION_REQUIRED_CODE = 'AUTHENTICATION_REQUIRED';
@@ -245,13 +245,25 @@ function App({
             ? authenticatedUser.name.trim()
             : '';
 
-    let authenticationTitle = 'Acesso ao calendário';
-
-    if (isCheckingSession) {
-        authenticationTitle = 'Verificando acesso';
-    } else if (authenticatedUser) {
-        authenticationTitle = 'Acesso confirmado';
+    /**
+     * Depois da autenticação, App deixa a apresentação do calendário sob a
+     * responsabilidade do componente específico. O serviço e o estado da
+     * sessão continuam coordenados nesta camada.
+     */
+    if (!isCheckingSession && authenticatedUser) {
+        return (
+            <CalendarWorkspace
+                administratorName={authenticatedUserName || null}
+                onLogout={handleLogout}
+                isLoggingOut={isLoggingOut}
+                logoutError={errorMessage}
+            />
+        );
     }
+
+    const authenticationTitle = isCheckingSession
+        ? 'Verificando acesso'
+        : 'Acesso ao calendário';
 
     return (
         <main className="app-shell">
@@ -311,33 +323,6 @@ function App({
                     >
                         {APP_MESSAGES.CHECKING_SESSION}
                     </p>
-                ) : authenticatedUser ? (
-                    <div className="authentication-session">
-                        <p
-                            className="authentication-success"
-                            role="status"
-                        >
-                            {authenticatedUserName
-                                ? 'Olá, '
-                                    + authenticatedUserName
-                                    + '. Sua entrada foi confirmada com segurança.'
-                                : 'Sua sessão administrativa permanece ativa.'}
-                        </p>
-
-                        {errorMessage && (
-                            <p
-                                className="login-form-error"
-                                role="alert"
-                            >
-                                {errorMessage}
-                            </p>
-                        )}
-
-                        <LogoutButton
-                            onLogout={handleLogout}
-                            isSubmitting={isLoggingOut}
-                        />
-                    </div>
                 ) : (
                     <>
                         <p className="authentication-description">

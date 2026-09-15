@@ -1790,3 +1790,95 @@ MongoDB.
 Reconstruir a estrutura inicial da área autenticada conforme o HTML original,
 sem acrescentar funcionalidades que não tenham sido solicitadas pelo Prof.
 Dionísio.
+
+## 15 de setembro de 2026 — Estrutura inicial da área autenticada
+
+### Objetivo
+
+Substituir a confirmação temporária apresentada depois do login pela estrutura
+inicial da área autenticada prevista no HTML original do Prof. Dionísio, sem
+simular dados ou disponibilizar operações que ainda não foram implementadas.
+
+### Navegação do calendário
+
+Foi criado o componente `CalendarNavigation`, que mantém um contrato estável
+para as quatro seções originais: Painel geral, Gerenciar aulas, Materiais e
+Calendário visual.
+
+A navegação utiliza botões nativos, identifica a seção atual com
+`aria-current` e comunica somente o identificador selecionado ao componente
+responsável pelo estado. Identificadores, definições e mensagens públicas foram
+protegidos contra alterações acidentais.
+
+### Área autenticada
+
+O componente `CalendarWorkspace` passou a compor o cabeçalho, a identificação
+da sessão, a saída, a navegação e o conteúdo da seção ativa. O painel geral
+apresenta o total inicial igual a zero e os textos `Nenhuma aula próxima` e
+`Nenhuma aula marcada para revisão`, preservando o estado vazio do protótipo.
+
+As demais seções apresentam somente seus títulos neste marco. Nenhum formulário,
+filtro, material, aula demonstrativa, armazenamento local ou chamada de API foi
+adicionado antes da implementação dos modelos e contratos reais.
+
+### Integração ao ciclo da interface
+
+O `App` continua responsável pela consulta da sessão, login e logout. Depois
+da autenticação, ele entrega a apresentação ao `CalendarWorkspace`, mantendo
+as credenciais fora do estado principal e preservando a confirmação do backend
+antes de remover visualmente o acesso.
+
+Os testes existentes do `App` foram atualizados para reconhecer a nova área
+pela navegação acessível, em lugar do título temporário `Acesso confirmado`.
+Também passaram a consultar diretamente os textos da sessão, evitando
+ambiguidade entre os elementos que possuem papel de estado.
+
+### Apresentação responsiva
+
+Os estilos globais receberam uma composição própria para cabeçalho, sessão,
+navegação, painel, cartões e estados vazios. As cores e variáveis existentes
+foram reutilizadas, assim como o foco visível e os estados de interação.
+
+Em larguras menores, o cabeçalho é empilhado, a saída ocupa a largura
+disponível, a navegação utiliza duas colunas e os cartões passam para uma única
+coluna. Uma duplicação do bloco CSS identificada durante a inspeção do diff foi
+removida antes da validação final.
+
+### Testes automatizados
+
+Foram adicionados sete testes para a navegação e treze testes para o workspace.
+Eles cobrem contratos imutáveis, propriedades inválidas, seleção ativa, troca
+entre seções, estrutura vazia do painel e estados de saída.
+
+Os dezesseis testes do `App` continuaram cobrindo verificação inicial, login,
+restauração, falhas públicas e logout depois da atualização das expectativas.
+O frontend passou de 58 para 78 testes, distribuídos em seis arquivos.
+
+### Validação real
+
+A aplicação foi iniciada com `npm start` e o MongoDB local. Depois do login, o
+painel geral apresentou a contagem e os estados vazios previstos. As quatro
+seções responderam à navegação, a sessão permaneceu ativa depois de atualizar a
+página e o layout se adaptou à redução da janela.
+
+O logout retornou ao formulário normalmente. O processo também foi encerrado
+por `SIGINT`, com fechamento seguro da conexão MongoDB.
+
+### Verificação
+
+- 353 testes do backend aprovados em 57 suítes;
+- 78 testes do frontend aprovados em seis arquivos;
+- 431 testes aprovados em 63 suítes no total;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- compilação de produção concluída com 21 módulos;
+- integração de login, restauração e logout preservada;
+- navegação e layout responsivo confirmados no navegador;
+- duplicação de estilos removida e diff validado;
+- contrato original do Prof. Dionísio preservado sem funcionalidades extras.
+
+### Próximo marco
+
+Criar os modelos persistentes necessários ao calendário, definindo os dados e
+as regras de aulas, atividades e materiais antes de implementar suas APIs.
