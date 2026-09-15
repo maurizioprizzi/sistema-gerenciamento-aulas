@@ -116,6 +116,125 @@ describe('configuração dos cabeçalhos de segurança no app', () => {
     );
 });
 
+describe('configuração das rotas de aulas no app', () => {
+    test('permite criar a aplicação sem roteador de aulas', () => {
+        assert.doesNotThrow(() => createApp());
+    });
+
+    test('rejeita um roteador de aulas inválido', () => {
+        const invalidRouters = [
+            'roteador',
+            42,
+            {},
+            []
+        ];
+
+        for (const lessonRouter of invalidRouters) {
+            assert.throws(
+                () => createApp({ lessonRouter }),
+                {
+                    name: 'TypeError',
+                    message:
+                        APP_ERROR_MESSAGES.INVALID_LESSON_ROUTER
+                }
+            );
+        }
+    });
+
+    test(
+        'executa as aulas depois da segurança e da sessão, antes do frontend',
+        async () => {
+            const order = [];
+
+            function securityHeadersMiddleware(
+                request,
+                response,
+                next
+            ) {
+                order.push('security');
+                next();
+            }
+
+            function sessionMiddleware(
+                request,
+                response,
+                next
+            ) {
+                order.push('session');
+                next();
+            }
+
+            function lessonRouter(
+                request,
+                response,
+                next
+            ) {
+                order.push('lessons');
+                next();
+            }
+
+            function frontendAssetsMiddleware(
+                request,
+                response
+            ) {
+                order.push('frontend');
+
+                response.status(200).json({
+                    order
+                });
+            }
+
+            const app = createApp({
+                securityHeadersMiddleware,
+                sessionMiddleware,
+                lessonRouter,
+                frontendAssetsMiddleware
+            });
+
+            const temporaryServer = http.createServer(app);
+
+            await new Promise((resolve, reject) => {
+                temporaryServer.once('error', reject);
+                temporaryServer.listen(
+                    0,
+                    '127.0.0.1',
+                    resolve
+                );
+            });
+
+            try {
+                const address = temporaryServer.address();
+                const response = await fetch(
+                    'http://127.0.0.1:'
+                        + address.port
+                        + '/api/lessons/test'
+                );
+                const body = await response.json();
+
+                assert.equal(response.status, 200);
+                assert.deepEqual(body.order, [
+                    'security',
+                    'session',
+                    'lessons',
+                    'frontend'
+                ]);
+                assert.deepEqual(order, body.order);
+            } finally {
+                await new Promise((resolve, reject) => {
+                    temporaryServer.close((error) => {
+                        if (error) {
+                            reject(error);
+                            return;
+                        }
+
+                        resolve();
+                    });
+                });
+            }
+        }
+    );
+});
+
 describe('configuração dos arquivos do frontend no app', () => {
     test('permite criar a aplicação sem middleware de frontend', () => {
         assert.doesNotThrow(() => createApp());

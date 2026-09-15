@@ -8,6 +8,7 @@ const {
 
 const {
     createAdminBootstrapper,
+    createAdministrativeLessonRouter,
     resolvePort,
     startServer,
 } = require('../src/server');
@@ -200,6 +201,16 @@ describe('createAdminBootstrapper', () => {
                     'O custo do hash deve ser um número inteiro entre 10 e 15.',
             },
         );
+    });
+});
+
+describe('createAdministrativeLessonRouter', () => {
+    test('compõe um roteador válido sem abrir conexão com o banco', () => {
+        const router = createAdministrativeLessonRouter();
+
+        assert.equal(typeof router, 'function');
+        assert.equal(typeof router.get, 'function');
+        assert.equal(typeof router.post, 'function');
     });
 });
 
@@ -592,6 +603,159 @@ describe('startServer', () => {
     );
 
     test(
+        'rejeita uma fábrica de aulas inválida antes de conectar',
+        async () => {
+            await withTestEnvironment(async () => {
+                const calls = {
+                    connect: 0,
+                    disconnect: 0,
+                };
+
+                const database = {
+                    async connect() {
+                        calls.connect += 1;
+                    },
+
+                    async disconnect() {
+                        calls.disconnect += 1;
+                    },
+                };
+
+                const { logger } = createFakeLogger();
+
+                await assert.rejects(
+                    startServer({
+                        frontendAssetsMiddlewareFactory:
+                            createTestFrontendAssetsMiddleware,
+                        database,
+                        lessonRouterFactory: null,
+                        logger,
+                    }),
+                    {
+                        name: 'TypeError',
+                        message:
+                            'A fábrica do roteador de aulas deve ser uma função.',
+                    },
+                );
+
+                assert.equal(calls.connect, 0);
+                assert.equal(calls.disconnect, 0);
+            });
+        },
+    );
+
+    test(
+        'desconecta o banco quando a fábrica retorna aulas inválidas',
+        async () => {
+            await withTestEnvironment(async () => {
+                const nativeClient = {
+                    db() {
+                        return {};
+                    },
+                };
+
+                const sessionStore = {
+                    on() {
+                        return this;
+                    },
+
+                    get() {},
+                    set() {},
+                    destroy() {},
+                };
+
+                const calls = {
+                    connect: 0,
+                    disconnect: 0,
+                    lessonRouterFactory: 0,
+                    appFactory: 0,
+                };
+
+                const database = {
+                    async connect() {
+                        calls.connect += 1;
+                    },
+
+                    getNativeClient() {
+                        return nativeClient;
+                    },
+
+                    async disconnect() {
+                        calls.disconnect += 1;
+                    },
+                };
+
+                function adminBootstrapperFactory() {
+                    return {
+                        async ensureAdmin() {},
+                    };
+                }
+
+                function sessionStoreFactory() {
+                    return sessionStore;
+                }
+
+                function sessionMiddlewareFactory() {
+                    return function sessionMiddleware(
+                        request,
+                        response,
+                        next
+                    ) {
+                        next();
+                    };
+                }
+
+                function authenticationRouterFactory() {
+                    return function authenticationRouter(
+                        request,
+                        response,
+                        next
+                    ) {
+                        next();
+                    };
+                }
+
+                function lessonRouterFactory() {
+                    calls.lessonRouterFactory += 1;
+
+                    return {};
+                }
+
+                function appFactory() {
+                    calls.appFactory += 1;
+                }
+
+                const { logger } = createFakeLogger();
+
+                await assert.rejects(
+                    startServer({
+                        frontendAssetsMiddlewareFactory:
+                            createTestFrontendAssetsMiddleware,
+                        database,
+                        appFactory,
+                        adminBootstrapperFactory,
+                        sessionStoreFactory,
+                        sessionMiddlewareFactory,
+                        authenticationRouterFactory,
+                        lessonRouterFactory,
+                        logger,
+                    }),
+                    {
+                        name: 'TypeError',
+                        message:
+                            'A fábrica de aulas deve retornar um roteador válido.',
+                    },
+                );
+
+                assert.equal(calls.connect, 1);
+                assert.equal(calls.disconnect, 1);
+                assert.equal(calls.lessonRouterFactory, 1);
+                assert.equal(calls.appFactory, 0);
+            });
+        },
+    );
+
+    test(
         'desconecta o banco quando o armazenamento de sessões falha',
         async () => {
             await withTestEnvironment(async () => {
@@ -895,6 +1059,18 @@ describe('startServer', () => {
                     next
                 ) => next();
 
+                const authenticationRouter = (
+                    request,
+                    response,
+                    next
+                ) => next();
+
+                const lessonRouter = (
+                    request,
+                    response,
+                    next
+                ) => next();
+
                 const database = {
                     async connect() {
                         order.push('database.connect');
@@ -961,12 +1137,38 @@ describe('startServer', () => {
                     return sessionMiddleware;
                 }
 
+                function authenticationRouterFactory(options) {
+                    order.push('authentication.router.factory');
+
+                    assert.equal(
+                        options.passwordHashRounds,
+                        13,
+                    );
+                    assert.equal(options.isProduction, false);
+
+                    return authenticationRouter;
+                }
+
+                function lessonRouterFactory() {
+                    order.push('lesson.router.factory');
+
+                    return lessonRouter;
+                }
+
                 function appFactory(options) {
                     order.push('app.factory');
 
                     assert.strictEqual(
                         options.sessionMiddleware,
                         sessionMiddleware,
+                    );
+                    assert.strictEqual(
+                        options.authenticationRouter,
+                        authenticationRouter,
+                    );
+                    assert.strictEqual(
+                        options.lessonRouter,
+                        lessonRouter,
                     );
 
                     /**
@@ -996,6 +1198,8 @@ describe('startServer', () => {
                         adminBootstrapperFactory,
                         sessionStoreFactory,
                         sessionMiddlewareFactory,
+                        authenticationRouterFactory,
+                        lessonRouterFactory,
                         logger,
                     }),
                     (error) => {
@@ -1013,6 +1217,8 @@ describe('startServer', () => {
                     'session.store.factory',
                     'session.store.on:error',
                     'session.middleware.factory',
+                    'authentication.router.factory',
+                    'lesson.router.factory',
                     'app.factory',
                     'database.disconnect',
                 ]);

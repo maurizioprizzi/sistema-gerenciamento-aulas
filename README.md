@@ -46,8 +46,9 @@ servidor e invalida o cookie no navegador.
 
 Os registros do calendário possuem modelos Mongoose próprios para aulas e
 materiais mensais. Atividade e avaliação permanecem tipos de aula, conforme o
-protótipo original. Esses modelos definem e validam os dados persistentes, mas
-ainda não estão expostos por API nem utilizados pelos formulários da interface.
+protótipo original. As aulas já podem ser criadas e consultadas por uma API
+administrativa protegida. Os materiais mensais ainda não estão expostos por
+API, e a interface ainda não consome os dados persistidos do calendário.
 
 ### Funcionalidades concluídas
 
@@ -68,6 +69,13 @@ ainda não estão expostos por API nem utilizados pelos formulários da interfac
 - modelo Mongoose para o usuário administrativo;
 - modelo Mongoose para aulas, atividades e avaliações do calendário;
 - modelo Mongoose para os materiais aplicáveis a um mês inteiro;
+- serviço isolado para criação e consulta de aulas;
+- seleção estrutural dos oito campos permitidos durante a criação;
+- filtros de aulas por curso, mês e data mínima;
+- ordenação determinística das aulas por data e identificador;
+- controlador HTTP com representações públicas defensivas;
+- rotas protegidas `GET /api/lessons` e `POST /api/lessons`;
+- composição da API de aulas no ciclo real do servidor;
 - cursos e tipos limitados aos valores existentes no protótipo original;
 - datas civis preservadas sem conversão dependente de fuso horário;
 - links de materiais limitados a HTTP e HTTPS sem credenciais incorporadas;
@@ -140,9 +148,9 @@ ainda não estão expostos por API nem utilizados pelos formulários da interfac
 
 ### Ainda não implementado
 
-- cadastro de aulas e atividades;
-- cadastro de unidades curriculares;
-- armazenamento de materiais;
+- formulário visual para cadastrar aulas, atividades e avaliações;
+- integração do frontend com a consulta e os filtros das aulas;
+- API e formulário para armazenamento dos materiais mensais;
 - migração dos dados do protótipo;
 - acesso externo à aplicação;
 - implantação em ambiente de produção.
@@ -422,8 +430,8 @@ npm --prefix client test
 No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-483 testes
-75 suítes
+559 testes
+90 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -439,6 +447,17 @@ Os testes verificam, entre outros comportamentos:
 - contrato mensal dos materiais e unicidade de cada período;
 - normalização e validação segura dos links de PA e GD+AD;
 - fábricas isoladas dos modelos sem conexão externa;
+- contrato estrutural dos dados aceitos pela criação de aulas;
+- filtros combinados por curso, mês e data mínima;
+- preservação do intervalo interno validado diante do sanitizador do Mongoose;
+- ordenação determinística da consulta de aulas;
+- representações públicas sem campos internos do Mongoose;
+- respostas HTTP `200` e `201` para consulta e criação;
+- proteção administrativa das duas operações de aulas;
+- respostas `400` para dados e filtros inválidos;
+- integração HTTP das aulas sem dependência de MongoDB externo;
+- interrupção antes do modelo para respostas `401` e `403`;
+- ocultação de falhas inesperadas da persistência;
 - proteção e comparação de senhas com bcrypt;
 - medição independente do limite bcrypt em bytes UTF-8;
 - inicialização idempotente do administrador;
@@ -498,6 +517,12 @@ Os testes verificam, entre outros comportamentos:
 
 Os testes automatizados utilizam dependências controladas sempre que possível
 e não exigem um MongoDB externo.
+
+A API administrativa de aulas também foi validada com MongoDB local em um banco
+isolado. Uma criação autorizada retornou `201`, e a consulta combinando curso,
+mês e data mínima retornou `200` com o mesmo registro e sem campos internos. O
+banco temporário foi removido ao final, sem alterar os dados normais da
+aplicação.
 
 Além da suíte automatizada, o fluxo HTTP completo foi validado manualmente com
 MongoDB local. O login real retornou `200`, emitiu um cookie e criou uma única
@@ -598,7 +623,8 @@ dionisio/
 │   │   ├── env.js
 │   │   └── session.js
 │   ├── controllers/
-│   │   └── AuthenticationController.js
+│   │   ├── AuthenticationController.js
+│   │   └── LessonController.js
 │   ├── errors/
 │   │   └── AppError.js
 │   ├── middlewares/
@@ -612,10 +638,12 @@ dionisio/
 │   │   ├── MonthlyMaterial.js
 │   │   └── User.js
 │   ├── routes/
-│   │   └── authenticationRoutes.js
+│   │   ├── authenticationRoutes.js
+│   │   └── lessonRoutes.js
 │   ├── services/
 │   │   ├── AdminBootstrapper.js
 │   │   ├── AuthenticationService.js
+│   │   ├── LessonService.js
 │   │   ├── PasswordHasher.js
 │   │   └── SessionManager.js
 │   ├── app.js
@@ -625,6 +653,8 @@ dionisio/
 │   ├── AppError.test.js
 │   ├── AuthenticationController.test.js
 │   ├── AuthenticationService.test.js
+│   ├── LessonController.test.js
+│   ├── LessonService.test.js
 │   ├── PasswordHasher.test.js
 │   ├── SessionManager.test.js
 │   ├── administrativeAuthorization.test.js
@@ -640,6 +670,8 @@ dionisio/
 │   ├── frontendAssets.test.js
 │   ├── frontendAssetsServerIntegration.test.js
 │   ├── lesson.test.js
+│   ├── lessonIntegration.test.js
+│   ├── lessonRoutes.test.js
 │   ├── monthlyMaterial.test.js
 │   ├── securityHeaders.test.js
 │   ├── securityHeadersServerIntegration.test.js
@@ -714,14 +746,15 @@ ambiente jsdom utilizado pelos testes de componentes.
 ### `src/app.js`
 
 Configura o Express, instala os cabeçalhos de segurança antes da sessão,
-monta as rotas de autenticação sob `/api/auth`, disponibiliza o frontend
-depois da API e mantém o tratamento de erros por último.
+monta as rotas de autenticação sob `/api/auth` e as rotas de aulas sob
+`/api/lessons`, disponibiliza o frontend depois da API e mantém o
+tratamento de erros por último.
 
 ### `src/server.js`
 
 Compõe cabeçalhos de segurança, arquivos compilados do frontend, banco,
-administrador, sessões, autenticação e Express. A porta HTTP somente é aberta
-depois que todas as dependências obrigatórias estão prontas.
+administrador, sessões, autenticação, API de aulas e Express. A porta HTTP
+somente é aberta depois que todas as dependências obrigatórias estão prontas.
 
 ### `src/config/env.js`
 
@@ -742,6 +775,11 @@ e os atributos de cookie apropriados ao ambiente.
 
 Coordena as operações HTTP de login, consulta da sessão e logout, limita as
 respostas aos campos autorizados e garante a limpeza coerente do cookie.
+
+### `src/controllers/LessonController.js`
+
+Traduz criação e consulta de aulas para os contratos HTTP, seleciona novamente
+os campos públicos e encaminha falhas ao tratamento centralizado.
 
 ### `src/errors/AppError.js`
 
@@ -795,6 +833,12 @@ Define o usuário administrativo e protege o hash contra exposição acidental.
 Registra as rotas `POST /login`, `GET /session` e `POST /logout`,
 posteriormente montadas pelo app sob o prefixo `/api/auth`.
 
+### `src/routes/lessonRoutes.js`
+
+Registra consulta e criação na raiz da coleção e executa a autorização
+administrativa antes dos dois handlers. O app aplica o prefixo
+`/api/lessons`.
+
 ### `src/services/AdminBootstrapper.js`
 
 Garante a existência da conta administrativa sem substituir uma conta já
@@ -804,6 +848,13 @@ cadastrada e trata conflitos de criação simultânea.
 
 Normaliza credenciais, recupera explicitamente o hash, compara senhas e devolve
 somente uma identidade pública mínima e imutável.
+
+### `src/services/LessonService.js`
+
+Mantém somente os campos permitidos na criação, prepara filtros por curso, mês
+e data mínima, preserva seletores internos validados diante do sanitizador do
+Mongoose, aplica ordenação determinística e converte documentos em
+representações públicas imutáveis.
 
 ### `src/services/PasswordHasher.js`
 
@@ -923,6 +974,60 @@ Uma requisição sem sessão válida retorna `401 AUTHENTICATION_REQUIRED`. Uma
 sessão válida sem papel administrativo retorna
 `403 ADMINISTRATIVE_ACCESS_REQUIRED`.
 
+### Aulas administrativas
+
+As duas operações exigem uma sessão com papel administrativo.
+
+```http
+GET /api/lessons
+```
+
+A consulta aceita somente os filtros opcionais abaixo:
+
+| Parâmetro | Formato | Finalidade |
+| --- | --- | --- |
+| `course` | `APQSA`, `TECMKT` ou `TECADM` | Limita a consulta ao curso |
+| `month` | `YYYY-MM` | Limita a consulta ao mês civil |
+| `fromDate` | `YYYY-MM-DD` | Define a menor data incluída |
+
+Os filtros podem ser combinados. O resultado utiliza data crescente e o
+identificador como desempate determinístico:
+
+```json
+{
+  "data": {
+    "lessons": []
+  }
+}
+```
+
+Para criar uma aula:
+
+```http
+POST /api/lessons
+Content-Type: application/json
+```
+
+O corpo aceita somente os oito campos funcionais do protótipo:
+
+```json
+{
+  "date": "2026-09-18",
+  "course": "APQSA",
+  "curricularUnit": "Qualidade de Software",
+  "type": "Aula",
+  "lessonNumber": "12",
+  "needsReview": false,
+  "lessonPlanUrl": null,
+  "studentGuideUrl": null
+}
+```
+
+Uma criação válida retorna `201` sob `data.lesson`. Identificadores e
+timestamps recebidos do cliente, assim como quaisquer campos desconhecidos,
+são recusados. Dados inválidos retornam `400 INVALID_LESSON_DATA`; filtros
+inválidos retornam `400 INVALID_LESSON_FILTERS`.
+
 ### Rota inexistente
 
 Uma rota desconhecida retorna `404` com o código `ROUTE_NOT_FOUND`.
@@ -977,6 +1082,11 @@ JSON malformado retorna `400` com o código `INVALID_JSON`. Corpos acima de
 - mensagens técnicas e causas de rede ocultadas da interface;
 - acesso visual removido somente depois da confirmação do logout;
 - limpeza do banco após falhas de inicialização;
+- autorização administrativa executada antes de consultar ou criar aulas;
+- lista explícita de campos aceitos durante a criação de aulas;
+- identificadores, timestamps e campos desconhecidos recusados na entrada;
+- seleção defensiva dos campos públicos nas respostas de aulas;
+- detalhes de validação e falhas do banco ocultados do cliente;
 - auditoria periódica das dependências.
 
 Essas medidas ainda não tornam a aplicação pronta para produção.
@@ -998,9 +1108,9 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. implementar as APIs de aulas, atividades e materiais;
-2. proteger as novas APIs administrativas com o middleware concluído;
-3. integrar a interface original às APIs implementadas;
+1. implementar a API administrativa dos materiais mensais;
+2. criar o serviço frontend para consumir a API de aulas;
+3. integrar formulário, filtros e calendário visual às APIs concluídas;
 4. migrar com segurança os dados do protótipo;
 5. realizar testes completos de integração e interface;
 6. preparar os guias técnico e didático;

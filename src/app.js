@@ -17,6 +17,8 @@ const APP_ERROR_MESSAGES = Object.freeze({
         'A aplicação exige um middleware de sessão válido quando ele é informado.',
     INVALID_AUTHENTICATION_ROUTER:
         'A aplicação exige um roteador de autenticação válido quando ele é informado.',
+    INVALID_LESSON_ROUTER:
+        'A aplicação exige um roteador de aulas válido quando ele é informado.',
     INVALID_FRONTEND_ASSETS_MIDDLEWARE:
         'A aplicação exige um middleware de frontend válido quando ele é informado.',
 });
@@ -33,6 +35,7 @@ const APP_ERROR_MESSAGES = Object.freeze({
  * - o MongoClient;
  * - o connect-mongo;
  * - as regras de autenticação;
+ * - as regras de persistência das aulas;
  * - o serviço de proteção de senhas;
  * - o caminho físico da compilação do frontend.
  *
@@ -48,6 +51,8 @@ const APP_ERROR_MESSAGES = Object.freeze({
  * Middleware de sessão previamente configurado.
  * @param {Function | null} [options.authenticationRouter=null]
  * Roteador responsável pela entrada e saída administrativas.
+ * @param {Function | null} [options.lessonRouter=null]
+ * Roteador responsável pelas operações administrativas de aulas.
  * @param {Function | null} [options.frontendAssetsMiddleware=null]
  * Middleware responsável pela compilação do frontend.
  *
@@ -58,6 +63,7 @@ function createApp({
     securityHeadersMiddleware = null,
     sessionMiddleware = null,
     authenticationRouter = null,
+    lessonRouter = null,
     frontendAssetsMiddleware = null,
 } = {}) {
     if (
@@ -85,6 +91,15 @@ function createApp({
     ) {
         throw new TypeError(
             APP_ERROR_MESSAGES.INVALID_AUTHENTICATION_ROUTER,
+        );
+    }
+
+    if (
+        lessonRouter !== null
+        && typeof lessonRouter !== 'function'
+    ) {
+        throw new TypeError(
+            APP_ERROR_MESSAGES.INVALID_LESSON_ROUTER,
         );
     }
 
@@ -123,7 +138,7 @@ function createApp({
      *
      * O limite evita que uma requisição excessivamente grande consuma
      * memória desnecessária. Neste projeto, 100 KB é mais do que suficiente
-     * para os futuros cadastros de aulas e materiais.
+     * para os cadastros de aulas e materiais previstos.
      */
     app.use(express.json({
         limit: '100kb',
@@ -131,7 +146,8 @@ function createApp({
 
     /**
      * O middleware de sessão deve ser instalado antes das rotas de
-     * autenticação, pois login e logout utilizam request.session.
+     * autenticação e de calendário. Login e logout utilizam request.session,
+     * enquanto as aulas dependem da identidade validada a partir dela.
      *
      * Ele permanece opcional para permitir testes isolados da fundação HTTP.
      * O ciclo real do servidor sempre fornece o middleware configurado.
@@ -141,7 +157,7 @@ function createApp({
     }
 
     /**
-     * As rotas administrativas ficam agrupadas sob um prefixo estável.
+     * As rotas administrativas de autenticação ficam sob um prefixo estável.
      *
      * Endereços resultantes:
      * - POST /api/auth/login;
@@ -150,6 +166,20 @@ function createApp({
      */
     if (authenticationRouter) {
         app.use('/api/auth', authenticationRouter);
+    }
+
+    /**
+     * As primeiras operações do calendário compartilham o prefixo de aulas.
+     *
+     * Endereços resultantes:
+     * - GET /api/lessons;
+     * - POST /api/lessons.
+     *
+     * A proteção administrativa pertence ao próprio roteador, mantendo sua
+     * aplicação obrigatória mesmo se ele for montado em outro contexto.
+     */
+    if (lessonRouter) {
+        app.use('/api/lessons', lessonRouter);
     }
 
     /**

@@ -15,6 +15,10 @@ const {
 const {
     AuthenticationController,
 } = require('./controllers/AuthenticationController');
+const {
+    LessonController,
+} = require('./controllers/LessonController');
+const { Lesson } = require('./models/Lesson');
 const { User } = require('./models/User');
 const {
     createAuthenticationRateLimiter,
@@ -29,11 +33,17 @@ const {
     createAuthenticationRouter,
 } = require('./routes/authenticationRoutes');
 const {
+    createLessonRouter,
+} = require('./routes/lessonRoutes');
+const {
     AdminBootstrapper,
 } = require('./services/AdminBootstrapper');
 const {
     AuthenticationService,
 } = require('./services/AuthenticationService');
+const {
+    LessonService,
+} = require('./services/LessonService');
 const {
     PasswordHasher,
 } = require('./services/PasswordHasher');
@@ -70,6 +80,10 @@ const SERVER_ERROR_MESSAGES = Object.freeze({
         'A fábrica do roteador de autenticação deve ser uma função.',
     INVALID_AUTHENTICATION_ROUTER:
         'A fábrica de autenticação deve retornar um roteador válido.',
+    INVALID_LESSON_ROUTER_FACTORY:
+        'A fábrica do roteador de aulas deve ser uma função.',
+    INVALID_LESSON_ROUTER:
+        'A fábrica de aulas deve retornar um roteador válido.',
     INVALID_SECURITY_HEADERS_MIDDLEWARE_FACTORY:
         'A fábrica dos cabeçalhos de segurança deve ser uma função.',
     INVALID_SECURITY_HEADERS_MIDDLEWARE:
@@ -221,11 +235,34 @@ function createAdministrativeAuthenticationRouter({
 }
 
 /**
+ * Compõe as regras e a camada HTTP inicial das aulas.
+ *
+ * A composição utiliza o modelo persistente real, mas sua construção não abre
+ * conexão com o MongoDB. Serviço, controlador e roteador permanecem separados
+ * e recebem suas dependências explicitamente.
+ *
+ * @returns {Function} Roteador Express administrativo de aulas.
+ */
+function createAdministrativeLessonRouter() {
+    const lessonService = new LessonService({
+        LessonModel: Lesson,
+    });
+
+    const controller = new LessonController({
+        lessonService,
+    });
+
+    return createLessonRouter({
+        controller,
+    });
+}
+
+/**
  * Carrega a configuração e inicia todos os componentes da aplicação.
  *
  * A ordem é intencional: ambiente, segurança, frontend, MongoDB,
  * administrador, armazenamento de sessões, middleware, autenticação,
- * Express e servidor HTTP.
+ * aulas, Express e servidor HTTP.
  *
  * @param {object} options Dependências de inicialização.
  * @param {object} [options.database=databaseConnection] Banco de dados.
@@ -238,6 +275,8 @@ function createAdministrativeAuthenticationRouter({
  * Fábrica do middleware de sessão.
  * @param {Function} [options.authenticationRouterFactory]
  * Fábrica da composição de autenticação.
+ * @param {Function} [options.lessonRouterFactory]
+ * Fábrica da composição administrativa das aulas.
  * @param {Function} [options.securityHeadersMiddlewareFactory]
  * Fábrica dos cabeçalhos HTTP de segurança.
  * @param {Function} [options.frontendAssetsMiddlewareFactory]
@@ -253,6 +292,7 @@ async function startServer({
     sessionMiddlewareFactory = createSessionMiddleware,
     authenticationRouterFactory =
         createAdministrativeAuthenticationRouter,
+    lessonRouterFactory = createAdministrativeLessonRouter,
     securityHeadersMiddlewareFactory =
         createSecurityHeadersMiddleware,
     frontendAssetsMiddlewareFactory =
@@ -287,6 +327,12 @@ async function startServer({
     if (typeof authenticationRouterFactory !== 'function') {
         throw new TypeError(
             SERVER_ERROR_MESSAGES.INVALID_AUTHENTICATION_ROUTER_FACTORY,
+        );
+    }
+
+    if (typeof lessonRouterFactory !== 'function') {
+        throw new TypeError(
+            SERVER_ERROR_MESSAGES.INVALID_LESSON_ROUTER_FACTORY,
         );
     }
 
@@ -400,11 +446,20 @@ async function startServer({
             );
         }
 
+        const lessonRouter = lessonRouterFactory();
+
+        if (typeof lessonRouter !== 'function') {
+            throw new TypeError(
+                SERVER_ERROR_MESSAGES.INVALID_LESSON_ROUTER,
+            );
+        }
+
         const app = appFactory({
             logger,
             securityHeadersMiddleware,
             sessionMiddleware,
             authenticationRouter,
+            lessonRouter,
             frontendAssetsMiddleware,
         });
 
@@ -494,6 +549,7 @@ module.exports = {
     SERVER_ERROR_MESSAGES,
     createAdminBootstrapper,
     createAdministrativeAuthenticationRouter,
+    createAdministrativeLessonRouter,
     resolvePort,
     startServer,
 };

@@ -1969,3 +1969,132 @@ isoladas e dispensam MongoDB externo.
 
 Implementar progressivamente as APIs administrativas do calendário, começando
 pelas regras de aplicação e pelos contratos de criação e consulta das aulas.
+
+## 15 de setembro de 2026 — API administrativa inicial de aulas
+
+### Objetivo
+
+Disponibilizar as primeiras operações persistentes do calendário por uma API
+HTTP protegida, começando pela criação e consulta de aulas, atividades e
+avaliações já representadas pelo modelo `Lesson`.
+
+### Serviço de aulas
+
+Foi criado o `LessonService`, que recebe o modelo por injeção e mantém a
+camada de aplicação independente de HTTP, sessão e conexão direta com o banco.
+
+A criação aceita somente `date`, `course`, `curricularUnit`, `type`,
+`lessonNumber`, `needsReview`, `lessonPlanUrl` e `studentGuideUrl`.
+Identificadores, timestamps e propriedades desconhecidas são recusados antes
+do acesso ao modelo. Erros de validação do Mongoose tornam-se uma resposta
+operacional segura, enquanto falhas reais continuam chegando ao tratamento
+centralizado.
+
+A consulta reconhece os filtros opcionais `course`, `month` e `fromDate`,
+preservando as datas como textos civis sem conversão de fuso horário. O mês é
+transformado em intervalo fechado e a data mínima posterior prevalece quando
+os dois limites são combinados. A ordenação crescente utiliza data e
+identificador para desempate determinístico.
+
+Documentos criados ou consultados são convertidos em representações públicas
+imutáveis. Campos internos do Mongoose, timestamps e propriedades adicionais
+não atravessam essa fronteira.
+
+### Controlador e roteador
+
+O `LessonController` coordena os envelopes HTTP e realiza uma segunda seleção
+defensiva dos campos públicos. Criações válidas retornam `201` sob
+`data.lesson`; consultas retornam `200` sob `data.lessons`. Os handlers
+são vinculados à instância e encaminham falhas ao middleware central.
+
+O `lessonRoutes.js` registra `GET /` e `POST /` na coleção. A autorização
+administrativa é executada antes de cada controlador, impedindo consultas e
+gravações quando a sessão está ausente ou não possui o papel exigido.
+
+### Integração à aplicação
+
+O `createApp` passou a validar e montar o roteador sob `/api/lessons`, depois
+da sessão e antes do frontend. A composição real em `server.js` constrói
+`LessonService`, `LessonController` e o roteador com o modelo persistente
+`Lesson`.
+
+A fábrica do roteador é injetável no ciclo de abertura. Configurações
+estruturalmente inválidas são recusadas antes da conexão; resultados inválidos
+produzidos depois da conexão provocam o encerramento controlado do banco.
+
+### Segurança e contratos
+
+As duas operações são administrativas e não aceitam acesso anônimo. A entrada
+possui listas explícitas de campos e filtros, e as respostas selecionam somente
+o identificador e os oito dados funcionais. Detalhes de validação do schema e
+mensagens de falhas inesperadas do banco não são enviados ao cliente.
+
+O escopo permanece igual ao protótipo: atividade e avaliação continuam tipos
+de aula, unidades curriculares continuam campos do registro e vários itens no
+mesmo dia permanecem permitidos. Nenhuma busca, paginação, exclusão, edição ou
+entidade adicional foi introduzida neste marco.
+
+### Testes automatizados
+
+O serviço recebeu 32 testes em seis suítes, cobrindo configuração, campos de
+criação, filtros, representações, validações, falhas, ordenação e a preservação
+dos intervalos internos diante do sanitizador do Mongoose. O controlador
+recebeu 20 testes em cinco suítes, e o roteador recebeu 11 testes de contratos,
+dependências e ordem da autorização.
+
+Três testes do `createApp` validam a montagem e a posição da API de aulas. O
+ciclo do servidor cobre a composição real, a validação antecipada da fábrica,
+a limpeza depois de um resultado inválido e a ordem em que as dependências são
+entregues ao Express.
+
+Uma suíte adicional com sete cenários HTTP percorre Express, parser JSON,
+sessão controlada, autorização real, roteador, controlador e serviço. Apenas o
+modelo é substituído para dispensar MongoDB externo. Ela confirma respostas
+`401`, `403`, `200`, `201`, `400` e `500`, além de demonstrar que
+requisições recusadas não alcançam a persistência e que erros internos não
+aparecem na resposta.
+
+### Compatibilidade com a sanitização do Mongoose
+
+A primeira validação com MongoDB real revelou que o `sanitizeFilter` global
+interpretava o intervalo interno de datas como um valor literal. Como o campo
+`date` é textual, isso produzia um `CastError` somente na consulta real,
+apesar de os testes com o modelo controlado estarem aprovados.
+
+O `LessonService` passou a marcar como confiável exclusivamente o seletor de
+intervalo que ele próprio constrói depois de validar `month` e `fromDate`.
+O sanitizador global permanece habilitado, e valores desconhecidos recebidos do
+cliente continuam recusados antes do modelo. Um teste de regressão executa o
+sanitizador real e confirma a preservação de `$gte` e `$lte` sem conversão
+para `$eq`.
+
+### Validação real
+
+A API foi exercitada pela cadeia HTTP completa com o MongoDB local e um banco
+isolado. O `POST /api/lessons` retornou `201`, e o
+`GET /api/lessons` combinando curso, mês e data mínima retornou `200` com o
+registro criado. A resposta não apresentou campos internos do Mongoose.
+
+O banco temporário continha exatamente um documento durante a conferência e foi
+removido no bloco de limpeza. Uma consulta posterior aos nomes dos bancos
+confirmou que ele não permaneceu no servidor.
+
+### Verificação
+
+- 481 testes do backend aprovados em 84 suítes;
+- 78 testes do frontend aprovados em seis arquivos;
+- 559 testes aprovados em 90 suítes no total;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- sintaxe e diff validados;
+- compilação de produção concluída com 21 módulos;
+- testes HTTP independentes de MongoDB externo;
+- criação e consulta filtrada confirmadas com MongoDB local;
+- banco isolado de validação removido ao final;
+- contrato original preservado sem funcionalidades adicionais.
+
+### Próximo marco
+
+Implementar a API administrativa dos materiais mensais antes de conectar os
+formulários e as visualizações do frontend aos dados persistidos.
