@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 15 de setembro de 2026.
+> Última atualização desta documentação: 16 de setembro de 2026.
 
 ## Estado atual
 
@@ -47,8 +47,9 @@ servidor e invalida o cookie no navegador.
 Os registros do calendário possuem modelos Mongoose próprios para aulas e
 materiais mensais. Atividade e avaliação permanecem tipos de aula, conforme o
 protótipo original. As aulas já podem ser criadas e consultadas por uma API
-administrativa protegida. Os materiais mensais ainda não estão expostos por
-API, e a interface ainda não consome os dados persistidos do calendário.
+administrativa protegida. Os materiais mensais também podem ser consultados e
+substituídos por mês pela API administrativa. A interface ainda não consome os
+dados persistidos do calendário.
 
 ### Funcionalidades concluídas
 
@@ -76,6 +77,12 @@ API, e a interface ainda não consome os dados persistidos do calendário.
 - controlador HTTP com representações públicas defensivas;
 - rotas protegidas `GET /api/lessons` e `POST /api/lessons`;
 - composição da API de aulas no ciclo real do servidor;
+- serviço isolado para consulta e substituição dos materiais mensais;
+- seleção explícita dos dois links aceitos nos materiais mensais;
+- substituição atômica e idempotente de um único recurso por mês;
+- controlador mensal com representações públicas defensivas;
+- rotas protegidas `GET` e `PUT /api/monthly-materials/:month`;
+- composição da API mensal no ciclo real do servidor;
 - cursos e tipos limitados aos valores existentes no protótipo original;
 - datas civis preservadas sem conversão dependente de fuso horário;
 - links de materiais limitados a HTTP e HTTPS sem credenciais incorporadas;
@@ -150,7 +157,7 @@ API, e a interface ainda não consome os dados persistidos do calendário.
 
 - formulário visual para cadastrar aulas, atividades e avaliações;
 - integração do frontend com a consulta e os filtros das aulas;
-- API e formulário para armazenamento dos materiais mensais;
+- formulário visual e integração frontend para os materiais mensais;
 - migração dos dados do protótipo;
 - acesso externo à aplicação;
 - implantação em ambiente de produção.
@@ -430,8 +437,8 @@ npm --prefix client test
 No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-559 testes
-90 suítes
+628 testes
+104 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -446,6 +453,12 @@ Os testes verificam, entre outros comportamentos:
 - validação de cursos, tipos, datas civis e campos opcionais das aulas;
 - contrato mensal dos materiais e unicidade de cada período;
 - normalização e validação segura dos links de PA e GD+AD;
+- contrato estrutural da consulta e substituição mensal;
+- conversão de campos mensais omitidos em remoções explícitas;
+- atualização atômica com validação e criação idempotente;
+- respostas HTTP `200` para consulta e gravação mensal;
+- proteção administrativa das duas operações mensais;
+- integração HTTP mensal sem dependência de MongoDB externo;
 - fábricas isoladas dos modelos sem conexão externa;
 - contrato estrutural dos dados aceitos pela criação de aulas;
 - filtros combinados por curso, mês e data mínima;
@@ -523,6 +536,13 @@ isolado. Uma criação autorizada retornou `201`, e a consulta combinando curso,
 mês e data mínima retornou `200` com o mesmo registro e sem campos internos. O
 banco temporário foi removido ao final, sem alterar os dados normais da
 aplicação.
+
+A API administrativa de materiais mensais também foi exercitada contra o
+MongoDB local. Dois `PUT` sucessivos confirmaram a criação e a substituição
+idempotente do mesmo período, e o `GET` recuperou o estado persistido. O campo
+omitido na segunda gravação foi normalizado para `null`, permaneceu exatamente
+um documento no banco e nenhum campo interno apareceu na resposta. O banco
+isolado também foi removido ao final.
 
 Além da suíte automatizada, o fluxo HTTP completo foi validado manualmente com
 MongoDB local. O login real retornou `200`, emitiu um cookie e criou uma única
@@ -624,7 +644,8 @@ dionisio/
 │   │   └── session.js
 │   ├── controllers/
 │   │   ├── AuthenticationController.js
-│   │   └── LessonController.js
+│   │   ├── LessonController.js
+│   │   └── MonthlyMaterialController.js
 │   ├── errors/
 │   │   └── AppError.js
 │   ├── middlewares/
@@ -639,11 +660,13 @@ dionisio/
 │   │   └── User.js
 │   ├── routes/
 │   │   ├── authenticationRoutes.js
-│   │   └── lessonRoutes.js
+│   │   ├── lessonRoutes.js
+│   │   └── monthlyMaterialRoutes.js
 │   ├── services/
 │   │   ├── AdminBootstrapper.js
 │   │   ├── AuthenticationService.js
 │   │   ├── LessonService.js
+│   │   ├── MonthlyMaterialService.js
 │   │   ├── PasswordHasher.js
 │   │   └── SessionManager.js
 │   ├── app.js
@@ -655,6 +678,8 @@ dionisio/
 │   ├── AuthenticationService.test.js
 │   ├── LessonController.test.js
 │   ├── LessonService.test.js
+│   ├── MonthlyMaterialController.test.js
+│   ├── MonthlyMaterialService.test.js
 │   ├── PasswordHasher.test.js
 │   ├── SessionManager.test.js
 │   ├── administrativeAuthorization.test.js
@@ -673,6 +698,8 @@ dionisio/
 │   ├── lessonIntegration.test.js
 │   ├── lessonRoutes.test.js
 │   ├── monthlyMaterial.test.js
+│   ├── monthlyMaterialIntegration.test.js
+│   ├── monthlyMaterialRoutes.test.js
 │   ├── securityHeaders.test.js
 │   ├── securityHeadersServerIntegration.test.js
 │   ├── server.test.js
@@ -746,15 +773,16 @@ ambiente jsdom utilizado pelos testes de componentes.
 ### `src/app.js`
 
 Configura o Express, instala os cabeçalhos de segurança antes da sessão,
-monta as rotas de autenticação sob `/api/auth` e as rotas de aulas sob
-`/api/lessons`, disponibiliza o frontend depois da API e mantém o
-tratamento de erros por último.
+monta as rotas de autenticação sob `/api/auth`, as rotas de aulas sob
+`/api/lessons` e os materiais sob `/api/monthly-materials`, disponibiliza o
+frontend depois da API e mantém o tratamento de erros por último.
 
 ### `src/server.js`
 
 Compõe cabeçalhos de segurança, arquivos compilados do frontend, banco,
-administrador, sessões, autenticação, API de aulas e Express. A porta HTTP
-somente é aberta depois que todas as dependências obrigatórias estão prontas.
+administrador, sessões, autenticação, APIs de aulas e materiais mensais e Express.
+A porta HTTP somente é aberta depois que todas as dependências obrigatórias
+estão prontas.
 
 ### `src/config/env.js`
 
@@ -780,6 +808,12 @@ respostas aos campos autorizados e garante a limpeza coerente do cookie.
 
 Traduz criação e consulta de aulas para os contratos HTTP, seleciona novamente
 os campos públicos e encaminha falhas ao tratamento centralizado.
+
+### `src/controllers/MonthlyMaterialController.js`
+
+Traduz consulta e substituição dos materiais mensais para os contratos HTTP,
+aceita a ausência normal do recurso e seleciona defensivamente somente mês,
+identificador e os dois links públicos.
 
 ### `src/errors/AppError.js`
 
@@ -839,6 +873,11 @@ Registra consulta e criação na raiz da coleção e executa a autorização
 administrativa antes dos dois handlers. O app aplica o prefixo
 `/api/lessons`.
 
+### `src/routes/monthlyMaterialRoutes.js`
+
+Registra `GET /:month` e `PUT /:month`, sempre depois da autorização
+administrativa. O app aplica o prefixo `/api/monthly-materials`.
+
 ### `src/services/AdminBootstrapper.js`
 
 Garante a existência da conta administrativa sem substituir uma conta já
@@ -855,6 +894,12 @@ Mantém somente os campos permitidos na criação, prepara filtros por curso, m�
 e data mínima, preserva seletores internos validados diante do sanitizador do
 Mongoose, aplica ordenação determinística e converte documentos em
 representações públicas imutáveis.
+
+### `src/services/MonthlyMaterialService.js`
+
+Valida o mês civil, limita a entrada aos dois links permitidos, representa
+campos omitidos com `null` e consulta ou substitui atomicamente o único recurso
+do período. Erros conhecidos do modelo são convertidos em respostas seguras.
 
 ### `src/services/PasswordHasher.js`
 
@@ -1028,6 +1073,46 @@ timestamps recebidos do cliente, assim como quaisquer campos desconhecidos,
 são recusados. Dados inválidos retornam `400 INVALID_LESSON_DATA`; filtros
 inválidos retornam `400 INVALID_LESSON_FILTERS`.
 
+### Materiais mensais administrativos
+
+As duas operações exigem uma sessão administrativa válida. Para consultar o
+recurso de um mês:
+
+```http
+GET /api/monthly-materials/2026-09
+```
+
+Quando o período ainda não possui materiais, a consulta retorna `200` com:
+
+```json
+{
+  "data": {
+    "material": null
+  }
+}
+```
+
+Para criar ou substituir integralmente os links daquele mês:
+
+```http
+PUT /api/monthly-materials/2026-09
+Content-Type: application/json
+```
+
+```json
+{
+  "lessonPlanUrl": "https://example.com/pa-setembro",
+  "studentGuideUrl": "https://example.com/gd-ad-setembro"
+}
+```
+
+A operação é idempotente e mantém somente um documento por mês. Um dos links
+pode ser enviado como `null`; campos omitidos também são substituídos por
+`null`. O mês pertence somente ao caminho, e identificadores, timestamps,
+`month` no corpo ou campos desconhecidos são recusados com
+`400 INVALID_MONTHLY_MATERIAL_DATA`. Um período inválido retorna
+`400 INVALID_MONTHLY_MATERIAL_MONTH`.
+
 ### Rota inexistente
 
 Uma rota desconhecida retorna `404` com o código `ROUTE_NOT_FOUND`.
@@ -1087,6 +1172,10 @@ JSON malformado retorna `400` com o código `INVALID_JSON`. Corpos acima de
 - identificadores, timestamps e campos desconhecidos recusados na entrada;
 - seleção defensiva dos campos públicos nas respostas de aulas;
 - detalhes de validação e falhas do banco ocultados do cliente;
+- autorização executada antes de consultas e gravações mensais;
+- mês mantido somente no caminho e campos mensais aceitos por lista explícita;
+- substituição mensal atômica, validada e limitada a um documento por período;
+- representações mensais sem timestamps ou propriedades internas;
 - auditoria periódica das dependências.
 
 Essas medidas ainda não tornam a aplicação pronta para produção.
@@ -1108,13 +1197,14 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. implementar a API administrativa dos materiais mensais;
-2. criar o serviço frontend para consumir a API de aulas;
-3. integrar formulário, filtros e calendário visual às APIs concluídas;
-4. migrar com segurança os dados do protótipo;
-5. realizar testes completos de integração e interface;
-6. preparar os guias técnico e didático;
-7. publicar e validar a aplicação em computador e celular.
+1. criar o serviço frontend para consumir a API de aulas;
+2. integrar o formulário e os filtros de aulas à API concluída;
+3. criar o serviço frontend e o formulário dos materiais mensais;
+4. conectar o calendário visual aos dados persistidos;
+5. migrar com segurança os dados do protótipo;
+6. realizar testes completos de integração e interface;
+7. preparar os guias técnico e didático;
+8. publicar e validar a aplicação em computador e celular.
 
 ## Fluxo de atualização pelo Git
 

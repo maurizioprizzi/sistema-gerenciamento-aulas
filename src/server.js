@@ -18,7 +18,13 @@ const {
 const {
     LessonController,
 } = require('./controllers/LessonController');
+const {
+    MonthlyMaterialController,
+} = require('./controllers/MonthlyMaterialController');
 const { Lesson } = require('./models/Lesson');
+const {
+    MonthlyMaterial,
+} = require('./models/MonthlyMaterial');
 const { User } = require('./models/User');
 const {
     createAuthenticationRateLimiter,
@@ -36,6 +42,9 @@ const {
     createLessonRouter,
 } = require('./routes/lessonRoutes');
 const {
+    createMonthlyMaterialRouter,
+} = require('./routes/monthlyMaterialRoutes');
+const {
     AdminBootstrapper,
 } = require('./services/AdminBootstrapper');
 const {
@@ -44,6 +53,9 @@ const {
 const {
     LessonService,
 } = require('./services/LessonService');
+const {
+    MonthlyMaterialService,
+} = require('./services/MonthlyMaterialService');
 const {
     PasswordHasher,
 } = require('./services/PasswordHasher');
@@ -84,6 +96,10 @@ const SERVER_ERROR_MESSAGES = Object.freeze({
         'A fábrica do roteador de aulas deve ser uma função.',
     INVALID_LESSON_ROUTER:
         'A fábrica de aulas deve retornar um roteador válido.',
+    INVALID_MONTHLY_MATERIAL_ROUTER_FACTORY:
+        'A fábrica do roteador de materiais mensais deve ser uma função.',
+    INVALID_MONTHLY_MATERIAL_ROUTER:
+        'A fábrica de materiais mensais deve retornar um roteador válido.',
     INVALID_SECURITY_HEADERS_MIDDLEWARE_FACTORY:
         'A fábrica dos cabeçalhos de segurança deve ser uma função.',
     INVALID_SECURITY_HEADERS_MIDDLEWARE:
@@ -258,11 +274,34 @@ function createAdministrativeLessonRouter() {
 }
 
 /**
+ * Compõe as regras e a camada HTTP dos materiais mensais.
+ *
+ * A construção utiliza o modelo real sem abrir conexão com o banco. Serviço,
+ * controlador e roteador recebem suas dependências explicitamente e mantêm a
+ * mesma separação aplicada às aulas.
+ *
+ * @returns {Function} Roteador Express administrativo de materiais mensais.
+ */
+function createAdministrativeMonthlyMaterialRouter() {
+    const monthlyMaterialService = new MonthlyMaterialService({
+        MonthlyMaterialModel: MonthlyMaterial,
+    });
+
+    const controller = new MonthlyMaterialController({
+        monthlyMaterialService,
+    });
+
+    return createMonthlyMaterialRouter({
+        controller,
+    });
+}
+
+/**
  * Carrega a configuração e inicia todos os componentes da aplicação.
  *
  * A ordem é intencional: ambiente, segurança, frontend, MongoDB,
  * administrador, armazenamento de sessões, middleware, autenticação,
- * aulas, Express e servidor HTTP.
+ * aulas, materiais mensais, Express e servidor HTTP.
  *
  * @param {object} options Dependências de inicialização.
  * @param {object} [options.database=databaseConnection] Banco de dados.
@@ -277,6 +316,8 @@ function createAdministrativeLessonRouter() {
  * Fábrica da composição de autenticação.
  * @param {Function} [options.lessonRouterFactory]
  * Fábrica da composição administrativa das aulas.
+ * @param {Function} [options.monthlyMaterialRouterFactory]
+ * Fábrica da composição administrativa dos materiais mensais.
  * @param {Function} [options.securityHeadersMiddlewareFactory]
  * Fábrica dos cabeçalhos HTTP de segurança.
  * @param {Function} [options.frontendAssetsMiddlewareFactory]
@@ -293,6 +334,8 @@ async function startServer({
     authenticationRouterFactory =
         createAdministrativeAuthenticationRouter,
     lessonRouterFactory = createAdministrativeLessonRouter,
+    monthlyMaterialRouterFactory =
+        createAdministrativeMonthlyMaterialRouter,
     securityHeadersMiddlewareFactory =
         createSecurityHeadersMiddleware,
     frontendAssetsMiddlewareFactory =
@@ -333,6 +376,13 @@ async function startServer({
     if (typeof lessonRouterFactory !== 'function') {
         throw new TypeError(
             SERVER_ERROR_MESSAGES.INVALID_LESSON_ROUTER_FACTORY,
+        );
+    }
+
+    if (typeof monthlyMaterialRouterFactory !== 'function') {
+        throw new TypeError(
+            SERVER_ERROR_MESSAGES
+                .INVALID_MONTHLY_MATERIAL_ROUTER_FACTORY,
         );
     }
 
@@ -454,12 +504,23 @@ async function startServer({
             );
         }
 
+        const monthlyMaterialRouter =
+            monthlyMaterialRouterFactory();
+
+        if (typeof monthlyMaterialRouter !== 'function') {
+            throw new TypeError(
+                SERVER_ERROR_MESSAGES
+                    .INVALID_MONTHLY_MATERIAL_ROUTER,
+            );
+        }
+
         const app = appFactory({
             logger,
             securityHeadersMiddleware,
             sessionMiddleware,
             authenticationRouter,
             lessonRouter,
+            monthlyMaterialRouter,
             frontendAssetsMiddleware,
         });
 
@@ -550,6 +611,7 @@ module.exports = {
     createAdminBootstrapper,
     createAdministrativeAuthenticationRouter,
     createAdministrativeLessonRouter,
+    createAdministrativeMonthlyMaterialRouter,
     resolvePort,
     startServer,
 };

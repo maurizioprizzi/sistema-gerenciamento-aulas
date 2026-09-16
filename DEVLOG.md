@@ -2098,3 +2098,117 @@ confirmou que ele não permaneceu no servidor.
 
 Implementar a API administrativa dos materiais mensais antes de conectar os
 formulários e as visualizações do frontend aos dados persistidos.
+
+## 16 de setembro de 2026 — API administrativa de materiais mensais
+
+### Objetivo
+
+Disponibilizar as operações persistentes previstas pelo protótipo para os
+links de Plano de Aula e Guia com Atividades aplicáveis a um mês inteiro, sem
+introduzir edição parcial, exclusão ou entidades adicionais.
+
+### Serviço mensal
+
+Foi criado o `MonthlyMaterialService`, que recebe o modelo por injeção e
+mantém as regras de aplicação separadas de HTTP, sessão e conexão direta com o
+banco. O serviço valida o período civil `YYYY-MM` antes da persistência e
+aceita no corpo somente `lessonPlanUrl` e `studentGuideUrl`.
+
+A gravação representa campos omitidos explicitamente com `null` e utiliza
+`findOneAndUpdate` com `upsert`, validação do schema e retorno do estado
+posterior. Dessa forma, `PUT` substitui integralmente o recurso, permanece
+idempotente e preserva o índice único que permite apenas um documento por mês.
+
+Documentos consultados ou gravados são convertidos em representações públicas
+imutáveis contendo somente identificador, mês e os dois links. Erros de
+validação e conversão do Mongoose tornam-se erros operacionais seguros;
+falhas inesperadas continuam destinadas ao tratamento central.
+
+### Controlador e roteador
+
+O `MonthlyMaterialController` coordena os envelopes HTTP e realiza uma
+segunda seleção defensiva dos campos públicos. A consulta de um período ainda
+sem recurso retorna `200` com `data.material` igual a `null`. Consulta e
+gravação válidas retornam `200`.
+
+O `monthlyMaterialRoutes.js` registra `GET /:month` e `PUT /:month`.
+A autorização administrativa real é executada antes dos dois handlers. O mês
+pertence exclusivamente ao caminho; enviá-lo no corpo, assim como enviar
+identificadores, timestamps ou campos desconhecidos, é recusado antes do
+modelo.
+
+### Integração à aplicação
+
+O `createApp` passou a validar e montar o roteador sob
+`/api/monthly-materials`, depois da sessão e antes do frontend. O ponto de
+composição em `server.js` constrói serviço, controlador e roteador com o
+modelo persistente `MonthlyMaterial`.
+
+A fábrica permanece injetável para os testes. Uma fábrica inválida é rejeitada
+antes da conexão com o banco, enquanto um resultado inválido produzido depois
+da conexão provoca a limpeza controlada dos recursos já abertos. A ordem de
+composição também passou a incluir explicitamente a API mensal.
+
+### Segurança e contrato HTTP
+
+As rotas finais são:
+
+- `GET /api/monthly-materials/:month`;
+- `PUT /api/monthly-materials/:month`.
+
+Ambas exigem sessão administrativa. A entrada possui lista explícita de
+campos, as URLs continuam limitadas a HTTP e HTTPS sem credenciais incorporadas
+e as respostas não expõem timestamps nem propriedades internas do Mongoose.
+Detalhes de validação e mensagens inesperadas do banco permanecem ocultos.
+
+### Testes automatizados
+
+O serviço recebeu 26 testes em seis suítes, cobrindo configuração, preparação
+do mês, seleção dos dados, representações públicas, consulta, substituição,
+validações e propagação de falhas. O controlador recebeu 17 testes em quatro
+suítes, e o roteador recebeu 11 testes de contratos, dependências e ordem da
+autorização.
+
+Três testes do `createApp` confirmam validação, montagem e posição da API
+mensal. O ciclo do servidor cobre a composição real, a validação antecipada da
+fábrica, a limpeza após resultado inválido e a entrega do roteador ao Express.
+
+Uma suíte HTTP adicional percorre Express, parser JSON, sessão controlada,
+autorização real, roteador, controlador e serviço em nove cenários. Ela cobre
+respostas `401`, `403`, `200`, `400` e `500`, ausência normal do
+recurso, bloqueio antes do modelo, gravação integral e ocultação de falhas
+internas sem exigir MongoDB externo.
+
+### Validação real
+
+A API foi exercitada pela cadeia HTTP completa com MongoDB local e um banco
+isolado. O primeiro `PUT` criou os dois links, o `GET` recuperou o estado e
+um segundo `PUT` substituiu o mesmo recurso. O link omitido tornou-se
+`null`, permaneceu exatamente um documento no banco e a resposta apresentou
+somente os quatro campos públicos.
+
+A execução real revelou também o aviso de depreciação da opção `new: true`
+no Mongoose atual. O serviço foi migrado para
+`returnDocument: 'after'`, mantendo o mesmo contrato e eliminando o aviso.
+Depois da regressão automatizada e de uma nova validação real, o banco isolado
+foi removido e sua ausência foi confirmada.
+
+### Verificação
+
+- 550 testes do backend aprovados em 98 suítes;
+- 78 testes do frontend aprovados em seis arquivos;
+- 628 testes aprovados em 104 suítes no total;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- sintaxe e diff validados;
+- compilação de produção concluída com 21 módulos;
+- testes HTTP automatizados independentes de MongoDB externo;
+- consulta e substituição idempotente confirmadas com MongoDB local;
+- banco isolado de validação removido ao final;
+- contrato original preservado sem funcionalidades adicionais.
+
+### Próximo marco
+
+Criar o serviço do frontend para consumir a API de aulas e iniciar a ligação
+progressiva dos formulários e visualizações aos dados persistidos.

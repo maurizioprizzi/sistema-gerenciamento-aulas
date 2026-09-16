@@ -19,6 +19,8 @@ const APP_ERROR_MESSAGES = Object.freeze({
         'A aplicação exige um roteador de autenticação válido quando ele é informado.',
     INVALID_LESSON_ROUTER:
         'A aplicação exige um roteador de aulas válido quando ele é informado.',
+    INVALID_MONTHLY_MATERIAL_ROUTER:
+        'A aplicação exige um roteador de materiais mensais válido quando ele é informado.',
     INVALID_FRONTEND_ASSETS_MIDDLEWARE:
         'A aplicação exige um middleware de frontend válido quando ele é informado.',
 });
@@ -35,7 +37,7 @@ const APP_ERROR_MESSAGES = Object.freeze({
  * - o MongoClient;
  * - o connect-mongo;
  * - as regras de autenticação;
- * - as regras de persistência das aulas;
+ * - as regras de persistência das aulas e dos materiais mensais;
  * - o serviço de proteção de senhas;
  * - o caminho físico da compilação do frontend.
  *
@@ -53,6 +55,8 @@ const APP_ERROR_MESSAGES = Object.freeze({
  * Roteador responsável pela entrada e saída administrativas.
  * @param {Function | null} [options.lessonRouter=null]
  * Roteador responsável pelas operações administrativas de aulas.
+ * @param {Function | null} [options.monthlyMaterialRouter=null]
+ * Roteador responsável pelos materiais aplicáveis a cada mês.
  * @param {Function | null} [options.frontendAssetsMiddleware=null]
  * Middleware responsável pela compilação do frontend.
  *
@@ -64,6 +68,7 @@ function createApp({
     sessionMiddleware = null,
     authenticationRouter = null,
     lessonRouter = null,
+    monthlyMaterialRouter = null,
     frontendAssetsMiddleware = null,
 } = {}) {
     if (
@@ -100,6 +105,16 @@ function createApp({
     ) {
         throw new TypeError(
             APP_ERROR_MESSAGES.INVALID_LESSON_ROUTER,
+        );
+    }
+
+    if (
+        monthlyMaterialRouter !== null
+        && typeof monthlyMaterialRouter !== 'function'
+    ) {
+        throw new TypeError(
+            APP_ERROR_MESSAGES
+                .INVALID_MONTHLY_MATERIAL_ROUTER,
         );
     }
 
@@ -147,7 +162,7 @@ function createApp({
     /**
      * O middleware de sessão deve ser instalado antes das rotas de
      * autenticação e de calendário. Login e logout utilizam request.session,
-     * enquanto as aulas dependem da identidade validada a partir dela.
+     * enquanto aulas e materiais dependem da identidade validada a partir dela.
      *
      * Ele permanece opcional para permitir testes isolados da fundação HTTP.
      * O ciclo real do servidor sempre fornece o middleware configurado.
@@ -180,6 +195,23 @@ function createApp({
      */
     if (lessonRouter) {
         app.use('/api/lessons', lessonRouter);
+    }
+
+    /**
+     * Cada conjunto mensal possui um endereço determinado pelo próprio mês.
+     *
+     * Endereços resultantes:
+     * - GET /api/monthly-materials/:month;
+     * - PUT /api/monthly-materials/:month.
+     *
+     * A autorização administrativa permanece dentro do roteador para proteger
+     * as operações mesmo quando ele for montado em outro contexto.
+     */
+    if (monthlyMaterialRouter) {
+        app.use(
+            '/api/monthly-materials',
+            monthlyMaterialRouter,
+        );
     }
 
     /**

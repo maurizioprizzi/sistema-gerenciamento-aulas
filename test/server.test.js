@@ -9,6 +9,7 @@ const {
 const {
     createAdminBootstrapper,
     createAdministrativeLessonRouter,
+    createAdministrativeMonthlyMaterialRouter,
     resolvePort,
     startServer,
 } = require('../src/server');
@@ -211,6 +212,16 @@ describe('createAdministrativeLessonRouter', () => {
         assert.equal(typeof router, 'function');
         assert.equal(typeof router.get, 'function');
         assert.equal(typeof router.post, 'function');
+    });
+});
+
+describe('createAdministrativeMonthlyMaterialRouter', () => {
+    test('compõe um roteador válido sem abrir conexão com o banco', () => {
+        const router = createAdministrativeMonthlyMaterialRouter();
+
+        assert.equal(typeof router, 'function');
+        assert.equal(typeof router.get, 'function');
+        assert.equal(typeof router.put, 'function');
     });
 });
 
@@ -598,6 +609,173 @@ describe('startServer', () => {
 
                 assert.equal(calls.connect, 0);
                 assert.equal(calls.disconnect, 0);
+            });
+        },
+    );
+
+    test(
+        'rejeita uma fábrica mensal inválida antes de conectar',
+        async () => {
+            await withTestEnvironment(async () => {
+                const calls = {
+                    connect: 0,
+                    disconnect: 0,
+                };
+
+                const database = {
+                    async connect() {
+                        calls.connect += 1;
+                    },
+
+                    async disconnect() {
+                        calls.disconnect += 1;
+                    },
+                };
+
+                const { logger } = createFakeLogger();
+
+                await assert.rejects(
+                    startServer({
+                        frontendAssetsMiddlewareFactory:
+                            createTestFrontendAssetsMiddleware,
+                        database,
+                        monthlyMaterialRouterFactory: null,
+                        logger,
+                    }),
+                    {
+                        name: 'TypeError',
+                        message:
+                            'A fábrica do roteador de materiais mensais deve ser uma função.',
+                    },
+                );
+
+                assert.equal(calls.connect, 0);
+                assert.equal(calls.disconnect, 0);
+            });
+        },
+    );
+
+    test(
+        'desconecta o banco quando a fábrica retorna materiais inválidos',
+        async () => {
+            await withTestEnvironment(async () => {
+                const nativeClient = {
+                    db() {
+                        return {};
+                    },
+                };
+
+                const sessionStore = {
+                    on() {
+                        return this;
+                    },
+
+                    get() {},
+                    set() {},
+                    destroy() {},
+                };
+
+                const calls = {
+                    connect: 0,
+                    disconnect: 0,
+                    monthlyMaterialRouterFactory: 0,
+                    appFactory: 0,
+                };
+
+                const database = {
+                    async connect() {
+                        calls.connect += 1;
+                    },
+
+                    getNativeClient() {
+                        return nativeClient;
+                    },
+
+                    async disconnect() {
+                        calls.disconnect += 1;
+                    },
+                };
+
+                function adminBootstrapperFactory() {
+                    return {
+                        async ensureAdmin() {},
+                    };
+                }
+
+                function sessionStoreFactory() {
+                    return sessionStore;
+                }
+
+                function sessionMiddlewareFactory() {
+                    return function sessionMiddleware(
+                        request,
+                        response,
+                        next
+                    ) {
+                        next();
+                    };
+                }
+
+                function authenticationRouterFactory() {
+                    return function authenticationRouter(
+                        request,
+                        response,
+                        next
+                    ) {
+                        next();
+                    };
+                }
+
+                function lessonRouterFactory() {
+                    return function lessonRouter(
+                        request,
+                        response,
+                        next
+                    ) {
+                        next();
+                    };
+                }
+
+                function monthlyMaterialRouterFactory() {
+                    calls.monthlyMaterialRouterFactory += 1;
+
+                    return {};
+                }
+
+                function appFactory() {
+                    calls.appFactory += 1;
+                }
+
+                const { logger } = createFakeLogger();
+
+                await assert.rejects(
+                    startServer({
+                        frontendAssetsMiddlewareFactory:
+                            createTestFrontendAssetsMiddleware,
+                        database,
+                        appFactory,
+                        adminBootstrapperFactory,
+                        sessionStoreFactory,
+                        sessionMiddlewareFactory,
+                        authenticationRouterFactory,
+                        lessonRouterFactory,
+                        monthlyMaterialRouterFactory,
+                        logger,
+                    }),
+                    {
+                        name: 'TypeError',
+                        message:
+                            'A fábrica de materiais mensais deve retornar um roteador válido.',
+                    },
+                );
+
+                assert.equal(calls.connect, 1);
+                assert.equal(calls.disconnect, 1);
+                assert.equal(
+                    calls.monthlyMaterialRouterFactory,
+                    1,
+                );
+                assert.equal(calls.appFactory, 0);
             });
         },
     );
@@ -1071,6 +1249,12 @@ describe('startServer', () => {
                     next
                 ) => next();
 
+                const monthlyMaterialRouter = (
+                    request,
+                    response,
+                    next
+                ) => next();
+
                 const database = {
                     async connect() {
                         order.push('database.connect');
@@ -1155,6 +1339,12 @@ describe('startServer', () => {
                     return lessonRouter;
                 }
 
+                function monthlyMaterialRouterFactory() {
+                    order.push('monthly.material.router.factory');
+
+                    return monthlyMaterialRouter;
+                }
+
                 function appFactory(options) {
                     order.push('app.factory');
 
@@ -1169,6 +1359,10 @@ describe('startServer', () => {
                     assert.strictEqual(
                         options.lessonRouter,
                         lessonRouter,
+                    );
+                    assert.strictEqual(
+                        options.monthlyMaterialRouter,
+                        monthlyMaterialRouter,
                     );
 
                     /**
@@ -1200,6 +1394,7 @@ describe('startServer', () => {
                         sessionMiddlewareFactory,
                         authenticationRouterFactory,
                         lessonRouterFactory,
+                        monthlyMaterialRouterFactory,
                         logger,
                     }),
                     (error) => {
@@ -1219,6 +1414,7 @@ describe('startServer', () => {
                     'session.middleware.factory',
                     'authentication.router.factory',
                     'lesson.router.factory',
+                    'monthly.material.router.factory',
                     'app.factory',
                     'database.disconnect',
                 ]);

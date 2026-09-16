@@ -235,6 +235,126 @@ describe('configuração das rotas de aulas no app', () => {
     );
 });
 
+describe('configuração das rotas de materiais mensais no app', () => {
+    test('permite criar a aplicação sem roteador mensal', () => {
+        assert.doesNotThrow(() => createApp());
+    });
+
+    test('rejeita um roteador mensal inválido', () => {
+        const invalidRouters = [
+            'roteador',
+            42,
+            {},
+            []
+        ];
+
+        for (const monthlyMaterialRouter of invalidRouters) {
+            assert.throws(
+                () => createApp({ monthlyMaterialRouter }),
+                {
+                    name: 'TypeError',
+                    message:
+                        APP_ERROR_MESSAGES
+                            .INVALID_MONTHLY_MATERIAL_ROUTER
+                }
+            );
+        }
+    });
+
+    test(
+        'executa os materiais depois da segurança e da sessão, antes do frontend',
+        async () => {
+            const order = [];
+
+            function securityHeadersMiddleware(
+                request,
+                response,
+                next
+            ) {
+                order.push('security');
+                next();
+            }
+
+            function sessionMiddleware(
+                request,
+                response,
+                next
+            ) {
+                order.push('session');
+                next();
+            }
+
+            function monthlyMaterialRouter(
+                request,
+                response,
+                next
+            ) {
+                order.push('monthly-materials');
+                next();
+            }
+
+            function frontendAssetsMiddleware(
+                request,
+                response
+            ) {
+                order.push('frontend');
+
+                response.status(200).json({
+                    order
+                });
+            }
+
+            const app = createApp({
+                securityHeadersMiddleware,
+                sessionMiddleware,
+                monthlyMaterialRouter,
+                frontendAssetsMiddleware
+            });
+
+            const temporaryServer = http.createServer(app);
+
+            await new Promise((resolve, reject) => {
+                temporaryServer.once('error', reject);
+                temporaryServer.listen(
+                    0,
+                    '127.0.0.1',
+                    resolve
+                );
+            });
+
+            try {
+                const address = temporaryServer.address();
+                const response = await fetch(
+                    'http://127.0.0.1:'
+                        + address.port
+                        + '/api/monthly-materials/2026-09/test'
+                );
+                const body = await response.json();
+
+                assert.equal(response.status, 200);
+                assert.deepEqual(body.order, [
+                    'security',
+                    'session',
+                    'monthly-materials',
+                    'frontend'
+                ]);
+                assert.deepEqual(order, body.order);
+            } finally {
+                await new Promise((resolve, reject) => {
+                    temporaryServer.close((error) => {
+                        if (error) {
+                            reject(error);
+                            return;
+                        }
+
+                        resolve();
+                    });
+                });
+            }
+        }
+    );
+});
+
 describe('configuração dos arquivos do frontend no app', () => {
     test('permite criar a aplicação sem middleware de frontend', () => {
         assert.doesNotThrow(() => createApp());
