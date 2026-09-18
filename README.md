@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 16 de setembro de 2026.
+> Última atualização desta documentação: 18 de setembro de 2026.
 
 ## Estado atual
 
@@ -24,9 +24,10 @@ O frontend está disponível em um workspace independente em `client/`. Ele
 utiliza React e Vite, apresenta uma interface responsiva e exibe a data local
 em português. O formulário administrativo consome a API real, restaura a
 sessão depois de uma atualização da página e permite encerrá-la com segurança.
-Depois da autenticação, a interface apresenta a estrutura inicial da área do
-calendário com painel geral, navegação entre as quatro seções originais e
-estados vazios coerentes com a ausência atual de aulas persistidas.
+O cliente HTTP de aulas já encapsula consulta, filtros e criação com contratos
+defensivos, embora ainda não esteja ligado aos componentes visuais. Depois da
+autenticação, a interface apresenta a estrutura inicial da área do calendário
+com painel geral, navegação entre as quatro seções originais e estados vazios.
 
 A compilação de produção é validada e servida pelo próprio Express sob a mesma
 origem da API.
@@ -48,8 +49,9 @@ Os registros do calendário possuem modelos Mongoose próprios para aulas e
 materiais mensais. Atividade e avaliação permanecem tipos de aula, conforme o
 protótipo original. As aulas já podem ser criadas e consultadas por uma API
 administrativa protegida. Os materiais mensais também podem ser consultados e
-substituídos por mês pela API administrativa. A interface ainda não consome os
-dados persistidos do calendário.
+substituídos por mês pela API administrativa. O frontend já possui um serviço
+isolado para consumir a API de aulas; os componentes visuais ainda não utilizam
+os dados persistidos do calendário.
 
 ### Funcionalidades concluídas
 
@@ -139,6 +141,10 @@ dados persistidos do calendário.
 - separação entre rotas da API, arquivos estáticos e caminhos visuais;
 - testes de componentes com Vitest, jsdom e Testing Library;
 - serviço isolado para consumir a API de autenticação no navegador;
+- serviço frontend isolado para consulta e criação de aulas;
+- filtros de aulas serializados em ordem determinística;
+- seleção defensiva e imutável das aulas recebidas pelo navegador;
+- erros públicos seguros para rede, recusas e respostas inválidas da API de aulas;
 - formulário administrativo acessível com estados de envio e erro;
 - login real integrado ao backend sem armazenar credenciais em App;
 - restauração da sessão administrativa depois de recarregar a página;
@@ -156,7 +162,7 @@ dados persistidos do calendário.
 ### Ainda não implementado
 
 - formulário visual para cadastrar aulas, atividades e avaliações;
-- integração do frontend com a consulta e os filtros das aulas;
+- ligação dos componentes visuais à consulta, aos filtros e à criação de aulas;
 - formulário visual e integração frontend para os materiais mensais;
 - migração dos dados do protótipo;
 - acesso externo à aplicação;
@@ -437,8 +443,8 @@ npm --prefix client test
 No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-628 testes
-104 suítes
+663 testes
+105 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -505,6 +511,11 @@ Os testes verificam, entre outros comportamentos:
 - identidade visual e contexto administrativo apresentados;
 - data local determinística e formatada em português;
 - contratos HTTP de login, consulta da sessão e logout no frontend;
+- contratos frontend de consulta e criação de aulas;
+- normalização e serialização determinística dos filtros de aulas;
+- seleção dos oito campos funcionais aceitos durante a criação no navegador;
+- representações públicas imutáveis sem campos adicionais do backend;
+- conversão segura de falhas de rede e respostas HTTP inconsistentes;
 - formulário acessível, validação dos campos e bloqueio durante o envio;
 - mensagens públicas seguras para recusas e falhas inesperadas;
 - restauração da sessão válida e retorno ao formulário para visitantes;
@@ -628,7 +639,9 @@ dionisio/
 │   │   │       └── CalendarWorkspace.test.jsx
 │   │   ├── services/
 │   │   │   ├── AuthenticationApi.js
-│   │   │   └── AuthenticationApi.test.js
+│   │   │   ├── AuthenticationApi.test.js
+│   │   │   ├── LessonApi.js
+│   │   │   └── LessonApi.test.js
 │   │   ├── styles/
 │   │   │   └── global.css
 │   │   └── main.jsx
@@ -755,6 +768,14 @@ demais seções mantêm seus títulos até a implementação dos dados reais.
 Encapsula os contratos HTTP de login, consulta da sessão e logout. Valida as
 respostas do backend e converte falhas em erros públicos seguros para a
 interface.
+
+### `client/src/services/LessonApi.js`
+
+Encapsula consulta e criação de aulas no navegador. Valida e serializa filtros
+por curso, mês e data mínima, seleciona somente os oito campos permitidos na
+criação e converte as respostas em representações públicas imutáveis. Falhas de
+rede, recusas conhecidas e respostas inconsistentes permanecem separadas por
+códigos e mensagens públicas seguras.
 
 Os arquivos de teste mantidos ao lado desses módulos cobrem seus contratos e
 interações sem depender de um navegador aberto ou de um backend externo.
@@ -1197,14 +1218,13 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. criar o serviço frontend para consumir a API de aulas;
-2. integrar o formulário e os filtros de aulas à API concluída;
-3. criar o serviço frontend e o formulário dos materiais mensais;
-4. conectar o calendário visual aos dados persistidos;
-5. migrar com segurança os dados do protótipo;
-6. realizar testes completos de integração e interface;
-7. preparar os guias técnico e didático;
-8. publicar e validar a aplicação em computador e celular.
+1. integrar o formulário e os filtros de aulas ao serviço frontend concluído;
+2. criar o serviço frontend e o formulário dos materiais mensais;
+3. conectar o calendário visual aos dados persistidos;
+4. migrar com segurança os dados do protótipo;
+5. realizar testes completos de integração e interface;
+6. preparar os guias técnico e didático;
+7. publicar e validar a aplicação em computador e celular.
 
 ## Fluxo de atualização pelo Git
 

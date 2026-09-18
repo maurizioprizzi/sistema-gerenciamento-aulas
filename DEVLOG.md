@@ -2212,3 +2212,78 @@ foi removido e sua ausência foi confirmada.
 
 Criar o serviço do frontend para consumir a API de aulas e iniciar a ligação
 progressiva dos formulários e visualizações aos dados persistidos.
+
+
+## 18 de setembro de 2026 — Serviço frontend da API de aulas
+
+### Objetivo
+
+Criar a fronteira HTTP do navegador para consultar e cadastrar aulas pela API
+administrativa já concluída, mantendo componentes React, estado visual e regras
+de apresentação fora deste marco.
+
+### Cliente HTTP de aulas
+
+Foi criado o `LessonApi`, responsável por `GET /api/lessons` e
+`POST /api/lessons`. A dependência compatível com `fetch` pode ser injetada
+nos testes, os métodos públicos permanecem vinculados à instância e uma
+instância padrão imutável fica disponível para a futura integração visual.
+
+A consulta aceita exclusivamente `course`, `month` e `fromDate`. Os
+valores são normalizados e serializados em ordem determinística, sem enviar
+campos desconhecidos. Cursos, meses e datas civis são recusados localmente
+quando não cumprem o contrato público da API.
+
+A criação seleciona somente `date`, `course`, `curricularUnit`, `type`,
+`lessonNumber`, `needsReview`, `lessonPlanUrl` e `studentGuideUrl`.
+Identificadores, timestamps e propriedades desconhecidas são recusados antes da
+requisição. A ordem estável desses campos também torna o corpo JSON previsível
+e testável.
+
+### Respostas públicas e falhas seguras
+
+As aulas devolvidas pelo backend são reconstruídas com identificador e os oito
+campos funcionais. Itens, listas e dados preparados são imutáveis e não mantêm
+campos adicionais recebidos na resposta.
+
+O `LessonApiError` separa falhas de rede, respostas inválidas e recusas HTTP.
+Códigos e mensagens públicas válidos do backend são preservados; corpos
+malformados recebem uma mensagem genérica. Causas técnicas não são incorporadas
+às mensagens destinadas à interface, evitando expor filtros ou conteúdo de uma
+aula.
+
+### Testes automatizados
+
+O novo serviço recebeu 35 testes em sete suítes. Eles cobrem configuração,
+injeção e vínculo do cliente HTTP, metadados de erro, preparação de filtros,
+seleção dos dados de criação, representações públicas, consulta e cadastro.
+
+Os cenários confirmam a ordem determinística da query e do corpo JSON, a
+imutabilidade das estruturas, a remoção de propriedades adicionais, a
+preservação de erros públicos conhecidos e o tratamento seguro de falhas de
+rede, estados inesperados, JSON inválido e envelopes inconsistentes.
+
+### Escopo
+
+Nenhum componente React foi alterado neste marco. O serviço permanece isolado
+e ainda não dispara requisições durante a navegação. Formulário, filtros, estado
+de carregamento e apresentação das aulas serão ligados progressivamente em um
+marco próprio.
+
+### Verificação
+
+- 550 testes do backend aprovados em 98 suítes;
+- 113 testes do frontend aprovados em sete arquivos;
+- 663 testes aprovados em 105 suítes no total;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- sintaxe e diff validados;
+- compilação de produção concluída com 21 módulos;
+- testes do cliente HTTP independentes de navegador e backend externos;
+- contrato original preservado sem funcionalidades visuais adicionais.
+
+### Próximo marco
+
+Integrar progressivamente o formulário e os filtros de aulas ao `LessonApi`,
+com estados acessíveis de carregamento, sucesso, ausência de dados e erro.
