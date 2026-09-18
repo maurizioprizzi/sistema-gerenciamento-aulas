@@ -2287,3 +2287,89 @@ marco próprio.
 
 Integrar progressivamente o formulário e os filtros de aulas ao `LessonApi`,
 com estados acessíveis de carregamento, sucesso, ausência de dados e erro.
+
+
+## 18 de setembro de 2026 — Consulta visual de aulas
+
+### Objetivo
+
+Conectar a seção de gerenciamento ao `LessonApi` para consultar e filtrar as
+aulas persistidas, mantendo o cadastro e as demais visualizações fora deste
+incremento.
+
+### Componente de gerenciamento
+
+Foi criado o `LessonManagement`, montado somente quando o administrador abre
+a seção “Gerenciar aulas”. A montagem executa a consulta inicial sem filtros;
+o painel geral e as demais seções não provocam acessos desnecessários à API.
+
+O formulário de consulta oferece os três filtros já reconhecidos pelo backend:
+curso, mês civil e data mínima. Valores vazios são removidos antes da chamada,
+e a ação de limpeza restaura os controles e consulta novamente a coleção
+completa.
+
+### Estados e apresentação
+
+A interface representa carregamento, ausência de resultados, falha e lista de
+aulas. Durante uma consulta, os filtros e ações ficam desativados. Erros
+conhecidos do `LessonApi` preservam sua mensagem pública; falhas inesperadas
+recebem texto genérico e não expõem detalhes técnicos.
+
+Cada cartão apresenta curso, unidade curricular, data civil sem conversão de
+fuso, tipo, número opcional, necessidade de revisão e links de materiais. Links
+ausentes possuem representação textual, e endereços presentes são abertos com
+proteções apropriadas para uma nova aba.
+
+Um identificador sequencial de requisições impede que uma resposta antiga
+substitua dados mais recentes. A desmontagem também invalida respostas ainda
+pendentes, evitando atualizações tardias de estado.
+
+### Integração e responsividade
+
+O `CalendarWorkspace` passou a receber um serviço de aulas substituível nos
+testes e monta o novo componente apenas na seção correspondente. `App.jsx`
+permaneceu inalterado e utiliza a instância padrão por meio do próprio
+workspace, preservando sua responsabilidade sobre autenticação e sessão.
+
+Os estilos organizam filtros e detalhes em colunas amplas e os reorganizam em
+uma coluna nas larguras menores. Contagem, foco, botões, erros, cartões e links
+mantêm contraste e estados perceptíveis sem depender somente de cor.
+
+### Testes automatizados
+
+O `LessonManagement` recebeu 13 testes de configuração, preparação visual,
+consulta inicial, filtros, resultados, materiais ausentes, erros, repetição,
+concorrência e desmontagem. O `CalendarWorkspace` recebeu dois cenários
+adicionais para validar o serviço e confirmar que a consulta ocorre somente
+depois da seleção da seção.
+
+As suítes direcionadas do componente, workspace e aplicação aprovaram 44
+testes. A suíte integral confirmou a ausência de regressões no restante do
+frontend e do backend.
+
+### Validação real
+
+A compilação de produção foi servida pelo Express com MongoDB local. O login,
+a abertura da seção de aulas, os filtros, a limpeza, os estados visuais, a
+adaptação da janela e o logout foram verificados no navegador. A rota pública
+de diagnóstico retornou `200` com os cabeçalhos de segurança esperados, e o
+encerramento por `SIGINT` fechou a conexão com o banco de forma controlada.
+
+### Verificação
+
+- 550 testes do backend aprovados em 98 suítes;
+- 128 testes do frontend aprovados em oito arquivos;
+- 678 testes aprovados em 106 suítes no total;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- sintaxe e diff validados;
+- compilação de produção concluída com 23 módulos;
+- consulta e filtros confirmados no navegador com backend e MongoDB reais;
+- encerramento seguro do servidor e do banco confirmado;
+- contrato original preservado sem antecipar o cadastro visual.
+
+### Próximo marco
+
+Criar e integrar o formulário visual de cadastro de aulas, atividades e
+avaliações utilizando a operação de criação já disponível no `LessonApi`.

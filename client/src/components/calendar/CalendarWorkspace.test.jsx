@@ -2,6 +2,7 @@ import {
     cleanup,
     render,
     screen,
+    waitFor,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
@@ -18,20 +19,39 @@ import {
     CALENDAR_WORKSPACE_MESSAGES,
     CalendarWorkspace,
 } from './CalendarWorkspace.jsx';
+import {
+    LESSON_MANAGEMENT_MESSAGES,
+} from './LessonManagement.jsx';
 
 afterEach(() => {
     cleanup();
 });
 
 /**
+ * Cria o contrato mínimo da consulta de aulas.
+ *
+ * @param {object} overrides Operações substituídas pelo cenário.
+ * @returns {{ listLessons: ReturnType<typeof vi.fn> }} Serviço controlado.
+ */
+function createLessonService(overrides = {}) {
+    return {
+        listLessons: vi.fn().mockResolvedValue([]),
+        ...overrides,
+    };
+}
+
+/**
  * Monta a área autenticada com propriedades válidas que podem ser
  * substituídas por cada cenário.
  *
  * @param {object} overrides Propriedades específicas do teste.
- * @returns {{ onLogout: ReturnType<typeof vi.fn> }} Dependências utilizadas.
+ * @returns {{ onLogout: ReturnType<typeof vi.fn>,
+ * lessonService: { listLessons: ReturnType<typeof vi.fn> } }} Dependências.
  */
 function renderWorkspace(overrides = {}) {
     const onLogout = overrides.onLogout ?? vi.fn();
+    const lessonService = overrides.lessonService
+        ?? createLessonService();
 
     render(
         <CalendarWorkspace
@@ -47,10 +67,11 @@ function renderWorkspace(overrides = {}) {
                     ? overrides.logoutError
                     : null
             }
+            lessonService={lessonService}
         />,
     );
 
-    return { onLogout };
+    return { onLogout, lessonService };
 }
 
 describe('configuração da área do calendário', () => {
@@ -68,16 +89,14 @@ describe('configuração da área do calendário', () => {
             ACTIVE_SECTION: 'calendar-workspace-active-section',
             LOGOUT_ERROR: 'calendar-workspace-logout-error',
         });
+        expect(CALENDAR_WORKSPACE_MESSAGES).toMatchObject({
+            INVALID_LESSON_SERVICE:
+                'A área do calendário exige um serviço de aulas válido.',
+        });
     });
 
     test('rejeita nomes administrativos inválidos', () => {
-        const invalidNames = [
-            '',
-            '   ',
-            42,
-            {},
-            [],
-        ];
+        const invalidNames = ['', '   ', 42, {}, []];
 
         for (const administratorName of invalidNames) {
             expect(() => render(
@@ -133,6 +152,31 @@ describe('configuração da área do calendário', () => {
         )).toThrowError(
             CALENDAR_WORKSPACE_MESSAGES.INVALID_LOGOUT_ERROR,
         );
+    });
+
+    test('rejeita serviços de aulas inválidos', () => {
+        const invalidServices = [
+            null,
+            'lessons',
+            42,
+            {},
+            [],
+            { listLessons: true },
+        ];
+
+        for (const lessonService of invalidServices) {
+            expect(() => render(
+                <CalendarWorkspace
+                    administratorName="Dionísio Pereira"
+                    onLogout={() => {}}
+                    lessonService={lessonService}
+                />,
+            )).toThrowError(
+                CALENDAR_WORKSPACE_MESSAGES.INVALID_LESSON_SERVICE,
+            );
+
+            cleanup();
+        }
     });
 });
 
@@ -237,6 +281,27 @@ describe('navegação da área autenticada', () => {
                 name: 'Próximas aulas',
             }),
         ).toBeTruthy();
+    });
+
+    test('consulta aulas somente quando a seção é aberta', async () => {
+        const user = userEvent.setup();
+        const { lessonService } = renderWorkspace();
+
+        expect(lessonService.listLessons).not.toHaveBeenCalled();
+
+        await user.click(
+            screen.getByRole('button', {
+                name: 'Gerenciar aulas',
+            }),
+        );
+
+        expect(await screen.findByText(
+            LESSON_MANAGEMENT_MESSAGES.EMPTY,
+        )).toBeTruthy();
+        await waitFor(() => {
+            expect(lessonService.listLessons).toHaveBeenCalledTimes(1);
+        });
+        expect(lessonService.listLessons).toHaveBeenCalledWith({});
     });
 });
 

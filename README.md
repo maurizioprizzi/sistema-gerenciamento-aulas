@@ -24,10 +24,11 @@ O frontend está disponível em um workspace independente em `client/`. Ele
 utiliza React e Vite, apresenta uma interface responsiva e exibe a data local
 em português. O formulário administrativo consome a API real, restaura a
 sessão depois de uma atualização da página e permite encerrá-la com segurança.
-O cliente HTTP de aulas já encapsula consulta, filtros e criação com contratos
-defensivos, embora ainda não esteja ligado aos componentes visuais. Depois da
-autenticação, a interface apresenta a estrutura inicial da área do calendário
-com painel geral, navegação entre as quatro seções originais e estados vazios.
+O cliente HTTP de aulas encapsula consulta, filtros e criação com contratos
+defensivos. A seção de gerenciamento já consulta os dados persistidos, aplica
+filtros por curso, mês e data mínima e apresenta estados acessíveis de
+carregamento, ausência, erro e resultados. Depois da autenticação, a interface
+mantém o painel geral e a navegação entre as quatro seções originais.
 
 A compilação de produção é validada e servida pelo próprio Express sob a mesma
 origem da API.
@@ -49,9 +50,9 @@ Os registros do calendário possuem modelos Mongoose próprios para aulas e
 materiais mensais. Atividade e avaliação permanecem tipos de aula, conforme o
 protótipo original. As aulas já podem ser criadas e consultadas por uma API
 administrativa protegida. Os materiais mensais também podem ser consultados e
-substituídos por mês pela API administrativa. O frontend já possui um serviço
-isolado para consumir a API de aulas; os componentes visuais ainda não utilizam
-os dados persistidos do calendário.
+substituídos por mês pela API administrativa. O frontend já consulta e filtra
+as aulas persistidas na seção de gerenciamento; o cadastro visual e a ligação
+dos materiais mensais ainda não foram implementados.
 
 ### Funcionalidades concluídas
 
@@ -145,6 +146,11 @@ os dados persistidos do calendário.
 - filtros de aulas serializados em ordem determinística;
 - seleção defensiva e imutável das aulas recebidas pelo navegador;
 - erros públicos seguros para rede, recusas e respostas inválidas da API de aulas;
+- consulta visual de aulas iniciada somente ao abrir sua seção;
+- filtros visuais por curso, mês e data mínima;
+- estados acessíveis de carregamento, ausência, erro e resultados;
+- descarte de respostas antigas e atualizações posteriores à desmontagem;
+- cartões responsivos com os campos e links públicos das aulas;
 - formulário administrativo acessível com estados de envio e erro;
 - login real integrado ao backend sem armazenar credenciais em App;
 - restauração da sessão administrativa depois de recarregar a página;
@@ -162,7 +168,6 @@ os dados persistidos do calendário.
 ### Ainda não implementado
 
 - formulário visual para cadastrar aulas, atividades e avaliações;
-- ligação dos componentes visuais à consulta, aos filtros e à criação de aulas;
 - formulário visual e integração frontend para os materiais mensais;
 - migração dos dados do protótipo;
 - acesso externo à aplicação;
@@ -443,8 +448,8 @@ npm --prefix client test
 No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-663 testes
-105 suítes
+678 testes
+106 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -516,6 +521,12 @@ Os testes verificam, entre outros comportamentos:
 - seleção dos oito campos funcionais aceitos durante a criação no navegador;
 - representações públicas imutáveis sem campos adicionais do backend;
 - conversão segura de falhas de rede e respostas HTTP inconsistentes;
+- consulta visual executada somente depois da seleção da seção de aulas;
+- aplicação e limpeza dos três filtros públicos pela interface;
+- apresentação de contagem, estado vazio, cartões e links de materiais;
+- mensagens públicas seguras e repetição de consultas recusadas;
+- bloqueio dos filtros durante requisições em andamento;
+- descarte de respostas assíncronas antigas ou posteriores à desmontagem;
 - formulário acessível, validação dos campos e bloqueio durante o envio;
 - mensagens públicas seguras para recusas e falhas inesperadas;
 - restauração da sessão válida e retorno ao formulário para visitantes;
@@ -636,7 +647,9 @@ dionisio/
 │   │   │       ├── CalendarNavigation.jsx
 │   │   │       ├── CalendarNavigation.test.jsx
 │   │   │       ├── CalendarWorkspace.jsx
-│   │   │       └── CalendarWorkspace.test.jsx
+│   │   │       ├── CalendarWorkspace.test.jsx
+│   │   │       ├── LessonManagement.jsx
+│   │   │       └── LessonManagement.test.jsx
 │   │   ├── services/
 │   │   │   ├── AuthenticationApi.js
 │   │   │   ├── AuthenticationApi.test.js
@@ -760,8 +773,14 @@ dados do calendário.
 ### `client/src/components/calendar/CalendarWorkspace.jsx`
 
 Compõe o cabeçalho autenticado, a saída, a navegação e o conteúdo da seção
-ativa. O painel geral representa somente a coleção vazia atual, enquanto as
-demais seções mantêm seus títulos até a implementação dos dados reais.
+ativa. O painel geral mantém o estado inicial do protótipo, enquanto a seção de
+aulas monta a consulta persistente somente quando é selecionada.
+
+### `client/src/components/calendar/LessonManagement.jsx`
+
+Coordena os filtros e a consulta visual das aulas. Apresenta carregamento,
+ausência, falha segura, repetição e cartões responsivos, além de impedir que
+respostas antigas ou posteriores à desmontagem substituam o estado atual.
 
 ### `client/src/services/AuthenticationApi.js`
 
@@ -783,8 +802,8 @@ interações sem depender de um navegador aberto ou de um backend externo.
 ### `client/src/styles/global.css`
 
 Define a base visual responsiva, as cores, o foco visível e a adaptação das
-telas de entrada e da área autenticada para diferentes dimensões, sem recursos
-externos.
+telas de entrada, da área autenticada, dos filtros e dos cartões de aulas para
+diferentes dimensões, sem recursos externos.
 
 ### `client/vite.config.js`
 
@@ -1218,9 +1237,9 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. integrar o formulário e os filtros de aulas ao serviço frontend concluído;
+1. criar e integrar o formulário visual de cadastro de aulas;
 2. criar o serviço frontend e o formulário dos materiais mensais;
-3. conectar o calendário visual aos dados persistidos;
+3. conectar o painel geral e o calendário visual aos dados persistidos;
 4. migrar com segurança os dados do protótipo;
 5. realizar testes completos de integração e interface;
 6. preparar os guias técnico e didático;

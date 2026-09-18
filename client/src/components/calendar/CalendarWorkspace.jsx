@@ -1,10 +1,12 @@
 import { useState } from 'react';
 
+import { lessonApi } from '../../services/LessonApi.js';
 import { LogoutButton } from '../authentication/LogoutButton.jsx';
 import {
     CALENDAR_SECTION_IDS,
     CalendarNavigation,
 } from './CalendarNavigation.jsx';
+import { LessonManagement } from './LessonManagement.jsx';
 
 /**
  * Identificadores estáveis utilizados pela área autenticada.
@@ -27,6 +29,8 @@ const CALENDAR_WORKSPACE_MESSAGES = Object.freeze({
         'O estado de saída da área do calendário deve ser booleano.',
     INVALID_LOGOUT_ERROR:
         'O erro de saída da área do calendário deve ser um texto ou nulo.',
+    INVALID_LESSON_SERVICE:
+        'A área do calendário exige um serviço de aulas válido.',
 });
 
 /**
@@ -40,9 +44,9 @@ const CALENDAR_DASHBOARD_EMPTY_MESSAGES = Object.freeze({
 /**
  * Estrutura inicial do painel geral para uma coleção ainda vazia.
  *
- * A contagem e os estados vazios correspondem ao comportamento inicial do
- * protótipo. Dados reais serão recebidos somente quando a API de aulas for
- * implementada.
+ * A consulta persistente pertence à seção de gerenciamento. O painel geral
+ * continuará representando o estado inicial do protótipo até receber sua
+ * própria regra de composição em um marco posterior.
  *
  * @returns {import('react').ReactElement} Painel geral vazio.
  */
@@ -101,11 +105,7 @@ function EmptyCalendarDashboard() {
 }
 
 /**
- * Apresenta o título da seção escolhida enquanto seu conteúdo específico
- * ainda não foi implementado.
- *
- * Não é exibida nenhuma promessa de funcionalidade ou ação inexistente. Cada
- * seção será substituída pelo componente correspondente em seu próprio marco.
+ * Apresenta o título de uma seção cujo conteúdo ainda não foi implementado.
  *
  * @param {object} props Propriedades da seção.
  * @param {string} props.title Título previsto no protótipo original.
@@ -127,8 +127,9 @@ function EmptyCalendarSection({ title }) {
 /**
  * Área principal apresentada depois da autenticação administrativa.
  *
- * O componente coordena apenas a navegação visual entre as seções originais.
- * Autenticação, requisições HTTP e persistência permanecem fora desta camada.
+ * O componente coordena a navegação entre as quatro seções originais. A
+ * consulta persistente de aulas permanece encapsulada em LessonManagement,
+ * enquanto autenticação e encerramento de sessão continuam fora desta camada.
  *
  * @param {object} props Propriedades da área autenticada.
  * @param {string | null} [props.administratorName=null]
@@ -136,6 +137,8 @@ function EmptyCalendarSection({ title }) {
  * @param {Function} props.onLogout Função que solicita a saída.
  * @param {boolean} [props.isLoggingOut=false] Indica saída em andamento.
  * @param {string | null} [props.logoutError=null] Erro público da saída.
+ * @param {{ listLessons: Function }} [props.lessonService=lessonApi]
+ * Serviço de aulas substituível nos testes.
  * @returns {import('react').ReactElement} Área autenticada do calendário.
  */
 function CalendarWorkspace({
@@ -143,6 +146,7 @@ function CalendarWorkspace({
     onLogout,
     isLoggingOut = false,
     logoutError = null,
+    lessonService = lessonApi,
 }) {
     const hasValidAdministratorName =
         administratorName === null
@@ -180,6 +184,18 @@ function CalendarWorkspace({
         );
     }
 
+    const isValidLessonService =
+        lessonService !== null
+        && typeof lessonService === 'object'
+        && !Array.isArray(lessonService)
+        && typeof lessonService.listLessons === 'function';
+
+    if (!isValidLessonService) {
+        throw new TypeError(
+            CALENDAR_WORKSPACE_MESSAGES.INVALID_LESSON_SERVICE,
+        );
+    }
+
     const [activeSectionId, setActiveSectionId] = useState(
         CALENDAR_SECTION_IDS.DASHBOARD,
     );
@@ -194,7 +210,7 @@ function CalendarWorkspace({
 
     if (activeSectionId === CALENDAR_SECTION_IDS.LESSONS) {
         activeContent = (
-            <EmptyCalendarSection title="Gerenciar aulas" />
+            <LessonManagement lessonService={lessonService} />
         );
     } else if (
         activeSectionId === CALENDAR_SECTION_IDS.MATERIALS
@@ -253,10 +269,7 @@ function CalendarWorkspace({
                 onSectionChange={setActiveSectionId}
             />
 
-            <div
-                className="calendar-workspace-content"
-                aria-live="polite"
-            >
+            <div className="calendar-workspace-content">
                 {activeContent}
             </div>
         </main>

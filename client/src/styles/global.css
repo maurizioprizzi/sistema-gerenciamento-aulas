@@ -712,3 +712,254 @@ noscript {
         border-radius: 1.25rem;
     }
 }
+/* LessonManagement: consulta e filtros persistentes */
+.lesson-management {
+    min-height: auto;
+}
+
+.lesson-management-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+}
+
+.lesson-management-heading p {
+    margin: 0.55rem 0 0;
+    line-height: 1.6;
+    color: var(--color-text-muted);
+}
+
+.lesson-management-count {
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    min-width: 3.25rem;
+    min-height: 3.25rem;
+    padding: 0.5rem;
+    font-size: 1.3rem;
+    font-weight: 850;
+    font-variant-numeric: tabular-nums;
+    color: #ffffff;
+    background: var(--color-brand-600);
+    border-radius: 50%;
+}
+
+.lesson-management-filters {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    padding: 1.25rem;
+    margin-top: 1.5rem;
+    background: var(--color-surface-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 0.9rem;
+}
+
+.lesson-management-field {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.lesson-management-field label {
+    font-size: 0.86rem;
+    font-weight: 750;
+}
+
+.lesson-management-field input,
+.lesson-management-field select {
+    width: 100%;
+    min-height: 3rem;
+    padding: 0.7rem 0.8rem;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+}
+
+.lesson-management-field input:focus-visible,
+.lesson-management-field select:focus-visible,
+.lesson-management-actions button:focus-visible,
+.lesson-management-error button:focus-visible {
+    border-color: var(--color-brand-600);
+    outline: 3px solid var(--color-focus);
+}
+
+.lesson-management-field input:disabled,
+.lesson-management-field select:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background: var(--color-surface-muted);
+    opacity: 0.72;
+}
+
+.lesson-management-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    grid-column: 1 / -1;
+}
+
+.lesson-management-actions button,
+.lesson-management-error button {
+    min-height: 2.8rem;
+    padding: 0.7rem 1rem;
+    font-weight: 750;
+    color: var(--color-brand-700);
+    cursor: pointer;
+    background: var(--color-surface);
+    border: 1px solid var(--color-brand-300);
+    border-radius: 0.75rem;
+}
+
+.lesson-management-actions button[type="submit"] {
+    color: #ffffff;
+    background: var(--color-brand-600);
+    border-color: var(--color-brand-600);
+}
+
+.lesson-management-actions button:hover:not(:disabled),
+.lesson-management-error button:hover:not(:disabled) {
+    color: #ffffff;
+    background: var(--color-brand-700);
+    border-color: var(--color-brand-700);
+}
+
+.lesson-management-actions button:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background: var(--color-surface-muted);
+    border-color: var(--color-border);
+    opacity: 0.68;
+}
+
+.lesson-management-results {
+    margin-top: 1.5rem;
+}
+
+.lesson-management-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem;
+    color: var(--color-error);
+    background: var(--color-error-surface);
+    border: 1px solid var(--color-error-border);
+    border-radius: 0.8rem;
+}
+
+.lesson-management-error p {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.lesson-management-list {
+    display: grid;
+    gap: 1rem;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+
+.lesson-management-card {
+    padding: 1.25rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.9rem;
+}
+
+.lesson-management-card header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.lesson-management-card header p {
+    margin: 0 0 0.35rem;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: var(--color-brand-700);
+}
+
+.lesson-management-card h3 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.lesson-management-card time {
+    flex: 0 0 auto;
+    font-weight: 750;
+    color: var(--color-text-muted);
+}
+
+.lesson-management-card dl {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin: 1.25rem 0 0;
+}
+
+.lesson-management-card dl > div {
+    padding: 0.8rem;
+    background: var(--color-surface-muted);
+    border-radius: 0.7rem;
+}
+
+.lesson-management-card dt {
+    font-size: 0.75rem;
+    font-weight: 750;
+    color: var(--color-text-muted);
+}
+
+.lesson-management-card dd {
+    margin: 0.3rem 0 0;
+    overflow-wrap: anywhere;
+}
+
+.lesson-management-materials {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    margin-top: 1rem;
+    font-size: 0.9rem;
+}
+
+.lesson-management-materials a {
+    font-weight: 750;
+    color: var(--color-brand-700);
+}
+
+.lesson-management-material-missing {
+    color: var(--color-text-muted);
+}
+
+@media (max-width: 760px) {
+    .lesson-management-filters,
+    .lesson-management-card dl {
+        grid-template-columns: 1fr;
+    }
+
+    .lesson-management-error {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}
+
+@media (max-width: 420px) {
+    .lesson-management-heading,
+    .lesson-management-card header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .lesson-management-count {
+        width: 3.25rem;
+    }
+
+    .lesson-management-actions {
+        display: grid;
+    }
+}
