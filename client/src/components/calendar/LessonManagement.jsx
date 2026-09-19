@@ -10,6 +10,7 @@ import {
     LessonApiError,
     lessonApi,
 } from '../../services/LessonApi.js';
+import { LessonForm } from './LessonForm.jsx';
 
 /**
  * Identificadores estáveis utilizados pela seção de aulas.
@@ -25,7 +26,7 @@ const LESSON_MANAGEMENT_IDS = Object.freeze({
  */
 const LESSON_MANAGEMENT_MESSAGES = Object.freeze({
     INVALID_LESSON_SERVICE:
-        'O gerenciamento de aulas exige um serviço de consulta válido.',
+        'O gerenciamento de aulas exige um serviço de consulta e criação válido.',
     LOADING: 'Carregando aulas...',
     EMPTY: 'Nenhuma aula encontrada para os filtros selecionados.',
     UNEXPECTED_ERROR:
@@ -126,7 +127,8 @@ function LessonMaterialLink({ label, url }) {
  * estado mais recente da interface.
  *
  * @param {object} props Propriedades da seção.
- * @param {{ listLessons: Function }} [props.lessonService=lessonApi]
+ * @param {{ listLessons: Function, createLesson: Function }}
+ * [props.lessonService=lessonApi]
  * Serviço substituível nos testes.
  * @returns {import('react').ReactElement} Consulta visual das aulas.
  */
@@ -135,7 +137,8 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
         lessonService !== null
         && typeof lessonService === 'object'
         && !Array.isArray(lessonService)
-        && typeof lessonService.listLessons === 'function';
+        && typeof lessonService.listLessons === 'function'
+        && typeof lessonService.createLesson === 'function';
 
     if (!isValidLessonService) {
         throw new TypeError(
@@ -197,6 +200,17 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
             requestSequence.current += 1;
         };
     }, [loadLessons]);
+
+    /**
+     * Atualiza a consulta depois que o backend confirma um novo registro.
+     *
+     * Os filtros efetivamente aplicados são preservados. Assim, um registro
+     * recém-criado aparece somente quando pertence ao recorte atual, sem
+     * alterar silenciosamente a escolha do administrador.
+     */
+    const handleLessonCreated = useCallback(() => {
+        loadLessons(appliedFilters);
+    }, [appliedFilters, loadLessons]);
 
     /**
      * Atualiza somente o controle que originou o evento.
@@ -266,6 +280,11 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
                     {lessons.length}
                 </output>
             </div>
+
+            <LessonForm
+                lessonService={lessonService}
+                onLessonCreated={handleLessonCreated}
+            />
 
             <form
                 id={LESSON_MANAGEMENT_IDS.FILTERS}

@@ -128,8 +128,9 @@ function EmptyCalendarSection({ title }) {
  * Área principal apresentada depois da autenticação administrativa.
  *
  * O componente coordena a navegação entre as quatro seções originais. A
- * consulta persistente de aulas permanece encapsulada em LessonManagement,
- * enquanto autenticação e encerramento de sessão continuam fora desta camada.
+ * consulta e criação persistentes permanecem encapsuladas em
+ * LessonManagement, enquanto autenticação e encerramento de sessão continuam
+ * fora desta camada.
  *
  * @param {object} props Propriedades da área autenticada.
  * @param {string | null} [props.administratorName=null]
@@ -137,7 +138,8 @@ function EmptyCalendarSection({ title }) {
  * @param {Function} props.onLogout Função que solicita a saída.
  * @param {boolean} [props.isLoggingOut=false] Indica saída em andamento.
  * @param {string | null} [props.logoutError=null] Erro público da saída.
- * @param {{ listLessons: Function }} [props.lessonService=lessonApi]
+ * @param {{ listLessons: Function, createLesson: Function }}
+ * [props.lessonService=lessonApi]
  * Serviço de aulas substituível nos testes.
  * @returns {import('react').ReactElement} Área autenticada do calendário.
  */
@@ -188,7 +190,8 @@ function CalendarWorkspace({
         lessonService !== null
         && typeof lessonService === 'object'
         && !Array.isArray(lessonService)
-        && typeof lessonService.listLessons === 'function';
+        && typeof lessonService.listLessons === 'function'
+        && typeof lessonService.createLesson === 'function';
 
     if (!isValidLessonService) {
         throw new TypeError(

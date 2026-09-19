@@ -60,6 +60,7 @@ function createLesson(overrides = {}) {
 function createLessonService(overrides = {}) {
     return {
         listLessons: vi.fn().mockResolvedValue([]),
+        createLesson: vi.fn().mockResolvedValue(createLesson()),
         ...overrides,
     };
 }
@@ -106,6 +107,8 @@ describe('configuração do gerenciamento de aulas', () => {
             {},
             [],
             { listLessons: true },
+            { listLessons() {} },
+            { createLesson() {} },
         ];
 
         for (const lessonService of invalidServices) {
@@ -192,9 +195,11 @@ describe('consulta inicial de aulas', () => {
         });
 
         expect(within(lessonList).getByText('APQSA')).toBeTruthy();
-        expect(screen.getByText('Aula')).toBeTruthy();
-        expect(screen.getByText('12')).toBeTruthy();
-        expect(screen.getByText('Não necessária')).toBeTruthy();
+        expect(within(lessonList).getByText('Aula')).toBeTruthy();
+        expect(within(lessonList).getByText('12')).toBeTruthy();
+        expect(
+            within(lessonList).getByText('Não necessária'),
+        ).toBeTruthy();
         expect(
             screen.getByRole('link', { name: 'Plano de aula' })
                 .getAttribute('href'),
@@ -248,16 +253,21 @@ describe('interação com os filtros', () => {
 
         await screen.findByText(LESSON_MANAGEMENT_MESSAGES.EMPTY);
 
+        const filterForm = screen.getByRole('form', {
+            name: 'Filtros de aulas',
+        });
+
         await user.selectOptions(
-            screen.getByLabelText('Curso'),
+            within(filterForm).getByLabelText('Curso'),
             'TECMKT',
         );
-        fireEvent.change(screen.getByLabelText('Mês'), {
+        fireEvent.change(within(filterForm).getByLabelText('Mês'), {
             target: { value: '2026-09' },
         });
-        fireEvent.change(screen.getByLabelText('A partir de'), {
-            target: { value: '2026-09-18' },
-        });
+        fireEvent.change(
+            within(filterForm).getByLabelText('A partir de'),
+            { target: { value: '2026-09-18' } },
+        );
         await user.click(
             screen.getByRole('button', { name: 'Aplicar filtros' }),
         );
@@ -281,8 +291,13 @@ describe('interação com os filtros', () => {
         );
 
         await screen.findByText(LESSON_MANAGEMENT_MESSAGES.EMPTY);
+
+        const filterForm = screen.getByRole('form', {
+            name: 'Filtros de aulas',
+        });
+
         await user.selectOptions(
-            screen.getByLabelText('Curso'),
+            within(filterForm).getByLabelText('Curso'),
             'TECADM',
         );
         await user.click(
@@ -300,9 +315,78 @@ describe('interação com os filtros', () => {
             expect(lessonService.listLessons).toHaveBeenCalledTimes(3);
         });
         expect(lessonService.listLessons).toHaveBeenLastCalledWith({});
-        expect(screen.getByLabelText('Curso').value).toBe('');
-        expect(screen.getByLabelText('Mês').value).toBe('');
-        expect(screen.getByLabelText('A partir de').value).toBe('');
+        expect(within(filterForm).getByLabelText('Curso').value).toBe('');
+        expect(within(filterForm).getByLabelText('Mês').value).toBe('');
+        expect(
+            within(filterForm).getByLabelText('A partir de').value,
+        ).toBe('');
+    });
+});
+
+describe('integração do cadastro com a consulta', () => {
+    test('atualiza a lista preservando os filtros aplicados', async () => {
+        const user = userEvent.setup();
+        const createdLesson = createLesson({
+            id: 'lesson-created',
+            course: 'TECMKT',
+            curricularUnit: 'Marketing Digital',
+        });
+        const lessonService = createLessonService({
+            listLessons: vi.fn()
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([createdLesson]),
+            createLesson: vi.fn().mockResolvedValue(createdLesson),
+        });
+
+        render(
+            <LessonManagement lessonService={lessonService} />,
+        );
+
+        await screen.findByText(LESSON_MANAGEMENT_MESSAGES.EMPTY);
+
+        const filterForm = screen.getByRole('form', {
+            name: 'Filtros de aulas',
+        });
+        const creationForm = screen.getByRole('form', {
+            name: 'Cadastro de aula',
+        });
+
+        await user.selectOptions(
+            within(filterForm).getByLabelText('Curso'),
+            'TECMKT',
+        );
+        await user.click(
+            screen.getByRole('button', { name: 'Aplicar filtros' }),
+        );
+        await waitFor(() => {
+            expect(lessonService.listLessons).toHaveBeenCalledTimes(2);
+        });
+
+        fireEvent.change(within(creationForm).getByLabelText('Data'), {
+            target: { value: '2026-09-19' },
+        });
+        await user.selectOptions(
+            within(creationForm).getByLabelText('Curso'),
+            'TECMKT',
+        );
+        await user.type(
+            within(creationForm).getByLabelText('Unidade curricular'),
+            'Marketing Digital',
+        );
+        await user.click(
+            screen.getByRole('button', { name: 'Cadastrar registro' }),
+        );
+
+        expect(await screen.findByRole('heading', {
+            level: 3,
+            name: 'Marketing Digital',
+        })).toBeTruthy();
+        expect(lessonService.createLesson).toHaveBeenCalledTimes(1);
+        expect(lessonService.listLessons).toHaveBeenCalledTimes(3);
+        expect(lessonService.listLessons).toHaveBeenLastCalledWith({
+            course: 'TECMKT',
+        });
     });
 });
 

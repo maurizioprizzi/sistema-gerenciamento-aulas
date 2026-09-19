@@ -2373,3 +2373,95 @@ encerramento por `SIGINT` fechou a conexão com o banco de forma controlada.
 
 Criar e integrar o formulário visual de cadastro de aulas, atividades e
 avaliações utilizando a operação de criação já disponível no `LessonApi`.
+
+
+## 19 de setembro de 2026 — Cadastro visual de aulas
+
+### Objetivo
+
+Permitir o cadastro de aulas, atividades e avaliações pela interface
+autenticada, utilizando a operação de criação já encapsulada no `LessonApi`
+e mantendo o contrato funcional do protótipo original.
+
+### Formulário de cadastro
+
+Foi criado o `LessonForm`, responsável somente pelo estado visual dos oito
+campos públicos: data, curso, unidade curricular, tipo, número, necessidade de
+revisão e os dois links de materiais. Cursos e tipos são obtidos das coleções
+públicas do cliente HTTP, evitando opções divergentes entre a interface e a
+fronteira da API.
+
+Data, curso, unidade curricular e tipo permanecem obrigatórios. Restrições de
+tipo e tamanho são representadas pelos controles HTML antes da chamada, sem
+duplicar no componente todas as regras mantidas pelo backend. O `LessonApi`
+continua responsável pela seleção estrutural, normalização e comunicação HTTP.
+
+Durante o envio, todos os controles ficam desativados e o botão identifica a
+operação pendente. Uma recusa conhecida preserva sua mensagem pública; uma
+falha inesperada recebe texto genérico. Os valores digitados são mantidos em
+qualquer falha e limpos somente depois que o backend confirma a criação.
+
+### Integração com a consulta
+
+O `LessonManagement` passou a compor o formulário antes dos filtros e a
+exigir um serviço que implemente consulta e criação. Depois de um cadastro
+confirmado, a lista é consultada novamente com os filtros efetivamente
+aplicados, sem substituir silenciosamente as escolhas do administrador.
+
+O `CalendarWorkspace` também valida as duas operações antes de entregar o
+serviço à seção. O serviço padrão continua sendo a instância imutável do
+`LessonApi`; dependências controladas permanecem disponíveis nos testes.
+
+### Acessibilidade e responsividade
+
+O formulário possui nome acessível, associação explícita entre rótulos e
+controles, foco visível e mensagens de erro e sucesso relacionadas ao
+formulário. A validação nativa impede o envio quando campos obrigatórios estão
+vazios, e estados desativados não dependem exclusivamente de cor.
+
+Em telas amplas, os campos são organizados em duas colunas, preservando linhas
+inteiras para conteúdos longos. Em dimensões menores, a composição passa para
+uma coluna, o botão ocupa a largura disponível e não ocorre rolagem lateral.
+
+### Testes automatizados
+
+O `LessonForm` recebeu 11 testes de configuração, estrutura, opções públicas,
+envio dos oito campos, limpeza após sucesso, preservação após recusa, falhas
+inesperadas, bloqueio durante requisições e remoção de mensagens anteriores.
+
+O `LessonManagement` passou de 13 para 14 testes com um cenário integrado que
+confirma a atualização da lista depois da criação e a preservação dos filtros.
+Os testes do `CalendarWorkspace` foram alinhados ao contrato ampliado do
+serviço. As quatro suítes direcionadas aprovaram 56 testes, e a regressão
+integral aprovou todas as suítes do backend e do frontend.
+
+### Validação real
+
+A compilação de produção foi servida pelo Express com MongoDB local. Login,
+abertura da seção, formulário, validação nativa dos campos obrigatórios,
+filtros, adaptação para computador e celular e logout foram verificados no
+navegador. Nenhum registro artificial foi persistido durante essa inspeção.
+
+O servidor iniciou após a preparação do administrador e encerrou por
+`SIGINT`, fechando a conexão com o banco. O aviso de unidade alterada do
+MongoDB foi resolvido com a recarga do systemd, e o serviço permaneceu ativo.
+
+### Verificação
+
+- 550 testes do backend aprovados em 98 suítes;
+- 140 testes do frontend aprovados em nove arquivos;
+- 690 testes aprovados em 107 suítes no total;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- sintaxe e diff validados;
+- compilação de produção concluída com 24 módulos;
+- 56 testes direcionados aprovados nos quatro componentes integrados;
+- interface validada no navegador em computador e celular;
+- validação obrigatória confirmada sem inserir dados artificiais;
+- inicialização e encerramento seguros confirmados com MongoDB local.
+
+### Próximo marco
+
+Criar o cliente HTTP e a interface dos materiais mensais, utilizando as rotas
+administrativas já disponíveis para consulta e substituição por período.

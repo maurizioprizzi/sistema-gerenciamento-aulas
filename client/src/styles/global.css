@@ -963,3 +963,199 @@ noscript {
         display: grid;
     }
 }
+/* LessonForm: cadastro administrativo de aulas */
+.lesson-form-section {
+    padding: 1.25rem;
+    margin-top: 1.5rem;
+    background: rgba(99, 102, 241, 0.045);
+    border: 1px solid var(--color-brand-300);
+    border-radius: 0.9rem;
+}
+
+.lesson-form-heading h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.35;
+}
+
+.lesson-form-heading p {
+    margin: 0.45rem 0 0;
+    line-height: 1.6;
+    color: var(--color-text-muted);
+}
+
+.lesson-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    margin-top: 1.25rem;
+}
+
+.lesson-form-field {
+    display: grid;
+    align-content: start;
+    gap: 0.45rem;
+    min-width: 0;
+}
+
+.lesson-form-field-wide {
+    grid-column: 1 / -1;
+}
+
+.lesson-form-field label,
+.lesson-form-checkbox {
+    font-size: 0.86rem;
+    font-weight: 750;
+    color: var(--color-text);
+}
+
+.lesson-form-field input,
+.lesson-form-field select {
+    width: 100%;
+    min-height: 3rem;
+    padding: 0.7rem 0.8rem;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    transition:
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        background-color 160ms ease;
+}
+
+.lesson-form-field input:hover:not(:disabled),
+.lesson-form-field select:hover:not(:disabled) {
+    border-color: var(--color-brand-300);
+}
+
+.lesson-form-field input:focus-visible,
+.lesson-form-field select:focus-visible,
+.lesson-form-checkbox input:focus-visible,
+.lesson-form-actions button:focus-visible {
+    border-color: var(--color-brand-600);
+    outline: 3px solid var(--color-focus);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+.lesson-form-field input:disabled,
+.lesson-form-field select:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background: var(--color-surface-muted);
+    opacity: 0.72;
+}
+
+.lesson-form-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    grid-column: 1 / -1;
+    width: fit-content;
+    min-height: 2.75rem;
+    cursor: pointer;
+}
+
+.lesson-form-checkbox input {
+    width: 1.15rem;
+    height: 1.15rem;
+    margin: 0;
+    accent-color: var(--color-brand-600);
+}
+
+.lesson-form-checkbox:has(input:disabled) {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    opacity: 0.72;
+}
+
+.lesson-form-message {
+    grid-column: 1 / -1;
+    padding: 0.85rem 1rem;
+    margin: 0;
+    line-height: 1.5;
+    border: 1px solid;
+    border-radius: 0.75rem;
+}
+
+.lesson-form-message-error {
+    color: var(--color-error);
+    background: var(--color-error-surface);
+    border-color: var(--color-error-border);
+}
+
+.lesson-form-message-success {
+    color: #166534;
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+
+.lesson-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    grid-column: 1 / -1;
+}
+
+.lesson-form-actions button {
+    min-height: 2.9rem;
+    padding: 0.7rem 1.15rem;
+    font-weight: 750;
+    color: #ffffff;
+    cursor: pointer;
+    background: var(--color-brand-600);
+    border: 1px solid var(--color-brand-600);
+    border-radius: 0.75rem;
+    box-shadow: 0 8px 20px rgba(67, 56, 202, 0.16);
+    transition:
+        background-color 160ms ease,
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        transform 160ms ease;
+}
+
+.lesson-form-actions button:hover:not(:disabled) {
+    background: var(--color-brand-700);
+    border-color: var(--color-brand-700);
+    box-shadow: 0 10px 24px rgba(67, 56, 202, 0.24);
+    transform: translateY(-1px);
+}
+
+.lesson-form-actions button:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.lesson-form-actions button:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background: var(--color-surface-muted);
+    border-color: var(--color-border);
+    box-shadow: none;
+    opacity: 0.68;
+}
+
+@media (max-width: 760px) {
+    .lesson-form {
+        grid-template-columns: 1fr;
+    }
+
+    .lesson-form-field-wide,
+    .lesson-form-checkbox,
+    .lesson-form-message,
+    .lesson-form-actions {
+        grid-column: 1;
+    }
+}
+
+@media (max-width: 420px) {
+    .lesson-form-section {
+        padding: 1rem;
+    }
+
+    .lesson-form-actions {
+        display: grid;
+    }
+
+    .lesson-form-actions button {
+        width: 100%;
+    }
+}

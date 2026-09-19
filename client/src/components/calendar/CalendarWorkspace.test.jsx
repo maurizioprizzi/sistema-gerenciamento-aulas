@@ -28,14 +28,16 @@ afterEach(() => {
 });
 
 /**
- * Cria o contrato mínimo da consulta de aulas.
+ * Cria o contrato mínimo da consulta e criação de aulas.
  *
  * @param {object} overrides Operações substituídas pelo cenário.
- * @returns {{ listLessons: ReturnType<typeof vi.fn> }} Serviço controlado.
+ * @returns {{ listLessons: ReturnType<typeof vi.fn>,
+ * createLesson: ReturnType<typeof vi.fn> }} Serviço controlado.
  */
 function createLessonService(overrides = {}) {
     return {
         listLessons: vi.fn().mockResolvedValue([]),
+        createLesson: vi.fn(),
         ...overrides,
     };
 }
@@ -46,7 +48,8 @@ function createLessonService(overrides = {}) {
  *
  * @param {object} overrides Propriedades específicas do teste.
  * @returns {{ onLogout: ReturnType<typeof vi.fn>,
- * lessonService: { listLessons: ReturnType<typeof vi.fn> } }} Dependências.
+ * lessonService: { listLessons: ReturnType<typeof vi.fn>,
+ * createLesson: ReturnType<typeof vi.fn> } }} Dependências.
  */
 function renderWorkspace(overrides = {}) {
     const onLogout = overrides.onLogout ?? vi.fn();
@@ -162,6 +165,9 @@ describe('configuração da área do calendário', () => {
             {},
             [],
             { listLessons: true },
+            { listLessons() {} },
+            { createLesson() {} },
+            { listLessons() {}, createLesson: true },
         ];
 
         for (const lessonService of invalidServices) {
