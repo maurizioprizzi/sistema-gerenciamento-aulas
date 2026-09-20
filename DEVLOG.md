@@ -2465,3 +2465,127 @@ MongoDB foi resolvido com a recarga do systemd, e o serviço permaneceu ativo.
 
 Criar o cliente HTTP e a interface dos materiais mensais, utilizando as rotas
 administrativas já disponíveis para consulta e substituição por período.
+
+## 20 de setembro de 2026 — Gerenciamento completo dos materiais
+
+### Objetivo
+
+Concluir a seção “Materiais” do protótipo original, permitindo organizar links
+por aula e por mês, sem introduzir arquivos enviados, dados de alunos ou outras
+funcionalidades não solicitadas.
+
+### Ampliação segura da API mensal
+
+O backend mensal passou a listar todos os períodos em ordem decrescente e a
+excluir um período de forma idempotente. O serviço mantém as operações fora da
+camada HTTP, seleciona representações públicas imutáveis e valida o mês antes
+de acessar o modelo. O controlador limita novamente os campos devolvidos.
+
+As rotas administrativas agora oferecem:
+
+- `GET /api/monthly-materials`;
+- `GET /api/monthly-materials/:month`;
+- `PUT /api/monthly-materials/:month`;
+- `DELETE /api/monthly-materials/:month`.
+
+Autorização administrativa precede todas as operações. A exclusão retorna
+`204` tanto para um documento existente quanto para um período já ausente,
+preservando repetição segura.
+
+### Cliente HTTP mensal
+
+Foi criado o `MonthlyMaterialApi`, responsável pelas quatro operações no
+navegador. O cliente normaliza meses e os dois links, remove propriedades
+desconhecidas, reconstrói materiais públicos imutáveis e mantém separadas as
+falhas de rede, recusas conhecidas e respostas inconsistentes.
+
+Mensagens destinadas à interface não incorporam meses, links ou causas
+técnicas. Métodos vinculados e uma instância padrão imutável permitem o uso
+direto pelos componentes e a substituição controlada nos testes.
+
+### Formulário e gerenciamento mensal
+
+O `MonthlyMaterialForm` representa os três campos do modal original: mês,
+link do Plano de Aula e link do Guia + Atividades. Durante o envio, os controles
+ficam bloqueados. Falhas preservam os valores; a confirmação fecha o formulário
+e atualiza a coleção local.
+
+O `MonthlyMaterialManagement` consulta a coleção somente quando a seção é
+montada, apresenta estados de carregamento, ausência e erro, mantém os meses em
+ordem decrescente e confirma exclusões. Identificadores de requisição impedem
+que consultas antigas substituam gravações ou exclusões recentes.
+
+### Materiais efetivos por aula
+
+O `LessonMaterialManagement` consulta aulas e materiais mensais em paralelo.
+Os filtros de curso, mês e “Mostrar a partir de hoje” são aplicados localmente,
+como no HTML original, sem provocar uma requisição a cada alteração.
+
+A precedência original foi preservada integralmente. Quando uma aula possui ao
+menos um link específico, seus dois campos são utilizados como estão; um campo
+ausente não é completado pelo mês. Somente quando ambos estão ausentes o
+material do mesmo mês funciona como fallback.
+
+A tabela apresenta data civil, curso, unidade curricular, identificação do
+registro e os dois links efetivos. Links externos abrem em nova aba com
+`noopener` e `noreferrer`. Respostas antigas e atualizações depois da
+desmontagem são ignoradas.
+
+### Composição e sincronização
+
+O `MaterialManagement` reúne a introdução, a organização por aula e o
+gerenciamento por mês. Depois de uma gravação ou exclusão mensal confirmada, o
+componente incrementa uma revisão e solicita nova leitura somente para a tabela
+que calcula a herança dos links.
+
+O `CalendarWorkspace` monta essa composição apenas quando o administrador
+abre “Materiais”. Assim, painel geral, aulas e calendário visual não provocam
+consultas mensais desnecessárias.
+
+### Acessibilidade e responsividade
+
+Formulários, filtros, tabelas, diálogos, carregamento, erros e ações possuem
+rótulos, foco visível e estados perceptíveis. Em telas estreitas, filtros e
+ações passam para uma coluna, o modal preserva margens seguras e as tabelas
+utilizam rolagem horizontal controlada sem ampliar a página inteira.
+
+### Testes automatizados
+
+O backend mensal foi ampliado com cenários de listagem e exclusão no serviço,
+controlador, roteador e integração HTTP. O frontend recebeu 46 testes do
+cliente mensal, 11 do formulário, 13 do gerenciamento mensal, 15 dos materiais
+por aula e quatro da composição. O workspace passou a validar a abertura da
+seção completa e o encaminhamento das duas fontes de dados.
+
+As cinco suítes direcionadas de componentes e aplicação aprovaram 65 testes. A
+regressão integral aprovou todas as suítes do backend e do frontend.
+
+### Validação real
+
+A compilação de produção foi servida pelo Express com MongoDB local. Login,
+navegação, filtros, cadastro e exclusão mensal, atualização da herança,
+abertura dos links e responsividade foram verificados no navegador.
+
+O processo iniciou depois da conexão com o banco e da preparação do
+administrador. O encerramento por `SIGINT` fechou o MongoDB e a aplicação de
+forma controlada.
+
+### Verificação
+
+- 575 testes do backend aprovados em 103 suítes;
+- 231 testes do frontend aprovados em 14 arquivos;
+- 806 testes aprovados em 117 suítes no total;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- sintaxe e diff validados;
+- compilação de produção concluída com 29 módulos;
+- 65 testes direcionados aprovados nos cinco componentes integrados;
+- interface e responsividade validadas no navegador;
+- inicialização e encerramento seguros confirmados com MongoDB local;
+- contrato original preservado sem funcionalidades adicionais.
+
+### Próximo marco
+
+Conectar o painel geral aos dados persistidos, mantendo contagem, próximas
+aulas e registros marcados para revisão dentro das regras do protótipo.

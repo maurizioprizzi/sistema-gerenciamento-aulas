@@ -11,6 +11,8 @@ const MONTHLY_MATERIAL_CONTROLLER_ERRORS = Object.freeze({
         'O controlador exige um serviço de materiais mensais válido.',
     INVALID_MONTHLY_MATERIAL_RESPONSE:
         'O serviço retornou um material mensal inválido.',
+    INVALID_MONTHLY_MATERIAL_LIST_RESPONSE:
+        'O serviço retornou uma lista de materiais mensais inválida.',
 });
 
 /**
@@ -45,7 +47,7 @@ class MonthlyMaterialController {
     /**
      * @param {object} dependencies Dependências do controlador.
      * @param {object} dependencies.monthlyMaterialService
-     * Serviço com getMonthlyMaterial() e saveMonthlyMaterial().
+     * Serviço com listagem, consulta, gravação e exclusão mensal.
      */
     constructor({ monthlyMaterialService } = {}) {
         MonthlyMaterialController.validateMonthlyMaterialService(
@@ -58,8 +60,10 @@ class MonthlyMaterialController {
          * Os handlers são vinculados para poderem ser registrados diretamente
          * no Router sem perder o acesso ao campo privado da instância.
          */
+        this.list = this.list.bind(this);
         this.get = this.get.bind(this);
         this.save = this.save.bind(this);
+        this.remove = this.remove.bind(this);
 
         Object.freeze(this);
     }
@@ -68,13 +72,15 @@ class MonthlyMaterialController {
      * Valida o serviço utilizado pelo controlador.
      *
      * @param {unknown} service Dependência recebida.
-     * @throws {TypeError} Quando as duas operações necessárias não existem.
+     * @throws {TypeError} Quando as quatro operações necessárias não existem.
      */
     static validateMonthlyMaterialService(service) {
         if (
             !isObject(service)
+            || typeof service.listMonthlyMaterials !== 'function'
             || typeof service.getMonthlyMaterial !== 'function'
             || typeof service.saveMonthlyMaterial !== 'function'
+            || typeof service.deleteMonthlyMaterial !== 'function'
         ) {
             throw new TypeError(
                 MONTHLY_MATERIAL_CONTROLLER_ERRORS
@@ -126,6 +132,65 @@ class MonthlyMaterialController {
             lessonPlanUrl: material.lessonPlanUrl,
             studentGuideUrl: material.studentGuideUrl,
         });
+    }
+
+    /**
+     * Cria uma lista pública, imutável e independente dos itens do serviço.
+     *
+     * @param {unknown} materials Materiais recebidos do serviço.
+     * @returns {ReadonlyArray<Readonly<object>>} Lista segura para a resposta.
+     * @throws {TypeError} Quando a coleção estiver inconsistente.
+     */
+    static createPublicMonthlyMaterialList(materials) {
+        if (!Array.isArray(materials)) {
+            throw new TypeError(
+                MONTHLY_MATERIAL_CONTROLLER_ERRORS
+                    .INVALID_MONTHLY_MATERIAL_LIST_RESPONSE,
+            );
+        }
+
+        try {
+            return Object.freeze(
+                materials.map((material) => (
+                    MonthlyMaterialController
+                        .createPublicMonthlyMaterial(material)
+                )),
+            );
+        } catch (error) {
+            if (error instanceof TypeError) {
+                throw new TypeError(
+                    MONTHLY_MATERIAL_CONTROLLER_ERRORS
+                        .INVALID_MONTHLY_MATERIAL_LIST_RESPONSE,
+                );
+            }
+
+            throw error;
+        }
+    }
+
+    /**
+     * Lista todos os materiais mensais para a tabela administrativa.
+     *
+     * @param {import('express').Request} request Requisição HTTP.
+     * @param {import('express').Response} response Resposta HTTP.
+     * @param {import('express').NextFunction} next Tratamento seguinte.
+     * @returns {Promise<void>}
+     */
+    async list(request, response, next) {
+        try {
+            const materials = await this.#monthlyMaterialService
+                .listMonthlyMaterials();
+            const publicMaterials = MonthlyMaterialController
+                .createPublicMonthlyMaterialList(materials);
+
+            response.status(200).json({
+                data: {
+                    materials: publicMaterials,
+                },
+            });
+        } catch (error) {
+            next(error);
+        }
     }
 
     /**
@@ -188,6 +253,29 @@ class MonthlyMaterialController {
                     material: publicMaterial,
                 },
             });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * Exclui o material do mês e responde sem corpo.
+     *
+     * O mesmo resultado é utilizado quando o mês já não existe, preservando
+     * a natureza idempotente da operação DELETE.
+     *
+     * @param {import('express').Request} request Requisição HTTP.
+     * @param {import('express').Response} response Resposta HTTP.
+     * @param {import('express').NextFunction} next Tratamento seguinte.
+     * @returns {Promise<void>}
+     */
+    async remove(request, response, next) {
+        try {
+            await this.#monthlyMaterialService.deleteMonthlyMaterial(
+                request?.params?.month,
+            );
+
+            response.status(204).end();
         } catch (error) {
             next(error);
         }

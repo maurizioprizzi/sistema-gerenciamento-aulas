@@ -22,6 +22,12 @@ import {
 import {
     LESSON_MANAGEMENT_MESSAGES,
 } from './LessonManagement.jsx';
+import {
+    LESSON_MATERIAL_MANAGEMENT_MESSAGES,
+} from './LessonMaterialManagement.jsx';
+import {
+    MONTHLY_MATERIAL_MANAGEMENT_MESSAGES,
+} from './MonthlyMaterialManagement.jsx';
 
 afterEach(() => {
     cleanup();
@@ -43,18 +49,36 @@ function createLessonService(overrides = {}) {
 }
 
 /**
+ * Cria o contrato completo dos materiais mensais.
+ *
+ * @param {object} overrides Operações substituídas pelo cenário.
+ * @returns {object} Serviço mensal controlado.
+ */
+function createMonthlyMaterialService(overrides = {}) {
+    return {
+        listMonthlyMaterials: vi.fn().mockResolvedValue(
+            Object.freeze([]),
+        ),
+        saveMonthlyMaterial: vi.fn(),
+        deleteMonthlyMaterial: vi.fn(),
+        ...overrides,
+    };
+}
+
+/**
  * Monta a área autenticada com propriedades válidas que podem ser
  * substituídas por cada cenário.
  *
  * @param {object} overrides Propriedades específicas do teste.
  * @returns {{ onLogout: ReturnType<typeof vi.fn>,
- * lessonService: { listLessons: ReturnType<typeof vi.fn>,
- * createLesson: ReturnType<typeof vi.fn> } }} Dependências.
+ * lessonService: object, monthlyMaterialService: object }} Dependências.
  */
 function renderWorkspace(overrides = {}) {
     const onLogout = overrides.onLogout ?? vi.fn();
     const lessonService = overrides.lessonService
         ?? createLessonService();
+    const monthlyMaterialService = overrides.monthlyMaterialService
+        ?? createMonthlyMaterialService();
 
     render(
         <CalendarWorkspace
@@ -71,10 +95,15 @@ function renderWorkspace(overrides = {}) {
                     : null
             }
             lessonService={lessonService}
+            monthlyMaterialService={monthlyMaterialService}
         />,
     );
 
-    return { onLogout, lessonService };
+    return {
+        onLogout,
+        lessonService,
+        monthlyMaterialService,
+    };
 }
 
 describe('configuração da área do calendário', () => {
@@ -95,6 +124,8 @@ describe('configuração da área do calendário', () => {
         expect(CALENDAR_WORKSPACE_MESSAGES).toMatchObject({
             INVALID_LESSON_SERVICE:
                 'A área do calendário exige um serviço de aulas válido.',
+            INVALID_MONTHLY_MATERIAL_SERVICE:
+                'A área do calendário exige um serviço de materiais mensais válido.',
         });
     });
 
@@ -184,6 +215,41 @@ describe('configuração da área do calendário', () => {
             cleanup();
         }
     });
+
+    test('rejeita serviços mensais inválidos', () => {
+        const invalidServices = [
+            null,
+            'materials',
+            42,
+            {},
+            [],
+            { listMonthlyMaterials() {} },
+            {
+                listMonthlyMaterials() {},
+                saveMonthlyMaterial() {},
+            },
+            {
+                listMonthlyMaterials() {},
+                saveMonthlyMaterial() {},
+                deleteMonthlyMaterial: true,
+            },
+        ];
+
+        for (const monthlyMaterialService of invalidServices) {
+            expect(() => render(
+                <CalendarWorkspace
+                    administratorName="Dionísio Pereira"
+                    onLogout={() => {}}
+                    monthlyMaterialService={monthlyMaterialService}
+                />,
+            )).toThrowError(
+                CALENDAR_WORKSPACE_MESSAGES
+                    .INVALID_MONTHLY_MATERIAL_SERVICE,
+            );
+
+            cleanup();
+        }
+    });
 });
 
 describe('painel geral da área autenticada', () => {
@@ -263,6 +329,14 @@ describe('navegação da área autenticada', () => {
                 name: 'Links de Materiais',
             }),
         ).toBeTruthy();
+        expect(screen.getByRole('heading', {
+            level: 2,
+            name: 'Por aula (data específica)',
+        })).toBeTruthy();
+        expect(screen.getByRole('heading', {
+            level: 2,
+            name: 'Materiais por mês',
+        })).toBeTruthy();
 
         await user.click(
             screen.getByRole('button', {
@@ -308,6 +382,35 @@ describe('navegação da área autenticada', () => {
             expect(lessonService.listLessons).toHaveBeenCalledTimes(1);
         });
         expect(lessonService.listLessons).toHaveBeenCalledWith({});
+    });
+
+    test('consulta materiais somente quando a seção é aberta', async () => {
+        const user = userEvent.setup();
+        const {
+            lessonService,
+            monthlyMaterialService,
+        } = renderWorkspace();
+
+        expect(lessonService.listLessons).not.toHaveBeenCalled();
+        expect(
+            monthlyMaterialService.listMonthlyMaterials,
+        ).not.toHaveBeenCalled();
+
+        await user.click(
+            screen.getByRole('button', { name: 'Materiais' }),
+        );
+
+        expect(await screen.findByText(
+            LESSON_MATERIAL_MANAGEMENT_MESSAGES.EMPTY,
+        )).toBeTruthy();
+        expect(await screen.findByText(
+            MONTHLY_MATERIAL_MANAGEMENT_MESSAGES.EMPTY,
+        )).toBeTruthy();
+        expect(lessonService.listLessons).toHaveBeenCalledTimes(1);
+        expect(lessonService.listLessons).toHaveBeenCalledWith({});
+        expect(
+            monthlyMaterialService.listMonthlyMaterials,
+        ).toHaveBeenCalledTimes(2);
     });
 });
 

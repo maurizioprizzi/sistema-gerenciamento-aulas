@@ -11,6 +11,7 @@ const {
     MONTHLY_MATERIAL_DATA_FIELDS,
     MONTHLY_MATERIAL_SERVICE_CODES,
     MONTHLY_MATERIAL_SERVICE_MESSAGES,
+    MONTHLY_MATERIAL_SORT,
     MONTHLY_MATERIAL_UPDATE_OPTIONS,
     MonthlyMaterialService,
 } = require('../src/services/MonthlyMaterialService');
@@ -49,24 +50,51 @@ function createMonthlyMaterialDocument(overrides = {}) {
  * Cria um modelo controlado sem abrir conexão com o MongoDB.
  *
  * @param {object} options Comportamento desejado.
+ * @param {Array} options.listedMaterials Resultado de find().sort().
  * @param {object|null} options.foundMaterial Resultado de findOne().
  * @param {object|null} options.savedMaterial Resultado de findOneAndUpdate().
+ * @param {object|null} options.deletedMaterial Resultado de findOneAndDelete().
+ * @param {Error|null} options.listError Falha opcional da listagem.
  * @param {Error|null} options.findError Falha opcional da consulta.
  * @param {Error|null} options.saveError Falha opcional da gravação.
+ * @param {Error|null} options.deleteError Falha opcional da exclusão.
  * @returns {{ MonthlyMaterialModel: object, calls: object }} Dependências.
  */
 function createFakeMonthlyMaterialModel({
+    listedMaterials = [createMonthlyMaterialDocument()],
     foundMaterial = createMonthlyMaterialDocument(),
     savedMaterial = createMonthlyMaterialDocument(),
+    deletedMaterial = createMonthlyMaterialDocument(),
+    listError = null,
     findError = null,
     saveError = null,
+    deleteError = null,
 } = {}) {
     const calls = {
+        find: [],
+        sort: [],
         findOne: [],
         findOneAndUpdate: [],
+        findOneAndDelete: [],
     };
 
     const MonthlyMaterialModel = {
+        find(filter) {
+            calls.find.push(filter);
+
+            return {
+                async sort(sort) {
+                    calls.sort.push(sort);
+
+                    if (listError) {
+                        throw listError;
+                    }
+
+                    return listedMaterials;
+                },
+            };
+        },
+
         async findOne(filter) {
             calls.findOne.push(filter);
 
@@ -89,6 +117,16 @@ function createFakeMonthlyMaterialModel({
             }
 
             return savedMaterial;
+        },
+
+        async findOneAndDelete(filter) {
+            calls.findOneAndDelete.push(filter);
+
+            if (deleteError) {
+                throw deleteError;
+            }
+
+            return deletedMaterial;
         },
     };
 
@@ -121,7 +159,7 @@ function assertOperationalInputError(
 }
 
 describe('configuração do MonthlyMaterialService', () => {
-    test('expõe contratos estáveis para consulta e gravação', () => {
+    test('expõe contratos estáveis para todas as operações', () => {
         assert.deepEqual(MONTHLY_MATERIAL_SERVICE_CODES, {
             INVALID_MONTHLY_MATERIAL_MONTH:
                 'INVALID_MONTHLY_MATERIAL_MONTH',
@@ -139,6 +177,10 @@ describe('configuração do MonthlyMaterialService', () => {
             upsert: true,
             runValidators: true,
             setDefaultsOnInsert: true,
+        });
+        assert.deepEqual(MONTHLY_MATERIAL_SORT, {
+            month: -1,
+            _id: -1,
         });
     });
 
@@ -159,17 +201,26 @@ describe('configuração do MonthlyMaterialService', () => {
             Object.isFrozen(MONTHLY_MATERIAL_UPDATE_OPTIONS),
             true,
         );
+        assert.equal(Object.isFrozen(MONTHLY_MATERIAL_SORT), true);
     });
 
     test('permite construir o serviço com a dependência padrão', () => {
         const service = new MonthlyMaterialService();
 
         assert.equal(
+            typeof service.listMonthlyMaterials,
+            'function',
+        );
+        assert.equal(
             typeof service.getMonthlyMaterial,
             'function',
         );
         assert.equal(
             typeof service.saveMonthlyMaterial,
+            'function',
+        );
+        assert.equal(
+            typeof service.deleteMonthlyMaterial,
             'function',
         );
     });
@@ -179,9 +230,30 @@ describe('configuração do MonthlyMaterialService', () => {
             null,
             false,
             {},
-            { findOne: 'não é função', findOneAndUpdate() {} },
-            { findOne() {} },
-            { findOne() {}, findOneAndUpdate: 'não é função' },
+            {
+                find: 'não é função',
+                findOne() {},
+                findOneAndUpdate() {},
+                findOneAndDelete() {},
+            },
+            {
+                find() {},
+                findOne: 'não é função',
+                findOneAndUpdate() {},
+                findOneAndDelete() {},
+            },
+            {
+                find() {},
+                findOne() {},
+                findOneAndUpdate: 'não é função',
+                findOneAndDelete() {},
+            },
+            {
+                find() {},
+                findOne() {},
+                findOneAndUpdate() {},
+                findOneAndDelete: 'não é função',
+            },
         ];
 
         for (const MonthlyMaterialModel of invalidModels) {
@@ -388,6 +460,118 @@ describe('representação pública do material mensal', () => {
                 },
             );
         }
+    });
+});
+
+describe('listagem dos materiais mensais', () => {
+    test('lista em ordem decrescente e devolve representações públicas', async () => {
+        const listedMaterials = [
+            createMonthlyMaterialDocument({
+                _id: 'material-outubro',
+                month: '2026-10',
+            }),
+            createMonthlyMaterialDocument({
+                _id: 'material-setembro',
+                month: '2026-09',
+            }),
+        ];
+        const {
+            MonthlyMaterialModel,
+            calls,
+        } = createFakeMonthlyMaterialModel({ listedMaterials });
+        const service = new MonthlyMaterialService({
+            MonthlyMaterialModel,
+        });
+
+        const result = await service.listMonthlyMaterials();
+
+        assert.deepEqual(calls.find, [{}]);
+        assert.equal(Object.isFrozen(calls.find[0]), true);
+        assert.deepEqual(calls.sort, [MONTHLY_MATERIAL_SORT]);
+        assert.deepEqual(
+            result.map((material) => material.month),
+            ['2026-10', '2026-09'],
+        );
+        assert.equal(Object.isFrozen(result), true);
+        assert.equal(Object.isFrozen(result[0]), true);
+        assert.notStrictEqual(result[0], listedMaterials[0]);
+        assert.equal(Object.hasOwn(result[0], 'createdAt'), false);
+    });
+
+    test('aceita uma coleção vazia', async () => {
+        const { MonthlyMaterialModel } =
+            createFakeMonthlyMaterialModel({
+                listedMaterials: [],
+            });
+        const service = new MonthlyMaterialService({
+            MonthlyMaterialModel,
+        });
+
+        const result = await service.listMonthlyMaterials();
+
+        assert.deepEqual(result, []);
+        assert.equal(Object.isFrozen(result), true);
+    });
+
+    test('rejeita um resultado que não seja uma lista', async () => {
+        const { MonthlyMaterialModel } =
+            createFakeMonthlyMaterialModel({
+                listedMaterials: {},
+            });
+        const service = new MonthlyMaterialService({
+            MonthlyMaterialModel,
+        });
+
+        await assert.rejects(
+            service.listMonthlyMaterials(),
+            {
+                name: 'TypeError',
+                message:
+                    MONTHLY_MATERIAL_SERVICE_MESSAGES
+                        .INVALID_MONTHLY_MATERIAL_LIST,
+            },
+        );
+    });
+
+    test('traduz um item inconsistente como lista inválida', async () => {
+        const { MonthlyMaterialModel } =
+            createFakeMonthlyMaterialModel({
+                listedMaterials: [
+                    createMonthlyMaterialDocument(),
+                    { month: '2026-08' },
+                ],
+            });
+        const service = new MonthlyMaterialService({
+            MonthlyMaterialModel,
+        });
+
+        await assert.rejects(
+            service.listMonthlyMaterials(),
+            {
+                name: 'TypeError',
+                message:
+                    MONTHLY_MATERIAL_SERVICE_MESSAGES
+                        .INVALID_MONTHLY_MATERIAL_LIST,
+            },
+        );
+    });
+
+    test('propaga uma falha real ocorrida durante a listagem', async () => {
+        const expectedError = new Error(
+            'Falha real de listagem.',
+        );
+        const { MonthlyMaterialModel } =
+            createFakeMonthlyMaterialModel({
+                listError: expectedError,
+            });
+        const service = new MonthlyMaterialService({
+            MonthlyMaterialModel,
+        });
+
+        await assert.rejects(
+            service.listMonthlyMaterials(),
+            expectedError,
+        );
     });
 });
 
@@ -698,6 +882,109 @@ describe('gravação dos materiais mensais', () => {
                 '2026-09',
                 VALID_MATERIAL_DATA,
             ),
+            {
+                name: 'TypeError',
+                message:
+                    MONTHLY_MATERIAL_SERVICE_MESSAGES
+                        .INVALID_MONTHLY_MATERIAL_DOCUMENT,
+            },
+        );
+    });
+});
+
+describe('exclusão dos materiais mensais', () => {
+    test('remove pelo mês e devolve a representação excluída', async () => {
+        const {
+            MonthlyMaterialModel,
+            calls,
+        } = createFakeMonthlyMaterialModel();
+        const service = new MonthlyMaterialService({
+            MonthlyMaterialModel,
+        });
+
+        const result = await service.deleteMonthlyMaterial('2026-09');
+
+        assert.deepEqual(calls.findOneAndDelete, [
+            { month: '2026-09' },
+        ]);
+        assert.equal(
+            Object.isFrozen(calls.findOneAndDelete[0]),
+            true,
+        );
+        assert.deepEqual(result, {
+            id: 'material-mensal-123',
+            month: '2026-09',
+            lessonPlanUrl: 'https://example.com/pa-setembro',
+            studentGuideUrl:
+                'https://example.com/gd-ad-setembro',
+        });
+        assert.equal(Object.isFrozen(result), true);
+    });
+
+    test('devolve null quando o mês já não possui material', async () => {
+        const { MonthlyMaterialModel } =
+            createFakeMonthlyMaterialModel({
+                deletedMaterial: null,
+            });
+        const service = new MonthlyMaterialService({
+            MonthlyMaterialModel,
+        });
+
+        const result = await service.deleteMonthlyMaterial('2026-10');
+
+        assert.equal(result, null);
+    });
+
+    test('não acessa o modelo quando o mês é inválido', async () => {
+        const {
+            MonthlyMaterialModel,
+            calls,
+        } = createFakeMonthlyMaterialModel();
+        const service = new MonthlyMaterialService({
+            MonthlyMaterialModel,
+        });
+
+        await assert.rejects(
+            service.deleteMonthlyMaterial('2026-13'),
+            (error) => assertOperationalInputError(
+                error,
+                MONTHLY_MATERIAL_SERVICE_CODES
+                    .INVALID_MONTHLY_MATERIAL_MONTH,
+                MONTHLY_MATERIAL_SERVICE_MESSAGES
+                    .INVALID_MONTHLY_MATERIAL_MONTH,
+            ),
+        );
+
+        assert.equal(calls.findOneAndDelete.length, 0);
+    });
+
+    test('propaga uma falha real ocorrida durante a exclusão', async () => {
+        const expectedError = new Error('Falha real de exclusão.');
+        const { MonthlyMaterialModel } =
+            createFakeMonthlyMaterialModel({
+                deleteError: expectedError,
+            });
+        const service = new MonthlyMaterialService({
+            MonthlyMaterialModel,
+        });
+
+        await assert.rejects(
+            service.deleteMonthlyMaterial('2026-09'),
+            expectedError,
+        );
+    });
+
+    test('rejeita um documento inconsistente devolvido pela exclusão', async () => {
+        const { MonthlyMaterialModel } =
+            createFakeMonthlyMaterialModel({
+                deletedMaterial: { month: '2026-09' },
+            });
+        const service = new MonthlyMaterialService({
+            MonthlyMaterialModel,
+        });
+
+        await assert.rejects(
+            service.deleteMonthlyMaterial('2026-09'),
             {
                 name: 'TypeError',
                 message:

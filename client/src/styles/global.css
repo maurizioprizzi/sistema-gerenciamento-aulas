@@ -1159,3 +1159,622 @@ noscript {
         width: 100%;
     }
 }
+
+/* MonthlyMaterialManagement: materiais aplicáveis ao mês inteiro */
+.monthly-material-management {
+    min-height: auto;
+}
+
+.monthly-material-management-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+}
+
+.monthly-material-management-heading p {
+    margin: 0.55rem 0 0;
+    line-height: 1.6;
+    color: var(--color-text-muted);
+}
+
+.monthly-material-management-heading > button,
+.monthly-material-management-error button {
+    flex: 0 0 auto;
+    min-height: 2.9rem;
+    padding: 0.7rem 1rem;
+    font-weight: 750;
+    color: #ffffff;
+    cursor: pointer;
+    background: var(--color-brand-600);
+    border: 1px solid var(--color-brand-600);
+    border-radius: 0.75rem;
+    box-shadow: 0 8px 20px rgba(67, 56, 202, 0.16);
+    transition:
+        background-color 160ms ease,
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        transform 160ms ease;
+}
+
+.monthly-material-management-heading > button:hover,
+.monthly-material-management-error button:hover {
+    background: var(--color-brand-700);
+    border-color: var(--color-brand-700);
+    box-shadow: 0 10px 24px rgba(67, 56, 202, 0.24);
+    transform: translateY(-1px);
+}
+
+.monthly-material-management-results {
+    margin-top: 1.5rem;
+}
+
+.monthly-material-management-results > p:not(.calendar-empty-state) {
+    padding: 1rem;
+    margin: 0;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+    text-align: center;
+}
+
+.monthly-material-management-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    color: var(--color-error);
+    background: var(--color-error-surface);
+    border: 1px solid var(--color-error-border);
+    border-radius: 0.8rem;
+}
+
+.monthly-material-management-error p {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.monthly-material-management-error button {
+    color: var(--color-error);
+    background: var(--color-surface);
+    border-color: var(--color-error-border);
+    box-shadow: none;
+}
+
+.monthly-material-management-error button:hover {
+    color: #ffffff;
+    background: var(--color-error);
+    border-color: var(--color-error);
+    box-shadow: none;
+}
+
+.monthly-material-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+    border-radius: 0.9rem;
+}
+
+.monthly-material-table {
+    width: 100%;
+    min-width: 42rem;
+    border-collapse: collapse;
+    background: var(--color-surface);
+}
+
+.monthly-material-table th,
+.monthly-material-table td {
+    padding: 1rem;
+    line-height: 1.45;
+    text-align: left;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.monthly-material-table thead th {
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.055em;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    background: var(--color-surface-muted);
+}
+
+.monthly-material-table tbody th {
+    font-weight: 800;
+    color: var(--color-text);
+    white-space: nowrap;
+}
+
+.monthly-material-table tbody tr:last-child th,
+.monthly-material-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.monthly-material-table tbody tr:hover {
+    background: rgba(99, 102, 241, 0.035);
+}
+
+.monthly-material-table a {
+    font-weight: 750;
+    color: var(--color-brand-700);
+}
+
+.monthly-material-table button {
+    min-height: 2.5rem;
+    padding: 0.55rem 0.85rem;
+    font-size: 0.9rem;
+    font-weight: 750;
+    color: var(--color-error);
+    cursor: pointer;
+    background: var(--color-error-surface);
+    border: 1px solid var(--color-error-border);
+    border-radius: 0.65rem;
+    transition:
+        color 160ms ease,
+        background-color 160ms ease,
+        border-color 160ms ease;
+}
+
+.monthly-material-table button:hover:not(:disabled) {
+    color: #ffffff;
+    background: var(--color-error);
+    border-color: var(--color-error);
+}
+
+.monthly-material-table button:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background: var(--color-surface-muted);
+    border-color: var(--color-border);
+    opacity: 0.68;
+}
+
+/* O texto continua disponível para leitores de tela sem ocupar espaço. */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    white-space: nowrap;
+    border: 0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+}
+
+/* MonthlyMaterialForm: modal administrativo do protótipo original */
+.monthly-material-dialog {
+    position: fixed;
+    z-index: 100;
+    inset: 0;
+    display: grid;
+    align-items: center;
+    justify-items: center;
+    padding: 1.5rem;
+    overflow-y: auto;
+    background: rgba(20, 19, 40, 0.66);
+    backdrop-filter: blur(3px);
+}
+
+.monthly-material-form-section {
+    width: min(100%, 38rem);
+    padding: clamp(1.25rem, 4vw, 2rem);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-panel);
+}
+
+.monthly-material-form-section h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    line-height: 1.35;
+}
+
+.monthly-material-form {
+    display: grid;
+    gap: 1rem;
+    margin-top: 1.25rem;
+}
+
+.monthly-material-form-field {
+    display: grid;
+    gap: 0.45rem;
+    min-width: 0;
+}
+
+.monthly-material-form-field label {
+    font-size: 0.86rem;
+    font-weight: 750;
+}
+
+.monthly-material-form-field input {
+    width: 100%;
+    min-height: 3rem;
+    padding: 0.7rem 0.8rem;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    transition:
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        background-color 160ms ease;
+}
+
+.monthly-material-form-field input:hover:not(:disabled) {
+    border-color: var(--color-brand-300);
+}
+
+.monthly-material-form-field input:focus-visible,
+.monthly-material-form-actions button:focus-visible,
+.monthly-material-management-heading > button:focus-visible,
+.monthly-material-management-error button:focus-visible,
+.monthly-material-table button:focus-visible {
+    border-color: var(--color-brand-600);
+    outline: 3px solid var(--color-focus);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+.monthly-material-form-field input:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background: var(--color-surface-muted);
+    opacity: 0.72;
+}
+
+.monthly-material-form-error {
+    padding: 0.85rem 1rem;
+    margin: 0;
+    line-height: 1.5;
+    color: var(--color-error);
+    background: var(--color-error-surface);
+    border: 1px solid var(--color-error-border);
+    border-radius: 0.75rem;
+}
+
+.monthly-material-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 0.25rem;
+}
+
+.monthly-material-form-actions button {
+    min-height: 2.9rem;
+    padding: 0.7rem 1rem;
+    font-weight: 750;
+    color: var(--color-brand-700);
+    cursor: pointer;
+    background: var(--color-surface);
+    border: 1px solid var(--color-brand-300);
+    border-radius: 0.75rem;
+}
+
+.monthly-material-form-actions button[type="submit"] {
+    color: #ffffff;
+    background: var(--color-brand-600);
+    border-color: var(--color-brand-600);
+}
+
+.monthly-material-form-actions button:hover:not(:disabled) {
+    color: #ffffff;
+    background: var(--color-brand-700);
+    border-color: var(--color-brand-700);
+}
+
+.monthly-material-form-actions button:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background: var(--color-surface-muted);
+    border-color: var(--color-border);
+    opacity: 0.68;
+}
+
+@media (max-width: 760px) {
+    .monthly-material-management-heading,
+    .monthly-material-management-error {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .monthly-material-management-heading > button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 420px) {
+    .monthly-material-dialog {
+        align-items: start;
+        padding: 0.75rem;
+    }
+
+    .monthly-material-form-section {
+        padding: 1.15rem;
+        margin: 0.75rem 0;
+    }
+
+    .monthly-material-form-actions {
+        display: grid;
+    }
+
+    .monthly-material-form-actions button {
+        width: 100%;
+    }
+}
+
+
+/* LessonMaterialManagement: materiais efetivos por aula */
+.material-management {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.material-management-introduction {
+    min-height: auto;
+    background:
+        linear-gradient(
+            135deg,
+            rgba(99, 102, 241, 0.08),
+            rgba(79, 70, 229, 0.025)
+        ),
+        var(--color-surface);
+}
+
+.material-management-introduction p,
+.lesson-material-management-heading p {
+    margin: 0.55rem 0 0;
+    line-height: 1.6;
+    color: var(--color-text-muted);
+}
+
+.lesson-material-management {
+    min-height: auto;
+}
+
+.lesson-material-filters {
+    display: grid;
+    grid-template-columns: minmax(10rem, 1fr) minmax(11rem, 1fr) auto;
+    gap: 1rem;
+    align-items: end;
+    padding: 1rem;
+    margin-top: 1.5rem;
+    background: var(--color-surface-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 0.9rem;
+}
+
+.lesson-material-field {
+    display: grid;
+    gap: 0.45rem;
+    min-width: 0;
+}
+
+.lesson-material-field label,
+.lesson-material-checkbox {
+    font-size: 0.86rem;
+    font-weight: 750;
+}
+
+.lesson-material-field select {
+    width: 100%;
+    min-height: 3rem;
+    padding: 0.7rem 2.25rem 0.7rem 0.8rem;
+    color: var(--color-text);
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    transition:
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        background-color 160ms ease;
+}
+
+.lesson-material-field select:hover:not(:disabled) {
+    border-color: var(--color-brand-300);
+}
+
+.lesson-material-field select:focus-visible,
+.lesson-material-checkbox input:focus-visible,
+.lesson-material-error button:focus-visible {
+    border-color: var(--color-brand-600);
+    outline: 3px solid var(--color-focus);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+.lesson-material-field select:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background-color: var(--color-surface-muted);
+    opacity: 0.72;
+}
+
+.lesson-material-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-height: 3rem;
+    padding: 0.7rem 0.85rem;
+    color: var(--color-text);
+    cursor: pointer;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+}
+
+.lesson-material-checkbox input {
+    width: 1.1rem;
+    height: 1.1rem;
+    margin: 0;
+    accent-color: var(--color-brand-600);
+}
+
+.lesson-material-checkbox:has(input:disabled) {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    opacity: 0.72;
+}
+
+.lesson-material-results {
+    margin-top: 1.5rem;
+}
+
+.lesson-material-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem;
+    color: var(--color-error);
+    background: var(--color-error-surface);
+    border: 1px solid var(--color-error-border);
+    border-radius: 0.8rem;
+}
+
+.lesson-material-error p {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.lesson-material-error button {
+    flex: 0 0 auto;
+    min-height: 2.7rem;
+    padding: 0.6rem 0.9rem;
+    font-weight: 750;
+    color: var(--color-error);
+    cursor: pointer;
+    background: var(--color-surface);
+    border: 1px solid var(--color-error-border);
+    border-radius: 0.7rem;
+    transition:
+        color 160ms ease,
+        background-color 160ms ease,
+        border-color 160ms ease;
+}
+
+.lesson-material-error button:hover {
+    color: #ffffff;
+    background: var(--color-error);
+    border-color: var(--color-error);
+}
+
+.lesson-material-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+    border-radius: 0.9rem;
+    -webkit-overflow-scrolling: touch;
+}
+
+.lesson-material-table {
+    width: 100%;
+    min-width: 68rem;
+    border-collapse: collapse;
+    background: var(--color-surface);
+}
+
+.lesson-material-table th,
+.lesson-material-table td {
+    padding: 0.95rem 1rem;
+    line-height: 1.45;
+    text-align: left;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.lesson-material-table thead th {
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.055em;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    white-space: nowrap;
+    background: var(--color-surface-muted);
+}
+
+.lesson-material-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.lesson-material-table tbody tr:hover {
+    background: rgba(99, 102, 241, 0.035);
+}
+
+.lesson-material-table time,
+.lesson-material-table td:nth-child(2),
+.lesson-material-table td:nth-child(4) {
+    white-space: nowrap;
+}
+
+.lesson-material-table td:nth-child(3) {
+    min-width: 15rem;
+    font-weight: 700;
+    color: var(--color-text);
+}
+
+.lesson-material-table a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.35rem;
+    padding: 0.45rem 0.7rem;
+    font-size: 0.88rem;
+    font-weight: 750;
+    color: var(--color-brand-700);
+    text-decoration: none;
+    white-space: nowrap;
+    background: rgba(99, 102, 241, 0.075);
+    border: 1px solid var(--color-brand-300);
+    border-radius: 0.6rem;
+    transition:
+        color 160ms ease,
+        background-color 160ms ease,
+        border-color 160ms ease;
+}
+
+.lesson-material-table a:hover {
+    color: #ffffff;
+    background: var(--color-brand-700);
+    border-color: var(--color-brand-700);
+}
+
+.lesson-material-table a:focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+@media (max-width: 860px) {
+    .lesson-material-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .lesson-material-checkbox {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 620px) {
+    .material-management {
+        gap: 1rem;
+    }
+
+    .lesson-material-filters {
+        grid-template-columns: 1fr;
+        padding: 0.85rem;
+    }
+
+    .lesson-material-checkbox {
+        grid-column: 1;
+    }
+
+    .lesson-material-error {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .lesson-material-error button {
+        width: 100%;
+    }
+}

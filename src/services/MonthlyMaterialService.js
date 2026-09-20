@@ -32,6 +32,8 @@ const MONTHLY_MATERIAL_SERVICE_MESSAGES = Object.freeze({
         'Os dados do material mensal são inválidos.',
     INVALID_MONTHLY_MATERIAL_DOCUMENT:
         'O modelo retornou um material mensal inválido.',
+    INVALID_MONTHLY_MATERIAL_LIST:
+        'O modelo retornou uma lista de materiais mensais inválida.',
 });
 
 /**
@@ -59,6 +61,18 @@ const MONTHLY_MATERIAL_UPDATE_OPTIONS = Object.freeze({
     upsert: true,
     runValidators: true,
     setDefaultsOnInsert: true,
+});
+
+/**
+ * Ordenação determinística da coleção mensal.
+ *
+ * O protótipo apresenta primeiro os períodos mais recentes. O identificador
+ * forma o segundo critério apenas para manter a consulta estável mesmo diante
+ * de dados legados inconsistentes.
+ */
+const MONTHLY_MATERIAL_SORT = Object.freeze({
+    month: -1,
+    _id: -1,
 });
 
 /**
@@ -112,7 +126,7 @@ function createInvalidMonthlyMaterialDataError() {
 }
 
 /**
- * Coordena a consulta e a substituição dos materiais de um mês.
+ * Coordena listagem, consulta, substituição e exclusão dos materiais mensais.
  *
  * O serviço não conhece HTTP, sessão ou componentes visuais. O modelo é
  * recebido por injeção para que as regras possam ser testadas sem conexão com
@@ -149,8 +163,11 @@ class MonthlyMaterialService {
     static validateMonthlyMaterialModel(MonthlyMaterialModel) {
         const isValid =
             MonthlyMaterialModel
+            && typeof MonthlyMaterialModel.find === 'function'
             && typeof MonthlyMaterialModel.findOne === 'function'
             && typeof MonthlyMaterialModel.findOneAndUpdate
+                === 'function'
+            && typeof MonthlyMaterialModel.findOneAndDelete
                 === 'function';
 
         if (!isValid) {
@@ -263,6 +280,40 @@ class MonthlyMaterialService {
     }
 
     /**
+     * Reconstrói e protege uma lista inteira devolvida pelo modelo.
+     *
+     * @param {unknown} materials Resultado da consulta persistente.
+     * @returns {ReadonlyArray<Readonly<object>>} Materiais mensais públicos.
+     * @throws {TypeError} Quando o resultado não é uma lista válida.
+     */
+    static createMonthlyMaterialListRepresentation(materials) {
+        if (!Array.isArray(materials)) {
+            throw new TypeError(
+                MONTHLY_MATERIAL_SERVICE_MESSAGES
+                    .INVALID_MONTHLY_MATERIAL_LIST,
+            );
+        }
+
+        try {
+            return Object.freeze(
+                materials.map((material) => (
+                    MonthlyMaterialService
+                        .createMonthlyMaterialRepresentation(material)
+                )),
+            );
+        } catch (error) {
+            if (error instanceof TypeError) {
+                throw new TypeError(
+                    MONTHLY_MATERIAL_SERVICE_MESSAGES
+                        .INVALID_MONTHLY_MATERIAL_LIST,
+                );
+            }
+
+            throw error;
+        }
+    }
+
+    /**
      * Identifica falhas de entrada produzidas pela adaptação do Mongoose.
      *
      * `ValidationError` representa regras do schema; `CastError` pode ocorrer
@@ -280,6 +331,20 @@ class MonthlyMaterialService {
                 || error.name === 'CastError'
             )
         );
+    }
+
+    /**
+     * Lista todos os materiais mensais na ordem apresentada pelo protótipo.
+     *
+     * @returns {Promise<ReadonlyArray<Readonly<object>>>} Coleção pública.
+     */
+    async listMonthlyMaterials() {
+        const materials = await this.#MonthlyMaterialModel
+            .find(Object.freeze({}))
+            .sort(MONTHLY_MATERIAL_SORT);
+
+        return MonthlyMaterialService
+            .createMonthlyMaterialListRepresentation(materials);
     }
 
     /**
@@ -346,6 +411,33 @@ class MonthlyMaterialService {
         return MonthlyMaterialService
             .createMonthlyMaterialRepresentation(savedMaterial);
     }
+
+    /**
+     * Remove o recurso identificado pelo mês.
+     *
+     * A ausência permanece um resultado normal para que repetir a mesma
+     * exclusão não produza falha. Quando existe documento, sua representação
+     * pública é devolvida apenas à camada controladora.
+     *
+     * @param {unknown} month Identidade mensal no formato YYYY-MM.
+     * @returns {Promise<Readonly<object>|null>} Material removido ou ausência.
+     */
+    async deleteMonthlyMaterial(month) {
+        const preparedMonth =
+            MonthlyMaterialService.prepareMonth(month);
+
+        const deletedMaterial = await this.#MonthlyMaterialModel
+            .findOneAndDelete(
+                Object.freeze({ month: preparedMonth }),
+            );
+
+        if (deletedMaterial === null) {
+            return null;
+        }
+
+        return MonthlyMaterialService
+            .createMonthlyMaterialRepresentation(deletedMaterial);
+    }
 }
 
 /**
@@ -357,6 +449,7 @@ module.exports = {
     MONTHLY_MATERIAL_DATA_FIELDS,
     MONTHLY_MATERIAL_SERVICE_CODES,
     MONTHLY_MATERIAL_SERVICE_MESSAGES,
+    MONTHLY_MATERIAL_SORT,
     MONTHLY_MATERIAL_UPDATE_OPTIONS,
     MonthlyMaterialService,
     monthlyMaterialService,

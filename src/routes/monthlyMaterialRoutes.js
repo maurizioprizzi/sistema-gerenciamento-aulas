@@ -11,6 +11,7 @@ const {
  * O mês identifica diretamente o único recurso permitido para o período.
  */
 const MONTHLY_MATERIAL_ROUTE_PATHS = Object.freeze({
+    COLLECTION: '/',
     RESOURCE_BY_MONTH: '/:month',
 });
 
@@ -46,15 +47,17 @@ function defaultMonthlyMaterialRouterFactory() {
  * Valida o controlador exigido pelas rotas mensais.
  *
  * @param {unknown} controller Controlador recebido.
- * @throws {TypeError} Quando get() ou save() não estão disponíveis.
+ * @throws {TypeError} Quando os quatro handlers não estão disponíveis.
  */
 function validateMonthlyMaterialController(controller) {
     const isValid =
         controller !== null
         && typeof controller === 'object'
         && !Array.isArray(controller)
+        && typeof controller.list === 'function'
         && typeof controller.get === 'function'
-        && typeof controller.save === 'function';
+        && typeof controller.save === 'function'
+        && typeof controller.remove === 'function';
 
     if (!isValid) {
         throw new TypeError(
@@ -64,10 +67,10 @@ function validateMonthlyMaterialController(controller) {
 }
 
 /**
- * Cria as rotas administrativas de consulta e substituição mensal.
+ * Cria as rotas administrativas da coleção e de cada recurso mensal.
  *
  * O middleware de autorização aparece antes de cada handler. Assim, nenhuma
- * leitura nem gravação alcança o serviço sem uma sessão administrativa válida.
+ * operação alcança o serviço sem uma sessão administrativa válida.
  *
  * A fábrica recebe todas as dependências prontas, não instancia serviços e não
  * abre conexão com o MongoDB.
@@ -75,7 +78,7 @@ function validateMonthlyMaterialController(controller) {
  * @param {object} options Configuração da fábrica.
  * @param {object} options.controller Controlador mensal.
  * @param {Function} [options.administrativeAuthorizationMiddleware]
- * Middleware que protege consulta e gravação.
+ * Middleware que protege listagem, consulta, gravação e exclusão.
  * @param {Function} [options.routerFactory]
  * Fábrica do Router, substituível nos testes.
  * @returns {import('express').Router} Roteador configurado.
@@ -114,11 +117,18 @@ function createMonthlyMaterialRouter({
         )
         || typeof router.get !== 'function'
         || typeof router.put !== 'function'
+        || typeof router.delete !== 'function'
     ) {
         throw new TypeError(
             MONTHLY_MATERIAL_ROUTE_ERRORS.INVALID_ROUTER,
         );
     }
+
+    router.get(
+        MONTHLY_MATERIAL_ROUTE_PATHS.COLLECTION,
+        administrativeAuthorizationMiddleware,
+        controller.list,
+    );
 
     router.get(
         MONTHLY_MATERIAL_ROUTE_PATHS.RESOURCE_BY_MONTH,
@@ -130,6 +140,12 @@ function createMonthlyMaterialRouter({
         MONTHLY_MATERIAL_ROUTE_PATHS.RESOURCE_BY_MONTH,
         administrativeAuthorizationMiddleware,
         controller.save,
+    );
+
+    router.delete(
+        MONTHLY_MATERIAL_ROUTE_PATHS.RESOURCE_BY_MONTH,
+        administrativeAuthorizationMiddleware,
+        controller.remove,
     );
 
     return router;

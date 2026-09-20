@@ -53,24 +53,44 @@ function createExpectedPublicMaterial(overrides = {}) {
  * Cria um serviço mensal controlado.
  *
  * @param {object} options Comportamento das operações.
+ * @param {Array} options.listedMaterials Resultado da listagem.
  * @param {object|null} options.foundMaterial Resultado da consulta.
  * @param {object} options.savedMaterial Resultado da gravação.
+ * @param {object|null} options.deletedMaterial Resultado da exclusão.
+ * @param {Error|null} options.listError Falha opcional da listagem.
  * @param {Error|null} options.getError Falha opcional da consulta.
  * @param {Error|null} options.saveError Falha opcional da gravação.
+ * @param {Error|null} options.deleteError Falha opcional da exclusão.
  * @returns {{ monthlyMaterialService: object, calls: object }} Dependências.
  */
 function createFakeMonthlyMaterialService({
+    listedMaterials = [createMonthlyMaterial()],
     foundMaterial = createMonthlyMaterial(),
     savedMaterial = createMonthlyMaterial(),
+    deletedMaterial = createMonthlyMaterial(),
+    listError = null,
     getError = null,
     saveError = null,
+    deleteError = null,
 } = {}) {
     const calls = {
+        listMonthlyMaterials: [],
         getMonthlyMaterial: [],
         saveMonthlyMaterial: [],
+        deleteMonthlyMaterial: [],
     };
 
     const monthlyMaterialService = {
+        async listMonthlyMaterials() {
+            calls.listMonthlyMaterials.push([]);
+
+            if (listError) {
+                throw listError;
+            }
+
+            return listedMaterials;
+        },
+
         async getMonthlyMaterial(month) {
             calls.getMonthlyMaterial.push(month);
 
@@ -93,6 +113,16 @@ function createFakeMonthlyMaterialService({
 
             return savedMaterial;
         },
+
+        async deleteMonthlyMaterial(month) {
+            calls.deleteMonthlyMaterial.push(month);
+
+            if (deleteError) {
+                throw deleteError;
+            }
+
+            return deletedMaterial;
+        },
     };
 
     return {
@@ -107,15 +137,18 @@ function createFakeMonthlyMaterialService({
  * @param {object} options Falhas opcionais da resposta.
  * @param {Error|null} options.statusError Falha produzida por status().
  * @param {Error|null} options.jsonError Falha produzida por json().
+ * @param {Error|null} options.endError Falha produzida por end().
  * @returns {{ response: object, calls: object }} Resposta e chamadas.
  */
 function createFakeResponse({
     statusError = null,
     jsonError = null,
+    endError = null,
 } = {}) {
     const calls = {
         status: [],
         json: [],
+        end: [],
     };
 
     const response = {
@@ -134,6 +167,16 @@ function createFakeResponse({
 
             if (jsonError) {
                 throw jsonError;
+            }
+
+            return response;
+        },
+
+        end() {
+            calls.end.push([]);
+
+            if (endError) {
+                throw endError;
             }
 
             return response;
@@ -169,6 +212,8 @@ describe('configuração do MonthlyMaterialController', () => {
                 'O controlador exige um serviço de materiais mensais válido.',
             INVALID_MONTHLY_MATERIAL_RESPONSE:
                 'O serviço retornou um material mensal inválido.',
+            INVALID_MONTHLY_MATERIAL_LIST_RESPONSE:
+                'O serviço retornou uma lista de materiais mensais inválida.',
         });
         assert.equal(
             Object.isFrozen(MONTHLY_MATERIAL_CONTROLLER_ERRORS),
@@ -183,8 +228,10 @@ describe('configuração do MonthlyMaterialController', () => {
             monthlyMaterialService,
         });
 
+        assert.equal(typeof controller.list, 'function');
         assert.equal(typeof controller.get, 'function');
         assert.equal(typeof controller.save, 'function');
+        assert.equal(typeof controller.remove, 'function');
         assert.equal(Object.isFrozen(controller), true);
     });
 
@@ -198,13 +245,28 @@ describe('configuração do MonthlyMaterialController', () => {
             [],
             {},
             {
+                listMonthlyMaterials: 'não é função',
+                getMonthlyMaterial() {},
+                saveMonthlyMaterial() {},
+                deleteMonthlyMaterial() {},
+            },
+            {
+                listMonthlyMaterials() {},
                 getMonthlyMaterial: 'não é função',
                 saveMonthlyMaterial() {},
+                deleteMonthlyMaterial() {},
             },
-            { getMonthlyMaterial() {} },
             {
+                listMonthlyMaterials() {},
                 getMonthlyMaterial() {},
                 saveMonthlyMaterial: 'não é função',
+                deleteMonthlyMaterial() {},
+            },
+            {
+                listMonthlyMaterials() {},
+                getMonthlyMaterial() {},
+                saveMonthlyMaterial() {},
+                deleteMonthlyMaterial: 'não é função',
             },
         ];
 
@@ -289,6 +351,142 @@ describe('representação pública do material mensal', () => {
                             .INVALID_MONTHLY_MATERIAL_RESPONSE,
                 },
             );
+        }
+    });
+});
+
+describe('representação pública da lista mensal', () => {
+    test('cria uma lista imutável com itens selecionados', () => {
+        const source = [
+            createMonthlyMaterial(),
+            createMonthlyMaterial({
+                id: 'material-mensal-456',
+                month: '2026-08',
+            }),
+        ];
+
+        const publicMaterials = MonthlyMaterialController
+            .createPublicMonthlyMaterialList(source);
+
+        assert.deepEqual(publicMaterials, [
+            createExpectedPublicMaterial(),
+            createExpectedPublicMaterial({
+                id: 'material-mensal-456',
+                month: '2026-08',
+            }),
+        ]);
+        assert.equal(Object.isFrozen(publicMaterials), true);
+        assert.equal(Object.isFrozen(publicMaterials[0]), true);
+        assert.notStrictEqual(publicMaterials[0], source[0]);
+    });
+
+    test('aceita uma lista vazia', () => {
+        const result = MonthlyMaterialController
+            .createPublicMonthlyMaterialList([]);
+
+        assert.deepEqual(result, []);
+        assert.equal(Object.isFrozen(result), true);
+    });
+
+    test('rejeita resultados e itens inválidos', () => {
+        const invalidLists = [
+            undefined,
+            null,
+            {},
+            [createMonthlyMaterial(), { id: 'incompleto' }],
+        ];
+
+        for (const materials of invalidLists) {
+            assert.throws(
+                () => MonthlyMaterialController
+                    .createPublicMonthlyMaterialList(materials),
+                {
+                    name: 'TypeError',
+                    message:
+                        MONTHLY_MATERIAL_CONTROLLER_ERRORS
+                            .INVALID_MONTHLY_MATERIAL_LIST_RESPONSE,
+                },
+            );
+        }
+    });
+});
+
+describe('listagem mensal pelo controlador', () => {
+    test('responde 200 com a lista pública', async () => {
+        const {
+            monthlyMaterialService,
+            calls: serviceCalls,
+        } = createFakeMonthlyMaterialService();
+        const controller = new MonthlyMaterialController({
+            monthlyMaterialService,
+        });
+        const { response, calls: responseCalls } =
+            createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+
+        await controller.list({}, response, next);
+
+        assert.deepEqual(serviceCalls.listMonthlyMaterials, [[]]);
+        assert.deepEqual(responseCalls.status, [200]);
+        assert.deepEqual(responseCalls.json, [{
+            data: {
+                materials: [createExpectedPublicMaterial()],
+            },
+        }]);
+        assert.deepEqual(nextCalls, []);
+    });
+
+    test('mantém o contexto quando o handler é extraído', async () => {
+        const { monthlyMaterialService, calls } =
+            createFakeMonthlyMaterialService({
+                listedMaterials: [],
+            });
+        const controller = new MonthlyMaterialController({
+            monthlyMaterialService,
+        });
+        const list = controller.list;
+        const { response, calls: responseCalls } =
+            createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+
+        await list({}, response, next);
+
+        assert.deepEqual(calls.listMonthlyMaterials, [[]]);
+        assert.deepEqual(responseCalls.json, [
+            { data: { materials: [] } },
+        ]);
+        assert.deepEqual(nextCalls, []);
+    });
+
+    test('encaminha falhas e listas inválidas sem responder', async () => {
+        const expectedError = new Error('Falha de listagem.');
+        const scenarios = [
+            { listError: expectedError, expectedError },
+            { listedMaterials: {}, expectedError: TypeError },
+        ];
+
+        for (const scenario of scenarios) {
+            const { monthlyMaterialService } =
+                createFakeMonthlyMaterialService(scenario);
+            const controller = new MonthlyMaterialController({
+                monthlyMaterialService,
+            });
+            const { response, calls: responseCalls } =
+                createFakeResponse();
+            const { next, calls: nextCalls } =
+                createNextRecorder();
+
+            await controller.list({}, response, next);
+
+            assert.deepEqual(responseCalls.status, []);
+            assert.deepEqual(responseCalls.json, []);
+            assert.equal(nextCalls.length, 1);
+
+            if (scenario.expectedError === TypeError) {
+                assert.equal(nextCalls[0] instanceof TypeError, true);
+            } else {
+                assert.strictEqual(nextCalls[0], expectedError);
+            }
         }
     });
 });
@@ -610,6 +808,124 @@ describe('gravação mensal pelo controlador', () => {
                 params: { month: '2026-09' },
                 body: {},
             },
+            response,
+            next,
+        );
+
+        assert.deepEqual(nextCalls, [expectedError]);
+    });
+});
+
+describe('exclusão mensal pelo controlador', () => {
+    test('encaminha o mês e responde 204 sem corpo', async () => {
+        const {
+            monthlyMaterialService,
+            calls: serviceCalls,
+        } = createFakeMonthlyMaterialService();
+        const controller = new MonthlyMaterialController({
+            monthlyMaterialService,
+        });
+        const { response, calls: responseCalls } =
+            createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+
+        await controller.remove(
+            { params: { month: '2026-09' } },
+            response,
+            next,
+        );
+
+        assert.deepEqual(
+            serviceCalls.deleteMonthlyMaterial,
+            ['2026-09'],
+        );
+        assert.deepEqual(responseCalls.status, [204]);
+        assert.deepEqual(responseCalls.end, [[]]);
+        assert.deepEqual(responseCalls.json, []);
+        assert.deepEqual(nextCalls, []);
+    });
+
+    test('mantém 204 quando o material já não existe', async () => {
+        const { monthlyMaterialService } =
+            createFakeMonthlyMaterialService({
+                deletedMaterial: null,
+            });
+        const controller = new MonthlyMaterialController({
+            monthlyMaterialService,
+        });
+        const { response, calls: responseCalls } =
+            createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+
+        await controller.remove(
+            { params: { month: '2026-10' } },
+            response,
+            next,
+        );
+
+        assert.deepEqual(responseCalls.status, [204]);
+        assert.deepEqual(responseCalls.end, [[]]);
+        assert.deepEqual(nextCalls, []);
+    });
+
+    test('mantém o contexto quando o handler é extraído', async () => {
+        const { monthlyMaterialService, calls } =
+            createFakeMonthlyMaterialService();
+        const controller = new MonthlyMaterialController({
+            monthlyMaterialService,
+        });
+        const remove = controller.remove;
+        const { response } = createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+
+        await remove(
+            { params: { month: '2026-09' } },
+            response,
+            next,
+        );
+
+        assert.deepEqual(calls.deleteMonthlyMaterial, ['2026-09']);
+        assert.deepEqual(nextCalls, []);
+    });
+
+    test('encaminha uma falha do serviço sem iniciar a resposta', async () => {
+        const expectedError = new Error('Falha de exclusão.');
+        const { monthlyMaterialService } =
+            createFakeMonthlyMaterialService({
+                deleteError: expectedError,
+            });
+        const controller = new MonthlyMaterialController({
+            monthlyMaterialService,
+        });
+        const { response, calls: responseCalls } =
+            createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+
+        await controller.remove(
+            { params: { month: '2026-09' } },
+            response,
+            next,
+        );
+
+        assert.deepEqual(responseCalls.status, []);
+        assert.deepEqual(responseCalls.end, []);
+        assert.deepEqual(nextCalls, [expectedError]);
+    });
+
+    test('encaminha uma falha produzida pela resposta HTTP', async () => {
+        const expectedError = new Error('Falha ao encerrar resposta.');
+        const { monthlyMaterialService } =
+            createFakeMonthlyMaterialService();
+        const controller = new MonthlyMaterialController({
+            monthlyMaterialService,
+        });
+        const { response } = createFakeResponse({
+            endError: expectedError,
+        });
+        const { next, calls: nextCalls } = createNextRecorder();
+
+        await controller.remove(
+            { params: { month: '2026-09' } },
             response,
             next,
         );

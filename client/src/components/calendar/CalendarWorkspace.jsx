@@ -1,12 +1,16 @@
 import { useState } from 'react';
 
 import { lessonApi } from '../../services/LessonApi.js';
+import {
+    monthlyMaterialApi,
+} from '../../services/MonthlyMaterialApi.js';
 import { LogoutButton } from '../authentication/LogoutButton.jsx';
 import {
     CALENDAR_SECTION_IDS,
     CalendarNavigation,
 } from './CalendarNavigation.jsx';
 import { LessonManagement } from './LessonManagement.jsx';
+import { MaterialManagement } from './MaterialManagement.jsx';
 
 /**
  * Identificadores estáveis utilizados pela área autenticada.
@@ -31,6 +35,8 @@ const CALENDAR_WORKSPACE_MESSAGES = Object.freeze({
         'O erro de saída da área do calendário deve ser um texto ou nulo.',
     INVALID_LESSON_SERVICE:
         'A área do calendário exige um serviço de aulas válido.',
+    INVALID_MONTHLY_MATERIAL_SERVICE:
+        'A área do calendário exige um serviço de materiais mensais válido.',
 });
 
 /**
@@ -127,10 +133,10 @@ function EmptyCalendarSection({ title }) {
 /**
  * Área principal apresentada depois da autenticação administrativa.
  *
- * O componente coordena a navegação entre as quatro seções originais. A
- * consulta e criação persistentes permanecem encapsuladas em
- * LessonManagement, enquanto autenticação e encerramento de sessão continuam
- * fora desta camada.
+ * O componente coordena a navegação entre as quatro seções originais. As
+ * operações persistentes permanecem encapsuladas nos componentes de aulas e
+ * materiais, enquanto autenticação e encerramento de sessão continuam fora
+ * desta camada.
  *
  * @param {object} props Propriedades da área autenticada.
  * @param {string | null} [props.administratorName=null]
@@ -141,6 +147,10 @@ function EmptyCalendarSection({ title }) {
  * @param {{ listLessons: Function, createLesson: Function }}
  * [props.lessonService=lessonApi]
  * Serviço de aulas substituível nos testes.
+ * @param {{ listMonthlyMaterials: Function,
+ * saveMonthlyMaterial: Function, deleteMonthlyMaterial: Function }}
+ * [props.monthlyMaterialService=monthlyMaterialApi]
+ * Serviço mensal substituível nos testes.
  * @returns {import('react').ReactElement} Área autenticada do calendário.
  */
 function CalendarWorkspace({
@@ -149,6 +159,7 @@ function CalendarWorkspace({
     isLoggingOut = false,
     logoutError = null,
     lessonService = lessonApi,
+    monthlyMaterialService = monthlyMaterialApi,
 }) {
     const hasValidAdministratorName =
         administratorName === null
@@ -199,6 +210,24 @@ function CalendarWorkspace({
         );
     }
 
+    const isValidMonthlyMaterialService =
+        monthlyMaterialService !== null
+        && typeof monthlyMaterialService === 'object'
+        && !Array.isArray(monthlyMaterialService)
+        && typeof monthlyMaterialService.listMonthlyMaterials
+            === 'function'
+        && typeof monthlyMaterialService.saveMonthlyMaterial
+            === 'function'
+        && typeof monthlyMaterialService.deleteMonthlyMaterial
+            === 'function';
+
+    if (!isValidMonthlyMaterialService) {
+        throw new TypeError(
+            CALENDAR_WORKSPACE_MESSAGES
+                .INVALID_MONTHLY_MATERIAL_SERVICE,
+        );
+    }
+
     const [activeSectionId, setActiveSectionId] = useState(
         CALENDAR_SECTION_IDS.DASHBOARD,
     );
@@ -219,7 +248,10 @@ function CalendarWorkspace({
         activeSectionId === CALENDAR_SECTION_IDS.MATERIALS
     ) {
         activeContent = (
-            <EmptyCalendarSection title="Links de Materiais" />
+            <MaterialManagement
+                lessonService={lessonService}
+                monthlyMaterialService={monthlyMaterialService}
+            />
         );
     } else if (
         activeSectionId === CALENDAR_SECTION_IDS.CALENDAR

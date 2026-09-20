@@ -24,6 +24,7 @@ const {
 const {
     MONTHLY_MATERIAL_SERVICE_CODES,
     MONTHLY_MATERIAL_SERVICE_MESSAGES,
+    MONTHLY_MATERIAL_SORT,
     MONTHLY_MATERIAL_UPDATE_OPTIONS,
     MonthlyMaterialService,
 } = require('../src/services/MonthlyMaterialService');
@@ -104,24 +105,51 @@ function createMonthlyMaterialDocument(overrides = {}) {
  * manter o teste HTTP rápido, determinístico e independente do banco.
  *
  * @param {object} options Comportamentos do modelo.
+ * @param {Array} [options.listedMaterials] Resultado da listagem.
  * @param {object|null} [options.foundMaterial] Resultado da consulta.
  * @param {object|null} [options.savedMaterial] Resultado da gravação.
+ * @param {object|null} [options.deletedMaterial] Resultado da exclusão.
+ * @param {Error|null} [options.listError] Falha da listagem.
  * @param {Error|null} [options.findError] Falha da consulta.
  * @param {Error|null} [options.saveError] Falha da gravação.
+ * @param {Error|null} [options.deleteError] Falha da exclusão.
  * @returns {{ MonthlyMaterialModel: object, calls: object }} Dependências.
  */
 function createFakeMonthlyMaterialModel({
+    listedMaterials = [],
     foundMaterial = null,
     savedMaterial = createMonthlyMaterialDocument(),
+    deletedMaterial = createMonthlyMaterialDocument(),
+    listError = null,
     findError = null,
     saveError = null,
+    deleteError = null,
 } = {}) {
     const calls = {
+        find: [],
+        sort: [],
         findOne: [],
         findOneAndUpdate: [],
+        findOneAndDelete: [],
     };
 
     const MonthlyMaterialModel = {
+        find(filter) {
+            calls.find.push(filter);
+
+            return {
+                async sort(sort) {
+                    calls.sort.push(sort);
+
+                    if (listError) {
+                        throw listError;
+                    }
+
+                    return listedMaterials;
+                },
+            };
+        },
+
         async findOne(filter) {
             calls.findOne.push(filter);
 
@@ -144,6 +172,16 @@ function createFakeMonthlyMaterialModel({
             }
 
             return savedMaterial;
+        },
+
+        async findOneAndDelete(filter) {
+            calls.findOneAndDelete.push(filter);
+
+            if (deleteError) {
+                throw deleteError;
+            }
+
+            return deletedMaterial;
         },
     };
 
@@ -413,6 +451,139 @@ describe('integração HTTP administrativa dos materiais mensais', () => {
                     options: MONTHLY_MATERIAL_UPDATE_OPTIONS,
                 },
             ]);
+        },
+    );
+
+    test(
+        'lista os materiais em ordem e somente com campos públicos',
+        async () => {
+            const listedMaterials = [
+                createMonthlyMaterialDocument({
+                    _id: 'monthly-material-2',
+                    month: '2026-10',
+                }),
+                createMonthlyMaterialDocument(),
+            ];
+            const { MonthlyMaterialModel, calls } =
+                createFakeMonthlyMaterialModel({ listedMaterials });
+            const app = createMonthlyMaterialTestApp({
+                MonthlyMaterialModel,
+                authentication: ADMINISTRATIVE_AUTHENTICATION,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    `${baseUrl}/api/monthly-materials`,
+                );
+                const body = await response.json();
+
+                assert.equal(response.status, 200);
+                assert.deepEqual(
+                    body.data.materials.map((material) => (
+                        material.month
+                    )),
+                    ['2026-10', '2026-09'],
+                );
+                assert.deepEqual(
+                    Object.keys(body.data.materials[0]),
+                    [
+                        'id',
+                        'month',
+                        'lessonPlanUrl',
+                        'studentGuideUrl',
+                    ],
+                );
+                assert.equal(
+                    JSON.stringify(body).includes('internalNote'),
+                    false,
+                );
+            });
+
+            assert.deepEqual(calls.find, [{}]);
+            assert.deepEqual(calls.sort, [MONTHLY_MATERIAL_SORT]);
+        },
+    );
+
+    test(
+        'exclui um material pela cadeia completa sem devolver corpo',
+        async () => {
+            const { MonthlyMaterialModel, calls } =
+                createFakeMonthlyMaterialModel();
+            const app = createMonthlyMaterialTestApp({
+                MonthlyMaterialModel,
+                authentication: ADMINISTRATIVE_AUTHENTICATION,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    `${baseUrl}/api/monthly-materials/2026-09`,
+                    { method: 'DELETE' },
+                );
+
+                assert.equal(response.status, 204);
+                assert.equal(await response.text(), '');
+            });
+
+            assert.deepEqual(calls.findOneAndDelete, [
+                { month: '2026-09' },
+            ]);
+        },
+    );
+
+    test(
+        'mantém a exclusão idempotente quando o mês não existe',
+        async () => {
+            const { MonthlyMaterialModel, calls } =
+                createFakeMonthlyMaterialModel({
+                    deletedMaterial: null,
+                });
+            const app = createMonthlyMaterialTestApp({
+                MonthlyMaterialModel,
+                authentication: ADMINISTRATIVE_AUTHENTICATION,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    `${baseUrl}/api/monthly-materials/2026-10`,
+                    { method: 'DELETE' },
+                );
+
+                assert.equal(response.status, 204);
+                assert.equal(await response.text(), '');
+            });
+
+            assert.deepEqual(calls.findOneAndDelete, [
+                { month: '2026-10' },
+            ]);
+        },
+    );
+
+    test(
+        'recusa exclusão sem autenticação antes de acessar o modelo',
+        async () => {
+            const { MonthlyMaterialModel, calls } =
+                createFakeMonthlyMaterialModel();
+            const app = createMonthlyMaterialTestApp({
+                MonthlyMaterialModel,
+                authentication: undefined,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    `${baseUrl}/api/monthly-materials/2026-09`,
+                    { method: 'DELETE' },
+                );
+                const body = await response.json();
+
+                assert.equal(response.status, 401);
+                assert.equal(
+                    body.error.code,
+                    ADMINISTRATIVE_AUTHORIZATION_CODES
+                        .AUTHENTICATION_REQUIRED,
+                );
+            });
+
+            assert.equal(calls.findOneAndDelete.length, 0);
         },
     );
 

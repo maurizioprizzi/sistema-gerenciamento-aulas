@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 19 de setembro de 2026.
+> Última atualização desta documentação: 20 de setembro de 2026.
 
 ## Estado atual
 
@@ -24,13 +24,13 @@ O frontend está disponível em um workspace independente em `client/`. Ele
 utiliza React e Vite, apresenta uma interface responsiva e exibe a data local
 em português. O formulário administrativo consome a API real, restaura a
 sessão depois de uma atualização da página e permite encerrá-la com segurança.
-O cliente HTTP de aulas encapsula consulta, filtros e criação com contratos
-defensivos. A seção de gerenciamento consulta os dados persistidos, aplica
-filtros por curso, mês e data mínima e permite cadastrar aulas, atividades e
-avaliações pelos oito campos do contrato original. Carregamento, ausência,
-erro, sucesso e resultados possuem estados acessíveis. Depois da autenticação,
-a interface mantém o painel geral e a navegação entre as quatro seções
-originais.
+Os clientes HTTP de aulas e materiais mensais encapsulam seus contratos
+com validações defensivas. A seção de aulas consulta, filtra e cadastra aulas,
+atividades e avaliações pelos oito campos originais. A seção de materiais
+permite organizar links específicos por aula e links aplicáveis ao mês inteiro,
+com cadastro e exclusão mensal. Carregamento, ausência, erro, sucesso e
+resultados possuem estados acessíveis. Depois da autenticação, a interface
+mantém o painel geral e a navegação entre as quatro seções originais.
 
 A compilação de produção é validada e servida pelo próprio Express sob a mesma
 origem da API.
@@ -51,10 +51,10 @@ servidor e invalida o cookie no navegador.
 Os registros do calendário possuem modelos Mongoose próprios para aulas e
 materiais mensais. Atividade e avaliação permanecem tipos de aula, conforme o
 protótipo original. As aulas já podem ser criadas e consultadas por uma API
-administrativa protegida. Os materiais mensais também podem ser consultados e
-substituídos por mês pela API administrativa. O frontend já consulta, filtra
-e cadastra aulas pela seção de gerenciamento; a ligação visual dos materiais
-mensais ainda não foi implementada.
+administrativa protegida. Os materiais mensais podem ser listados, consultados, substituídos e
+excluídos pela API administrativa. O frontend consulta, filtra e cadastra
+aulas, gerencia os materiais mensais e calcula os links efetivos de cada aula
+com a mesma precedência definida no protótipo original.
 
 ### Funcionalidades concluídas
 
@@ -82,11 +82,13 @@ mensais ainda não foi implementada.
 - controlador HTTP com representações públicas defensivas;
 - rotas protegidas `GET /api/lessons` e `POST /api/lessons`;
 - composição da API de aulas no ciclo real do servidor;
-- serviço isolado para consulta e substituição dos materiais mensais;
+- serviço isolado para listagem, consulta, substituição e exclusão dos materiais mensais;
 - seleção explícita dos dois links aceitos nos materiais mensais;
+- listagem mensal determinística em ordem decrescente;
 - substituição atômica e idempotente de um único recurso por mês;
+- exclusão mensal idempotente;
 - controlador mensal com representações públicas defensivas;
-- rotas protegidas `GET` e `PUT /api/monthly-materials/:month`;
+- rotas protegidas `GET /api/monthly-materials`, `GET`, `PUT` e `DELETE /api/monthly-materials/:month`;
 - composição da API mensal no ciclo real do servidor;
 - cursos e tipos limitados aos valores existentes no protótipo original;
 - datas civis preservadas sem conversão dependente de fuso horário;
@@ -159,6 +161,14 @@ mensais ainda não foi implementada.
 - preservação dos dados recusados e limpeza somente depois do sucesso;
 - atualização da consulta com preservação dos filtros aplicados;
 - estados acessíveis de cadastro pendente, erro e confirmação;
+- serviço frontend isolado para listar, consultar, salvar e excluir materiais mensais;
+- formulário visual dos três campos mensais previstos no protótipo;
+- listagem e exclusão visual dos materiais mensais;
+- consulta dos materiais efetivos por aula com filtros locais de curso, mês e data atual;
+- precedência dos links específicos da aula sobre o material mensal;
+- atualização automática da herança depois de alterações mensais;
+- proteção contra respostas antigas e atualizações depois da desmontagem;
+- tabelas responsivas com rolagem horizontal controlada em telas estreitas;
 - formulário administrativo acessível com estados de envio e erro;
 - login real integrado ao backend sem armazenar credenciais em App;
 - restauração da sessão administrativa depois de recarregar a página;
@@ -175,7 +185,7 @@ mensais ainda não foi implementada.
 
 ### Ainda não implementado
 
-- formulário visual e integração frontend para os materiais mensais;
+- ligação do painel geral e do calendário visual aos dados persistidos;
 - migração dos dados do protótipo;
 - acesso externo à aplicação;
 - implantação em ambiente de produção.
@@ -455,8 +465,8 @@ npm --prefix client test
 No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-690 testes
-107 suítes
+806 testes
+117 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -471,11 +481,13 @@ Os testes verificam, entre outros comportamentos:
 - validação de cursos, tipos, datas civis e campos opcionais das aulas;
 - contrato mensal dos materiais e unicidade de cada período;
 - normalização e validação segura dos links de PA e GD+AD;
-- contrato estrutural da consulta e substituição mensal;
+- contrato estrutural da listagem, consulta, substituição e exclusão mensal;
 - conversão de campos mensais omitidos em remoções explícitas;
 - atualização atômica com validação e criação idempotente;
-- respostas HTTP `200` para consulta e gravação mensal;
-- proteção administrativa das duas operações mensais;
+- ordenação decrescente e representações públicas da coleção mensal;
+- respostas HTTP `200` para leitura e gravação e `204` para exclusão mensal;
+- proteção administrativa de todas as operações mensais;
+- exclusão idempotente de períodos existentes ou ausentes;
 - integração HTTP mensal sem dependência de MongoDB externo;
 - fábricas isoladas dos modelos sem conexão externa;
 - contrato estrutural dos dados aceitos pela criação de aulas;
@@ -541,6 +553,13 @@ Os testes verificam, entre outros comportamentos:
 - preservação dos campos diante de recusas e falhas inesperadas;
 - limpeza do formulário somente depois de uma criação confirmada;
 - atualização da lista com manutenção dos filtros efetivamente aplicados;
+- contratos frontend de listagem, consulta, gravação e exclusão mensal;
+- normalização defensiva do mês, links e representações mensais;
+- formulário mensal com cancelamento, bloqueio e preservação após falhas;
+- composição das visualizações por aula e por mês;
+- cálculo da precedência entre links específicos e links mensais;
+- filtros locais dos materiais por aula sem requisições redundantes;
+- sincronização da herança depois de gravações e exclusões mensais;
 - formulário acessível, validação dos campos e bloqueio durante o envio;
 - mensagens públicas seguras para recusas e falhas inesperadas;
 - restauração da sessão válida e retorno ao formulário para visitantes;
@@ -665,12 +684,22 @@ dionisio/
 │   │   │       ├── LessonForm.jsx
 │   │   │       ├── LessonForm.test.jsx
 │   │   │       ├── LessonManagement.jsx
-│   │   │       └── LessonManagement.test.jsx
+│   │   │       ├── LessonManagement.test.jsx
+│   │   │       ├── LessonMaterialManagement.jsx
+│   │   │       ├── LessonMaterialManagement.test.jsx
+│   │   │       ├── MaterialManagement.jsx
+│   │   │       ├── MaterialManagement.test.jsx
+│   │   │       ├── MonthlyMaterialForm.jsx
+│   │   │       ├── MonthlyMaterialForm.test.jsx
+│   │   │       ├── MonthlyMaterialManagement.jsx
+│   │   │       └── MonthlyMaterialManagement.test.jsx
 │   │   ├── services/
 │   │   │   ├── AuthenticationApi.js
 │   │   │   ├── AuthenticationApi.test.js
 │   │   │   ├── LessonApi.js
-│   │   │   └── LessonApi.test.js
+│   │   │   ├── LessonApi.test.js
+│   │   │   ├── MonthlyMaterialApi.js
+│   │   │   └── MonthlyMaterialApi.test.js
 │   │   ├── styles/
 │   │   │   └── global.css
 │   │   └── main.jsx
@@ -789,8 +818,9 @@ dados do calendário.
 ### `client/src/components/calendar/CalendarWorkspace.jsx`
 
 Compõe o cabeçalho autenticado, a saída, a navegação e o conteúdo da seção
-ativa. O painel geral mantém o estado inicial do protótipo, enquanto a seção de
-aulas monta consulta e cadastro persistentes somente quando é selecionada.
+ativa. O painel geral mantém o estado inicial do protótipo; aulas e materiais
+montam suas consultas persistentes somente quando a seção correspondente é
+selecionada.
 
 ### `client/src/components/calendar/LessonForm.jsx`
 
@@ -805,6 +835,29 @@ carregamento, ausência, falha segura, repetição e cartões responsivos, imped
 respostas antigas de substituir o estado atual e atualiza a lista depois de
 uma criação sem descartar os filtros aplicados.
 
+### `client/src/components/calendar/LessonMaterialManagement.jsx`
+
+Consulta aulas e materiais mensais para apresentar os links efetivos de cada
+data. Aplica localmente curso, mês e data atual, preserva a precedência do
+protótipo e protege a interface contra respostas antigas.
+
+### `client/src/components/calendar/MaterialManagement.jsx`
+
+Compõe as organizações por aula e por mês. Uma alteração mensal incrementa uma
+revisão controlada para atualizar somente a consulta que calcula a herança dos
+links.
+
+### `client/src/components/calendar/MonthlyMaterialForm.jsx`
+
+Mantém os três controles mensais do protótipo, representa envio e falhas e
+preserva os valores até a confirmação da API.
+
+### `client/src/components/calendar/MonthlyMaterialManagement.jsx`
+
+Lista, cadastra e exclui materiais mensais. Mantém a coleção ordenada, confirma
+exclusões, descarta consultas antigas e notifica a composição depois de uma
+alteração confirmada.
+
 ### `client/src/services/AuthenticationApi.js`
 
 Encapsula os contratos HTTP de login, consulta da sessão e logout. Valida as
@@ -818,6 +871,12 @@ por curso, mês e data mínima, seleciona somente os oito campos permitidos na
 criação e converte as respostas em representações públicas imutáveis. Falhas de
 rede, recusas conhecidas e respostas inconsistentes permanecem separadas por
 códigos e mensagens públicas seguras.
+
+### `client/src/services/MonthlyMaterialApi.js`
+
+Encapsula listagem, consulta, substituição e exclusão dos materiais mensais.
+Normaliza mês e links, seleciona somente os quatro campos públicos e converte
+falhas de rede, recusas e respostas inconsistentes em erros seguros.
 
 Os arquivos de teste mantidos ao lado desses módulos cobrem seus contratos e
 interações sem depender de um navegador aberto ou de um backend externo.
@@ -1138,8 +1197,15 @@ inválidos retornam `400 INVALID_LESSON_FILTERS`.
 
 ### Materiais mensais administrativos
 
-As duas operações exigem uma sessão administrativa válida. Para consultar o
-recurso de um mês:
+Todas as operações exigem uma sessão administrativa válida. Para listar a
+coleção em ordem decrescente de mês:
+
+```http
+GET /api/monthly-materials
+```
+
+A resposta retorna `200` com a coleção pública sob
+`data.materials`. Para consultar o recurso de um mês:
 
 ```http
 GET /api/monthly-materials/2026-09
@@ -1175,6 +1241,15 @@ pode ser enviado como `null`; campos omitidos também são substituídos por
 `month` no corpo ou campos desconhecidos são recusados com
 `400 INVALID_MONTHLY_MATERIAL_DATA`. Um período inválido retorna
 `400 INVALID_MONTHLY_MATERIAL_MONTH`.
+
+Para excluir idempotentemente o material de um mês:
+
+```http
+DELETE /api/monthly-materials/2026-09
+```
+
+A exclusão retorna `204` sem corpo, inclusive quando o período já não possui
+um documento.
 
 ### Rota inexistente
 
@@ -1235,7 +1310,7 @@ JSON malformado retorna `400` com o código `INVALID_JSON`. Corpos acima de
 - identificadores, timestamps e campos desconhecidos recusados na entrada;
 - seleção defensiva dos campos públicos nas respostas de aulas;
 - detalhes de validação e falhas do banco ocultados do cliente;
-- autorização executada antes de consultas e gravações mensais;
+- autorização executada antes de listar, consultar, gravar ou excluir materiais mensais;
 - mês mantido somente no caminho e campos mensais aceitos por lista explícita;
 - substituição mensal atômica, validada e limitada a um documento por período;
 - representações mensais sem timestamps ou propriedades internas;
@@ -1260,8 +1335,8 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. criar o serviço frontend e o formulário dos materiais mensais;
-2. conectar o painel geral e o calendário visual aos dados persistidos;
+1. conectar o painel geral aos dados persistidos;
+2. conectar o calendário visual aos dados persistidos;
 3. migrar com segurança os dados do protótipo;
 4. realizar testes completos de integração e interface;
 5. preparar os guias técnico e didático;

@@ -16,12 +16,15 @@ const {
 /**
  * Cria um controlador válido com handlers identificáveis.
  *
- * @returns {{ get: Function, save: Function }} Controlador controlado.
+ * @returns {{ list: Function, get: Function, save: Function,
+ * remove: Function }} Controlador controlado.
  */
 function createController() {
     return {
+        list() {},
         get() {},
         save() {},
+        remove() {},
     };
 }
 
@@ -47,15 +50,18 @@ function administrativeAuthorizationMiddleware(
  * @param {object} options Comportamento opcional dos registros.
  * @param {Error|null} options.getError Falha produzida por get().
  * @param {Error|null} options.putError Falha produzida por put().
+ * @param {Error|null} options.deleteError Falha produzida por delete().
  * @returns {{ router: object, calls: object }} Roteador e chamadas.
  */
 function createFakeRouter({
     getError = null,
     putError = null,
+    deleteError = null,
 } = {}) {
     const calls = {
         get: [],
         put: [],
+        delete: [],
         sequence: [],
     };
 
@@ -87,6 +93,20 @@ function createFakeRouter({
 
             return router;
         },
+
+        delete(...argumentsReceived) {
+            calls.delete.push(argumentsReceived);
+            calls.sequence.push({
+                method: 'delete',
+                arguments: argumentsReceived,
+            });
+
+            if (deleteError) {
+                throw deleteError;
+            }
+
+            return router;
+        },
     };
 
     return {
@@ -98,6 +118,7 @@ function createFakeRouter({
 describe('configuração das rotas de materiais mensais', () => {
     test('expõe caminhos e mensagens estáveis protegidos', () => {
         assert.deepEqual(MONTHLY_MATERIAL_ROUTE_PATHS, {
+            COLLECTION: '/',
             RESOURCE_BY_MONTH: '/:month',
         });
         assert.deepEqual(MONTHLY_MATERIAL_ROUTE_ERRORS, {
@@ -126,9 +147,10 @@ describe('configuração das rotas de materiais mensais', () => {
         assert.equal(typeof router, 'function');
         assert.equal(typeof router.get, 'function');
         assert.equal(typeof router.put, 'function');
+        assert.equal(typeof router.delete, 'function');
     });
 
-    test('protege consulta e gravação antes dos controladores', () => {
+    test('protege todas as operações antes dos controladores', () => {
         const controller = createController();
         const { router, calls } = createFakeRouter();
 
@@ -143,6 +165,11 @@ describe('configuração das rotas de materiais mensais', () => {
         assert.strictEqual(result, router);
         assert.deepEqual(calls.get, [
             [
+                MONTHLY_MATERIAL_ROUTE_PATHS.COLLECTION,
+                administrativeAuthorizationMiddleware,
+                controller.list,
+            ],
+            [
                 MONTHLY_MATERIAL_ROUTE_PATHS.RESOURCE_BY_MONTH,
                 administrativeAuthorizationMiddleware,
                 controller.get,
@@ -155,9 +182,16 @@ describe('configuração das rotas de materiais mensais', () => {
                 controller.save,
             ],
         ]);
+        assert.deepEqual(calls.delete, [
+            [
+                MONTHLY_MATERIAL_ROUTE_PATHS.RESOURCE_BY_MONTH,
+                administrativeAuthorizationMiddleware,
+                controller.remove,
+            ],
+        ]);
         assert.deepEqual(
             calls.sequence.map((entry) => entry.method),
-            ['get', 'put'],
+            ['get', 'get', 'put', 'delete'],
         );
     });
 
@@ -170,9 +204,34 @@ describe('configuração das rotas de materiais mensais', () => {
             42,
             [],
             {},
-            { get: 'não é função', save() {} },
-            { get() {} },
-            { get() {}, save: 'não é função' },
+            { list() {}, get() {}, save() {} },
+            { list() {}, get() {}, remove() {} },
+            { list() {}, save() {}, remove() {} },
+            { get() {}, save() {}, remove() {} },
+            {
+                list: 'não é função',
+                get() {},
+                save() {},
+                remove() {},
+            },
+            {
+                list() {},
+                get: 'não é função',
+                save() {},
+                remove() {},
+            },
+            {
+                list() {},
+                get() {},
+                save: 'não é função',
+                remove() {},
+            },
+            {
+                list() {},
+                get() {},
+                save() {},
+                remove: 'não é função',
+            },
         ];
 
         for (const controller of invalidControllers) {
@@ -293,8 +352,25 @@ describe('configuração das rotas de materiais mensais', () => {
             {},
             { get() {} },
             { put() {} },
-            { get: 'não é função', put() {} },
-            { get() {}, put: 'não é função' },
+            { delete() {} },
+            { get() {}, put() {} },
+            { get() {}, delete() {} },
+            { put() {}, delete() {} },
+            {
+                get: 'não é função',
+                put() {},
+                delete() {},
+            },
+            {
+                get() {},
+                put: 'não é função',
+                delete() {},
+            },
+            {
+                get() {},
+                put() {},
+                delete: 'não é função',
+            },
         ];
 
         for (const invalidRouter of invalidRouters) {
@@ -320,6 +396,7 @@ describe('configuração das rotas de materiais mensais', () => {
         const calls = {
             get: [],
             put: [],
+            delete: [],
         };
 
         function router() {}
@@ -329,6 +406,9 @@ describe('configuração das rotas de materiais mensais', () => {
         };
         router.put = (...argumentsReceived) => {
             calls.put.push(argumentsReceived);
+        };
+        router.delete = (...argumentsReceived) => {
+            calls.delete.push(argumentsReceived);
         };
 
         const controller = createController();
@@ -341,8 +421,9 @@ describe('configuração das rotas de materiais mensais', () => {
         });
 
         assert.strictEqual(result, router);
-        assert.equal(calls.get.length, 1);
+        assert.equal(calls.get.length, 2);
         assert.equal(calls.put.length, 1);
+        assert.equal(calls.delete.length, 1);
     });
 
     test('propaga uma falha real da fábrica', () => {
@@ -373,6 +454,9 @@ describe('configuração das rotas de materiais mensais', () => {
         const putError = new Error(
             'Falha controlada ao registrar PUT.',
         );
+        const deleteError = new Error(
+            'Falha controlada ao registrar DELETE.',
+        );
 
         const scenarios = [
             {
@@ -382,6 +466,10 @@ describe('configuração das rotas de materiais mensais', () => {
             {
                 router: createFakeRouter({ putError }).router,
                 expectedError: putError,
+            },
+            {
+                router: createFakeRouter({ deleteError }).router,
+                expectedError: deleteError,
             },
         ];
 
