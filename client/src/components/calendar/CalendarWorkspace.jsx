@@ -9,6 +9,7 @@ import {
     CALENDAR_SECTION_IDS,
     CalendarNavigation,
 } from './CalendarNavigation.jsx';
+import { CalendarDashboard } from './CalendarDashboard.jsx';
 import { LessonManagement } from './LessonManagement.jsx';
 import { MaterialManagement } from './MaterialManagement.jsx';
 
@@ -38,77 +39,6 @@ const CALENDAR_WORKSPACE_MESSAGES = Object.freeze({
     INVALID_MONTHLY_MATERIAL_SERVICE:
         'A área do calendário exige um serviço de materiais mensais válido.',
 });
-
-/**
- * Textos de estado vazio presentes no painel geral do HTML original.
- */
-const CALENDAR_DASHBOARD_EMPTY_MESSAGES = Object.freeze({
-    UPCOMING_LESSONS: 'Nenhuma aula próxima',
-    REVIEW_LESSONS: 'Nenhuma aula marcada para revisão',
-});
-
-/**
- * Estrutura inicial do painel geral para uma coleção ainda vazia.
- *
- * A consulta persistente pertence à seção de gerenciamento. O painel geral
- * continuará representando o estado inicial do protótipo até receber sua
- * própria regra de composição em um marco posterior.
- *
- * @returns {import('react').ReactElement} Painel geral vazio.
- */
-function EmptyCalendarDashboard() {
-    return (
-        <div className="calendar-dashboard">
-            <section
-                className="calendar-stat-card"
-                aria-labelledby="registered-lessons-title"
-            >
-                <h2 id="registered-lessons-title">
-                    Total de aulas registradas
-                </h2>
-
-                <output
-                    className="calendar-stat-number"
-                    aria-label="Total de aulas registradas: 0"
-                >
-                    0
-                </output>
-            </section>
-
-            <section
-                className="calendar-content-section"
-                aria-labelledby="upcoming-lessons-title"
-            >
-                <h2 id="upcoming-lessons-title">
-                    Próximas aulas
-                </h2>
-
-                <p className="calendar-empty-state">
-                    {
-                        CALENDAR_DASHBOARD_EMPTY_MESSAGES
-                            .UPCOMING_LESSONS
-                    }
-                </p>
-            </section>
-
-            <section
-                className="calendar-content-section"
-                aria-labelledby="review-lessons-title"
-            >
-                <h2 id="review-lessons-title">
-                    Aulas marcadas para revisão
-                </h2>
-
-                <p className="calendar-empty-state">
-                    {
-                        CALENDAR_DASHBOARD_EMPTY_MESSAGES
-                            .REVIEW_LESSONS
-                    }
-                </p>
-            </section>
-        </div>
-    );
-}
 
 /**
  * Apresenta o título de uma seção cujo conteúdo ainda não foi implementado.
@@ -238,7 +168,12 @@ function CalendarWorkspace({
         typeof logoutError === 'string'
         && logoutError.trim().length > 0;
 
-    let activeContent = <EmptyCalendarDashboard />;
+    let activeContent = (
+        <CalendarDashboard
+            lessonService={lessonService}
+            monthlyMaterialService={monthlyMaterialService}
+        />
+    );
 
     if (activeSectionId === CALENDAR_SECTION_IDS.LESSONS) {
         activeContent = (
@@ -312,7 +247,6 @@ function CalendarWorkspace({
 }
 
 export {
-    CALENDAR_DASHBOARD_EMPTY_MESSAGES,
     CALENDAR_WORKSPACE_IDS,
     CALENDAR_WORKSPACE_MESSAGES,
     CalendarWorkspace,

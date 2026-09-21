@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 20 de setembro de 2026.
+> Última atualização desta documentação: 21 de setembro de 2026.
 
 ## Estado atual
 
@@ -29,8 +29,10 @@ com validações defensivas. A seção de aulas consulta, filtra e cadastra aula
 atividades e avaliações pelos oito campos originais. A seção de materiais
 permite organizar links específicos por aula e links aplicáveis ao mês inteiro,
 com cadastro e exclusão mensal. Carregamento, ausência, erro, sucesso e
-resultados possuem estados acessíveis. Depois da autenticação, a interface
-mantém o painel geral e a navegação entre as quatro seções originais.
+resultados possuem estados acessíveis. O painel geral consulta aulas e
+materiais mensais persistidos, apresenta totais, próximas aulas e registros
+marcados para revisão com a mesma precedência de links do protótipo. Depois da
+autenticação, a interface mantém a navegação entre as quatro seções originais.
 
 A compilação de produção é validada e servida pelo próprio Express sob a mesma
 origem da API.
@@ -175,7 +177,12 @@ com a mesma precedência definida no protótipo original.
 - encerramento da sessão com confirmação do backend antes de remover o acesso;
 - área autenticada separada da tela de entrada;
 - navegação acessível entre painel, aulas, materiais e calendário visual;
-- painel geral inicial com contagem e estados vazios do protótipo original;
+- painel geral ligado às aulas e aos materiais mensais persistidos;
+- total de aulas e quantidades separadas pelos cursos presentes;
+- próximas cinco aulas ordenadas a partir da data civil local;
+- apresentação de todas as aulas marcadas para revisão;
+- resolução dos materiais do painel com precedência específica e fallback mensal;
+- estados acessíveis de carregamento, ausência, falha e repetição no painel;
 - preservação da sessão e dos erros públicos dentro da área autenticada;
 - apresentação responsiva da área do calendário em computador e celular;
 - bloqueio do servidor HTTP quando a inicialização falha;
@@ -185,7 +192,7 @@ com a mesma precedência definida no protótipo original.
 
 ### Ainda não implementado
 
-- ligação do painel geral e do calendário visual aos dados persistidos;
+- ligação do calendário visual aos dados persistidos;
 - migração dos dados do protótipo;
 - acesso externo à aplicação;
 - implantação em ambiente de produção.
@@ -465,8 +472,8 @@ npm --prefix client test
 No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-806 testes
-117 suítes
+821 testes
+118 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -677,6 +684,8 @@ dionisio/
 │   │   │   │   ├── LogoutButton.jsx
 │   │   │   │   └── LogoutButton.test.jsx
 │   │   │   └── calendar/
+│   │   │       ├── CalendarDashboard.jsx
+│   │   │       ├── CalendarDashboard.test.jsx
 │   │   │       ├── CalendarNavigation.jsx
 │   │   │       ├── CalendarNavigation.test.jsx
 │   │   │       ├── CalendarWorkspace.jsx
@@ -809,6 +818,15 @@ apresenta estados de processamento e mensagens públicas de forma acessível.
 Representa a solicitação de saída e impede novos cliques enquanto o
 encerramento da sessão está em andamento.
 
+### `client/src/components/calendar/CalendarDashboard.jsx`
+
+Consulta aulas e materiais mensais em paralelo para compor o painel geral.
+Apresenta o total e a distribuição por curso, limita as próximas aulas aos
+cinco primeiros registros a partir da data local e reúne todas as marcações de
+revisão. Preserva a precedência dos links específicos, utiliza o material
+mensal somente quando aplicável e descarta respostas antigas ou posteriores à
+desmontagem.
+
 ### `client/src/components/calendar/CalendarNavigation.jsx`
 
 Mantém o contrato das quatro seções previstas no HTML original, identifica de
@@ -818,9 +836,9 @@ dados do calendário.
 ### `client/src/components/calendar/CalendarWorkspace.jsx`
 
 Compõe o cabeçalho autenticado, a saída, a navegação e o conteúdo da seção
-ativa. O painel geral mantém o estado inicial do protótipo; aulas e materiais
-montam suas consultas persistentes somente quando a seção correspondente é
-selecionada.
+ativa. Entrega ao `CalendarDashboard` os serviços persistentes na seção
+inicial; aulas e materiais montam suas próprias consultas somente quando a
+seção correspondente é selecionada.
 
 ### `client/src/components/calendar/LessonForm.jsx`
 
@@ -884,8 +902,9 @@ interações sem depender de um navegador aberto ou de um backend externo.
 ### `client/src/styles/global.css`
 
 Define a base visual responsiva, as cores, o foco visível e a adaptação das
-telas de entrada, da área autenticada, do formulário, dos filtros e dos cartões
-de aulas para diferentes dimensões, sem recursos externos.
+telas de entrada, da área autenticada, dos formulários, filtros, cartões e
+tabelas para diferentes dimensões, sem recursos externos. O painel preserva
+suas colunas por meio de rolagem interna controlada em telas estreitas.
 
 ### `client/vite.config.js`
 
@@ -1335,12 +1354,11 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. conectar o painel geral aos dados persistidos;
-2. conectar o calendário visual aos dados persistidos;
-3. migrar com segurança os dados do protótipo;
-4. realizar testes completos de integração e interface;
-5. preparar os guias técnico e didático;
-6. publicar e validar a aplicação em computador e celular.
+1. conectar o calendário visual aos dados persistidos;
+2. migrar com segurança os dados do protótipo;
+3. realizar testes completos de integração e interface;
+4. preparar os guias técnico e didático;
+5. publicar e validar a aplicação em computador e celular.
 
 ## Fluxo de atualização pelo Git
 

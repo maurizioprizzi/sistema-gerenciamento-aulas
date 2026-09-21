@@ -562,9 +562,11 @@ describe('encerramento da sessão pela aplicação', () => {
             name: 'Sair',
         }));
 
-        expect((await screen.findByRole('alert')).textContent).toBe(
+        const logoutAlert = await screen.findByText(
             publicMessage,
         );
+
+        expect(logoutAlert.getAttribute('role')).toBe('alert');
         expect(await findCalendarWorkspace()).toBeTruthy();
         expect(
             screen.getByRole('button', { name: 'Sair' }).disabled,
@@ -594,9 +596,11 @@ describe('encerramento da sessão pela aplicação', () => {
             name: 'Sair',
         }));
 
-        expect((await screen.findByRole('alert')).textContent).toBe(
+        const logoutAlert = await screen.findByText(
             APP_MESSAGES.UNEXPECTED_LOGOUT_ERROR,
         );
+
+        expect(logoutAlert.getAttribute('role')).toBe('alert');
         expect(document.body.textContent).not.toContain(
             technicalMessage,
         );

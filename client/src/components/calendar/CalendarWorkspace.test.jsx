@@ -14,11 +14,13 @@ import {
 } from 'vitest';
 
 import {
-    CALENDAR_DASHBOARD_EMPTY_MESSAGES,
     CALENDAR_WORKSPACE_IDS,
     CALENDAR_WORKSPACE_MESSAGES,
     CalendarWorkspace,
 } from './CalendarWorkspace.jsx';
+import {
+    CALENDAR_DASHBOARD_MESSAGES,
+} from './CalendarDashboard.jsx';
 import {
     LESSON_MANAGEMENT_MESSAGES,
 } from './LessonManagement.jsx';
@@ -112,10 +114,6 @@ describe('configuração da área do calendário', () => {
         expect(Object.isFrozen(CALENDAR_WORKSPACE_MESSAGES)).toBe(
             true,
         );
-        expect(
-            Object.isFrozen(CALENDAR_DASHBOARD_EMPTY_MESSAGES),
-        ).toBe(true);
-
         expect(CALENDAR_WORKSPACE_IDS).toEqual({
             TITLE: 'calendar-workspace-title',
             ACTIVE_SECTION: 'calendar-workspace-active-section',
@@ -275,15 +273,20 @@ describe('painel geral da área autenticada', () => {
         ).toBeTruthy();
     });
 
-    test('inicia com os dados vazios previstos no HTML original', () => {
-        renderWorkspace();
+    test('consulta e apresenta o painel persistente inicialmente vazio', async () => {
+        const {
+            lessonService,
+            monthlyMaterialService,
+        } = renderWorkspace();
 
-        expect(
-            screen.getByRole('heading', {
+        expect(screen.getByText(
+            CALENDAR_DASHBOARD_MESSAGES.LOADING,
+        )).toBeTruthy();
+
+        expect(await screen.findByRole('heading', {
                 level: 2,
                 name: 'Total de aulas registradas',
-            }),
-        ).toBeTruthy();
+            })).toBeTruthy();
         expect(
             screen.getByLabelText(
                 'Total de aulas registradas: 0',
@@ -291,14 +294,19 @@ describe('painel geral da área autenticada', () => {
         ).toBe('0');
         expect(
             screen.getByText(
-                CALENDAR_DASHBOARD_EMPTY_MESSAGES.UPCOMING_LESSONS,
+                CALENDAR_DASHBOARD_MESSAGES.UPCOMING_EMPTY,
             ),
         ).toBeTruthy();
         expect(
             screen.getByText(
-                CALENDAR_DASHBOARD_EMPTY_MESSAGES.REVIEW_LESSONS,
+                CALENDAR_DASHBOARD_MESSAGES.REVIEW_EMPTY,
             ),
         ).toBeTruthy();
+        expect(lessonService.listLessons).toHaveBeenCalledOnce();
+        expect(lessonService.listLessons).toHaveBeenCalledWith({});
+        expect(
+            monthlyMaterialService.listMonthlyMaterials,
+        ).toHaveBeenCalledOnce();
     });
 });
 
@@ -363,11 +371,13 @@ describe('navegação da área autenticada', () => {
         ).toBeTruthy();
     });
 
-    test('consulta aulas somente quando a seção é aberta', async () => {
+    test('consulta novamente as aulas quando a seção é aberta', async () => {
         const user = userEvent.setup();
         const { lessonService } = renderWorkspace();
 
-        expect(lessonService.listLessons).not.toHaveBeenCalled();
+        await waitFor(() => {
+            expect(lessonService.listLessons).toHaveBeenCalledTimes(1);
+        });
 
         await user.click(
             screen.getByRole('button', {
@@ -379,22 +389,27 @@ describe('navegação da área autenticada', () => {
             LESSON_MANAGEMENT_MESSAGES.EMPTY,
         )).toBeTruthy();
         await waitFor(() => {
-            expect(lessonService.listLessons).toHaveBeenCalledTimes(1);
+            expect(lessonService.listLessons).toHaveBeenCalledTimes(2);
         });
-        expect(lessonService.listLessons).toHaveBeenCalledWith({});
+        expect(lessonService.listLessons).toHaveBeenNthCalledWith(
+            2,
+            {},
+        );
     });
 
-    test('consulta materiais somente quando a seção é aberta', async () => {
+    test('consulta as fontes necessárias ao abrir materiais', async () => {
         const user = userEvent.setup();
         const {
             lessonService,
             monthlyMaterialService,
         } = renderWorkspace();
 
-        expect(lessonService.listLessons).not.toHaveBeenCalled();
-        expect(
-            monthlyMaterialService.listMonthlyMaterials,
-        ).not.toHaveBeenCalled();
+        await waitFor(() => {
+            expect(lessonService.listLessons).toHaveBeenCalledTimes(1);
+            expect(
+                monthlyMaterialService.listMonthlyMaterials,
+            ).toHaveBeenCalledTimes(1);
+        });
 
         await user.click(
             screen.getByRole('button', { name: 'Materiais' }),
@@ -406,11 +421,14 @@ describe('navegação da área autenticada', () => {
         expect(await screen.findByText(
             MONTHLY_MATERIAL_MANAGEMENT_MESSAGES.EMPTY,
         )).toBeTruthy();
-        expect(lessonService.listLessons).toHaveBeenCalledTimes(1);
-        expect(lessonService.listLessons).toHaveBeenCalledWith({});
+        expect(lessonService.listLessons).toHaveBeenCalledTimes(2);
+        expect(lessonService.listLessons).toHaveBeenNthCalledWith(
+            2,
+            {},
+        );
         expect(
             monthlyMaterialService.listMonthlyMaterials,
-        ).toHaveBeenCalledTimes(2);
+        ).toHaveBeenCalledTimes(3);
     });
 });
 

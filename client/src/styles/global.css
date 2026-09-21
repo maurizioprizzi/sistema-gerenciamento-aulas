@@ -1778,3 +1778,178 @@ noscript {
         width: 100%;
     }
 }
+
+
+/* CalendarDashboard: painel geral alimentado por dados persistentes */
+
+/*
+ * A consulta ou o erro ocupa toda a largura da grade. Quando os dados estão
+ * disponíveis, a estrutura original continua apresentando os três cartões.
+ */
+.calendar-dashboard > .calendar-content-section:only-child {
+    grid-column: 1 / -1;
+}
+
+/* Quantidades por curso dentro do cartão de total. */
+.calendar-course-breakdown {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    padding: 0;
+    margin: 1.25rem 0 0;
+    list-style: none;
+}
+
+.calendar-course-breakdown li {
+    padding: 0.35rem 0.55rem;
+    font-size: 0.78rem;
+    font-weight: 750;
+    line-height: 1.25;
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    border-radius: 999px;
+}
+
+/* Falhas permanecem contidas no cartão e permitem nova tentativa. */
+.calendar-dashboard-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 6rem;
+    padding: 1rem;
+    color: var(--color-error);
+    background: var(--color-error-surface);
+    border: 1px solid var(--color-error-border);
+    border-radius: 0.8rem;
+}
+
+.calendar-dashboard-error p {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.calendar-dashboard-error button {
+    flex: 0 0 auto;
+    min-height: 2.8rem;
+    padding: 0.65rem 0.9rem;
+    font-weight: 750;
+    color: var(--color-error);
+    cursor: pointer;
+    background: var(--color-surface);
+    border: 1px solid var(--color-error-border);
+    border-radius: 0.7rem;
+    transition:
+        color 160ms ease,
+        background-color 160ms ease,
+        border-color 160ms ease;
+}
+
+.calendar-dashboard-error button:hover {
+    color: #ffffff;
+    background: var(--color-error);
+    border-color: var(--color-error);
+}
+
+.calendar-dashboard-error button:focus-visible,
+.calendar-dashboard-table a:focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 3px;
+}
+
+/*
+ * Cada tabela pode rolar dentro do próprio cartão. Isso conserva a largura da
+ * página e mantém todas as colunas acessíveis em telas menores.
+ */
+.calendar-dashboard-table-wrapper {
+    max-width: 100%;
+    margin-top: 1rem;
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+    border-radius: 0.8rem;
+    -webkit-overflow-scrolling: touch;
+}
+
+.calendar-dashboard-table {
+    width: 100%;
+    min-width: 38rem;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+}
+
+.calendar-dashboard-table th,
+.calendar-dashboard-table td {
+    padding: 0.8rem 0.75rem;
+    line-height: 1.45;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.calendar-dashboard-table th {
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.035em;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    background: var(--color-surface-muted);
+}
+
+.calendar-dashboard-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.calendar-dashboard-table tbody tr:hover {
+    background: rgba(99, 102, 241, 0.045);
+}
+
+.calendar-dashboard-table time,
+.calendar-dashboard-record,
+.calendar-dashboard-materials {
+    white-space: nowrap;
+}
+
+.calendar-dashboard-record {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.calendar-dashboard-review-star {
+    color: #b45309;
+}
+
+.calendar-dashboard-materials {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.calendar-dashboard-materials a {
+    font-weight: 750;
+    color: var(--color-brand-700);
+    text-underline-offset: 0.2em;
+}
+
+.calendar-dashboard-materials a:hover {
+    color: var(--color-accent-700);
+}
+
+@media (max-width: 760px) {
+    .calendar-dashboard-error {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .calendar-dashboard-error button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 420px) {
+    .calendar-dashboard-table th,
+    .calendar-dashboard-table td {
+        padding: 0.7rem 0.65rem;
+    }
+}

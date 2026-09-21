@@ -2589,3 +2589,119 @@ forma controlada.
 
 Conectar o painel geral aos dados persistidos, mantendo contagem, próximas
 aulas e registros marcados para revisão dentro das regras do protótipo.
+
+
+## 21 de setembro de 2026 — Painel geral persistente
+
+### Objetivo
+
+Conectar o painel geral às aulas e aos materiais mensais persistidos, mantendo
+as contagens, próximas aulas e marcações para revisão previstas no protótipo
+original, sem introduzir novas funcionalidades.
+
+### Composição dos dados do painel
+
+Foi criado o `CalendarDashboard`, responsável por consultar aulas e materiais
+mensais em paralelo. O componente recebe os dois serviços por dependência e
+mantém a comunicação HTTP fora de sua responsabilidade visual.
+
+As coleções recebidas são copiadas antes da ordenação. As aulas permanecem em
+ordem determinística por data civil e identificador, sem alterar as fontes. O
+total considera todos os registros, enquanto a distribuição por curso mostra
+somente cursos presentes e preserva a ordem pública definida pelo contrato.
+
+### Próximas aulas e revisões
+
+A data de referência é obtida por um relógio injetável e construída no formato
+civil local, sem conversão por `toISOString()`. Assim, o dia não é deslocado
+por diferenças de fuso horário.
+
+As próximas aulas incluem registros cuja data é igual ou posterior ao dia
+atual e são limitadas aos cinco primeiros itens ordenados. A lista de revisão
+considera todos os registros marcados, inclusive os anteriores ao dia atual,
+como estabelecido no HTML original.
+
+Cada linha apresenta data, curso, unidade curricular e identificação do
+registro. As próximas aulas também apresentam PA e GD+AD. Quando existe ao
+menos um link específico na aula, os dois campos específicos são preservados
+como estão; o material mensal somente funciona como fallback quando ambos os
+links específicos estão ausentes.
+
+### Estados seguros e concorrência
+
+O painel possui estados acessíveis de carregamento, ausência, erro e
+resultados. Falhas conhecidas das APIs preservam somente suas mensagens
+públicas; erros inesperados recebem texto genérico.
+
+Uma sequência de requisições identifica a consulta vigente. Respostas antigas
+que terminam depois de uma repetição são ignoradas, assim como atualizações
+posteriores à desmontagem do componente.
+
+### Integração com a área autenticada
+
+O estado vazio temporário do painel foi removido do `CalendarWorkspace`. A
+seção inicial agora monta o `CalendarDashboard` e entrega os mesmos serviços
+de aulas e materiais mensais já validados pelo workspace.
+
+As seções de aulas e materiais continuam sendo montadas somente quando
+selecionadas. O painel realiza sua própria consulta inicial sem alterar os
+contratos de cadastro e gerenciamento existentes.
+
+Os testes de `App` passaram a localizar especificamente a mensagem de logout.
+Essa precisão evita confundir o alerta independente do painel com uma falha de
+encerramento da sessão quando ambos aparecem simultaneamente.
+
+### Acessibilidade e responsividade
+
+O total utiliza saída com rótulo acessível, as tabelas possuem cabeçalhos e
+legendas disponíveis para tecnologias assistivas e os links externos mantêm
+`noopener` e `noreferrer`.
+
+A grade original dos três cartões foi preservada em telas amplas. Quando uma
+tabela não cabe no cartão, a rolagem ocorre somente dentro de seu contêiner,
+sem ampliar a página. Em telas menores, os cartões são reorganizados, erros e
+ações passam para coluna e os controles preservam foco visível.
+
+### Testes automatizados
+
+O `CalendarDashboard` recebeu 15 testes. Eles cobrem configuração, serviços e
+relógios inválidos, datas civis, ordenação imutável, contagem por curso, limite
+de próximas aulas, conjunto completo de revisões, estados vazios, apresentação
+dos dados, precedência de materiais, falhas públicas e inesperadas, repetição,
+respostas antigas e desmontagem.
+
+Os testes do `CalendarWorkspace` foram alinhados à consulta inicial do painel
+e à abertura posterior das demais seções. Os testes de `App` preservaram a
+cobertura dos erros de logout mesmo diante de alertas independentes. As três
+suítes direcionadas aprovaram 48 testes.
+
+### Validação real
+
+A aplicação foi compilada e servida pelo Express com MongoDB local. Login,
+total, distribuição por curso, próximas aulas, revisões, materiais, navegação,
+retorno ao painel e logout foram verificados no navegador.
+
+A responsividade foi inspecionada em computador e em tela pequena. As tabelas
+mantiveram rolagem interna sem provocar rolagem lateral na página. O servidor
+encerrou por `SIGINT`, fechando a aplicação e a conexão com o MongoDB de forma
+controlada.
+
+### Verificação
+
+- 575 testes do backend aprovados em 103 suítes;
+- 246 testes do frontend aprovados em 15 arquivos;
+- 821 testes aprovados em 118 conjuntos no total;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- sintaxe e diff validados;
+- compilação de produção concluída com 30 módulos;
+- 48 testes direcionados aprovados nas três suítes integradas;
+- interface e responsividade validadas no navegador;
+- inicialização e encerramento seguros confirmados com MongoDB local;
+- contrato original preservado sem funcionalidades adicionais.
+
+### Próximo marco
+
+Conectar o calendário visual aos dados persistidos, preservando a navegação e
+as regras já definidas pelo protótipo original.
