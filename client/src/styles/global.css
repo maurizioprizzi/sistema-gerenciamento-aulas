@@ -1953,3 +1953,532 @@ noscript {
         padding: 0.7rem 0.65rem;
     }
 }
+
+
+/* CalendarVisual: grade mensal persistente */
+.calendar-visual {
+    min-height: auto;
+}
+
+.calendar-visual-filter {
+    display: grid;
+    gap: 0.45rem;
+    width: min(100%, 20rem);
+    margin-top: 1.25rem;
+}
+
+.calendar-visual-filter label {
+    font-size: 0.86rem;
+    font-weight: 750;
+}
+
+.calendar-visual-filter select {
+    width: 100%;
+    min-height: 3rem;
+    padding: 0.7rem 2.25rem 0.7rem 0.8rem;
+    color: var(--color-text);
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    transition:
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        background-color 160ms ease;
+}
+
+.calendar-visual-filter select:hover:not(:disabled) {
+    border-color: var(--color-brand-300);
+}
+
+.calendar-visual-filter select:focus-visible,
+.calendar-visual-navigation button:focus-visible,
+.calendar-visual-error button:focus-visible,
+.calendar-visual-event:focus-visible,
+.calendar-visual-dialog button:focus-visible,
+.calendar-visual-dialog a:focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 3px;
+}
+
+.calendar-visual-filter select:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background-color: var(--color-surface-muted);
+    opacity: 0.72;
+}
+
+.calendar-visual-results {
+    margin-top: 1.5rem;
+}
+
+.calendar-visual-error {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem;
+    color: var(--color-error);
+    background: var(--color-error-surface);
+    border: 1px solid var(--color-error-border);
+    border-radius: 0.8rem;
+}
+
+.calendar-visual-error p {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.calendar-visual-error button {
+    flex: 0 0 auto;
+    min-height: 2.7rem;
+    padding: 0.6rem 0.9rem;
+    font-weight: 750;
+    color: var(--color-error);
+    cursor: pointer;
+    background: var(--color-surface);
+    border: 1px solid var(--color-error-border);
+    border-radius: 0.7rem;
+    transition:
+        color 160ms ease,
+        background-color 160ms ease,
+        border-color 160ms ease;
+}
+
+.calendar-visual-error button:hover {
+    color: #ffffff;
+    background: var(--color-error);
+    border-color: var(--color-error);
+}
+
+.calendar-visual-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 1rem;
+    color: #ffffff;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 1rem;
+    box-shadow: 0 0.7rem 1.8rem rgba(79, 70, 229, 0.16);
+}
+
+.calendar-visual-header h3 {
+    margin: 0;
+    font-size: clamp(1.2rem, 3vw, 1.7rem);
+    text-align: right;
+    text-transform: capitalize;
+}
+
+.calendar-visual-navigation {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+}
+
+.calendar-visual-navigation button {
+    min-height: 2.65rem;
+    padding: 0.55rem 0.8rem;
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 750;
+    color: #ffffff;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.36);
+    border-radius: 0.65rem;
+    transition:
+        background-color 160ms ease,
+        border-color 160ms ease,
+        transform 160ms ease;
+}
+
+.calendar-visual-navigation button:hover {
+    background: rgba(255, 255, 255, 0.28);
+    border-color: rgba(255, 255, 255, 0.65);
+    transform: translateY(-1px);
+}
+
+.calendar-visual-navigation .calendar-visual-today-button {
+    color: var(--color-brand-700);
+    background: #ffffff;
+    border-color: #ffffff;
+}
+
+.calendar-visual-navigation .calendar-visual-today-button:hover {
+    background: #f5f3ff;
+}
+
+/*
+ * As sete colunas preservam a leitura semanal. Em telas estreitas a própria
+ * grade recebe rolagem horizontal, sem ampliar a página inteira.
+ */
+.calendar-visual-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(7rem, 1fr));
+    gap: 0.25rem;
+    max-width: 100%;
+    padding: 0.25rem;
+    overflow-x: auto;
+    background: var(--color-border);
+    border: 1px solid var(--color-border);
+    border-radius: 0.85rem;
+    -webkit-overflow-scrolling: touch;
+}
+
+.calendar-visual-weekday {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 0.65rem 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: #ffffff;
+    text-align: center;
+    text-transform: uppercase;
+    background: #4b5563;
+    border-radius: 0.4rem;
+}
+
+.calendar-visual-day {
+    min-height: 9rem;
+    padding: 0.45rem;
+    overflow: hidden;
+    background: var(--color-surface);
+    border: 2px solid transparent;
+    border-radius: 0.45rem;
+    transition:
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        transform 160ms ease;
+}
+
+.calendar-visual-day:not(.is-empty):hover {
+    z-index: 2;
+    box-shadow: 0 0.45rem 1rem rgba(15, 23, 42, 0.14);
+    transform: translateY(-1px);
+}
+
+.calendar-visual-day.is-empty {
+    background: var(--color-surface-muted);
+    opacity: 0.58;
+}
+
+.calendar-visual-day.is-today {
+    background: #fffbeb;
+    border-color: #f59e0b;
+}
+
+.calendar-visual-day-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.8rem;
+    min-height: 1.8rem;
+    margin-bottom: 0.35rem;
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: var(--color-text);
+    border-radius: 999px;
+}
+
+.calendar-visual-day.is-weekend .calendar-visual-day-number {
+    color: #b91c1c;
+}
+
+.calendar-visual-day.is-today .calendar-visual-day-number {
+    color: #ffffff;
+    background: #b45309;
+}
+
+.calendar-visual-events {
+    display: grid;
+    gap: 0.3rem;
+}
+
+.calendar-visual-event {
+    width: 100%;
+    padding: 0.42rem 0.48rem;
+    overflow: hidden;
+    font: inherit;
+    font-size: 0.72rem;
+    line-height: 1.3;
+    color: #ffffff;
+    text-align: left;
+    cursor: pointer;
+    border: 2px solid transparent;
+    border-radius: 0.4rem;
+    box-shadow: 0 0.2rem 0.45rem rgba(15, 23, 42, 0.12);
+    transition:
+        box-shadow 160ms ease,
+        transform 160ms ease;
+}
+
+.calendar-visual-event:hover {
+    box-shadow: 0 0.35rem 0.65rem rgba(15, 23, 42, 0.22);
+    transform: scale(1.015);
+}
+
+.calendar-visual-event strong,
+.calendar-visual-event span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.calendar-visual-event span {
+    margin-top: 0.12rem;
+    font-weight: 550;
+    opacity: 0.96;
+}
+
+.calendar-visual-event.course-APQSA,
+.calendar-visual-legend-color.course-APQSA {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.calendar-visual-event.course-TECMKT,
+.calendar-visual-legend-color.course-TECMKT {
+    background: linear-gradient(135deg, #db5ce5 0%, #e7465a 100%);
+}
+
+.calendar-visual-event.course-TECADM,
+.calendar-visual-legend-color.course-TECADM {
+    background: linear-gradient(135deg, #258de3 0%, #0799aa 100%);
+}
+
+.calendar-visual-event.needs-review {
+    border-color: #facc15;
+    box-shadow:
+        0 0 0 1px rgba(120, 53, 15, 0.38),
+        0 0.2rem 0.45rem rgba(15, 23, 42, 0.16);
+}
+
+.calendar-visual-legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem 1.15rem;
+    padding: 0.9rem;
+    margin-top: 1rem;
+    background: var(--color-surface-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 0.8rem;
+}
+
+.calendar-visual-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+}
+
+.calendar-visual-legend-color {
+    width: 1.15rem;
+    height: 1.15rem;
+    flex: 0 0 auto;
+    border-radius: 0.3rem;
+}
+
+.calendar-visual-legend-color.is-today {
+    background: #fffbeb;
+    border: 2px solid #f59e0b;
+}
+
+/* Detalhes substituem o alert bloqueante do protótipo. */
+.calendar-visual-dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgba(15, 23, 42, 0.68);
+    backdrop-filter: blur(3px);
+}
+
+.calendar-visual-dialog {
+    width: min(100%, 36rem);
+    max-height: calc(100vh - 2rem);
+    padding: 1.25rem;
+    overflow-y: auto;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+    box-shadow: 0 1.5rem 4rem rgba(15, 23, 42, 0.3);
+}
+
+.calendar-visual-dialog-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 0.85rem;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.calendar-visual-dialog-heading h3,
+.calendar-visual-dialog-materials h4 {
+    margin: 0;
+}
+
+.calendar-visual-dialog-heading button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.6rem;
+    height: 2.6rem;
+    flex: 0 0 auto;
+    font-size: 1.6rem;
+    line-height: 1;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    background: var(--color-surface-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+}
+
+.calendar-visual-dialog-heading button:hover {
+    color: var(--color-text);
+    border-color: var(--color-brand-300);
+}
+
+.calendar-visual-dialog dl {
+    display: grid;
+    gap: 0;
+    margin: 1rem 0;
+}
+
+.calendar-visual-dialog dl > div {
+    display: grid;
+    grid-template-columns: minmax(8rem, 0.7fr) minmax(0, 1.3fr);
+    gap: 0.75rem;
+    padding: 0.7rem 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.calendar-visual-dialog dt {
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: var(--color-text-muted);
+}
+
+.calendar-visual-dialog dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.calendar-visual-dialog-materials {
+    padding: 1rem;
+    background: var(--color-surface-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 0.8rem;
+}
+
+.calendar-visual-dialog-materials ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    padding: 0;
+    margin: 0.75rem 0 0;
+    list-style: none;
+}
+
+.calendar-visual-dialog-materials p {
+    margin: 0.75rem 0 0;
+    color: var(--color-text-muted);
+}
+
+.calendar-visual-dialog-materials a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.4rem;
+    padding: 0.45rem 0.75rem;
+    font-weight: 750;
+    color: var(--color-brand-700);
+    text-decoration: none;
+    background: var(--color-surface);
+    border: 1px solid var(--color-brand-300);
+    border-radius: 0.65rem;
+}
+
+.calendar-visual-dialog-materials a:hover {
+    color: #ffffff;
+    background: var(--color-brand-700);
+    border-color: var(--color-brand-700);
+}
+
+@media (max-width: 760px) {
+    .calendar-visual-header {
+        align-items: stretch;
+        flex-direction: column-reverse;
+    }
+
+    .calendar-visual-header h3 {
+        text-align: center;
+    }
+
+    .calendar-visual-navigation {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .calendar-visual-navigation button {
+        padding-inline: 0.45rem;
+    }
+
+    .calendar-visual-grid {
+        grid-template-columns: repeat(7, minmax(5.6rem, 1fr));
+    }
+
+    .calendar-visual-day {
+        min-height: 7rem;
+        padding: 0.35rem;
+    }
+
+    .calendar-visual-error {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .calendar-visual-error button {
+        width: 100%;
+    }
+}
+
+@media (max-width: 480px) {
+    .calendar-visual-filter {
+        width: 100%;
+    }
+
+    .calendar-visual-header {
+        padding: 0.9rem;
+    }
+
+    .calendar-visual-navigation button {
+        font-size: 0.78rem;
+    }
+
+    .calendar-visual-dialog {
+        padding: 1rem;
+    }
+
+    .calendar-visual-dialog dl > div {
+        grid-template-columns: 1fr;
+        gap: 0.3rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .calendar-visual-day,
+    .calendar-visual-event,
+    .calendar-visual-navigation button {
+        transition: none;
+    }
+}

@@ -430,6 +430,39 @@ describe('navegação da área autenticada', () => {
             monthlyMaterialService.listMonthlyMaterials,
         ).toHaveBeenCalledTimes(3);
     });
+
+    test('consulta as duas fontes somente ao abrir o calendário visual', async () => {
+        const user = userEvent.setup();
+        const {
+            lessonService,
+            monthlyMaterialService,
+        } = renderWorkspace();
+
+        await waitFor(() => {
+            expect(lessonService.listLessons).toHaveBeenCalledTimes(1);
+            expect(
+                monthlyMaterialService.listMonthlyMaterials,
+            ).toHaveBeenCalledTimes(1);
+        });
+
+        await user.click(
+            screen.getByRole('button', {
+                name: 'Calendário visual',
+            }),
+        );
+
+        await waitFor(() => {
+            expect(lessonService.listLessons).toHaveBeenCalledTimes(2);
+            expect(
+                monthlyMaterialService.listMonthlyMaterials,
+            ).toHaveBeenCalledTimes(2);
+        });
+        expect(lessonService.listLessons).toHaveBeenNthCalledWith(
+            2,
+            {},
+        );
+        expect(screen.getByLabelText(/^Calendário de /)).toBeTruthy();
+    });
 });
 
 describe('saída pela área autenticada', () => {

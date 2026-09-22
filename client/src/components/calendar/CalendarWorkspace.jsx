@@ -5,11 +5,12 @@ import {
     monthlyMaterialApi,
 } from '../../services/MonthlyMaterialApi.js';
 import { LogoutButton } from '../authentication/LogoutButton.jsx';
+import { CalendarDashboard } from './CalendarDashboard.jsx';
 import {
     CALENDAR_SECTION_IDS,
     CalendarNavigation,
 } from './CalendarNavigation.jsx';
-import { CalendarDashboard } from './CalendarDashboard.jsx';
+import { CalendarVisual } from './CalendarVisual.jsx';
 import { LessonManagement } from './LessonManagement.jsx';
 import { MaterialManagement } from './MaterialManagement.jsx';
 
@@ -41,32 +42,12 @@ const CALENDAR_WORKSPACE_MESSAGES = Object.freeze({
 });
 
 /**
- * Apresenta o título de uma seção cujo conteúdo ainda não foi implementado.
- *
- * @param {object} props Propriedades da seção.
- * @param {string} props.title Título previsto no protótipo original.
- * @returns {import('react').ReactElement} Estrutura mínima da seção.
- */
-function EmptyCalendarSection({ title }) {
-    return (
-        <section
-            className="calendar-content-section"
-            aria-labelledby={CALENDAR_WORKSPACE_IDS.ACTIVE_SECTION}
-        >
-            <h2 id={CALENDAR_WORKSPACE_IDS.ACTIVE_SECTION}>
-                {title}
-            </h2>
-        </section>
-    );
-}
-
-/**
  * Área principal apresentada depois da autenticação administrativa.
  *
  * O componente coordena a navegação entre as quatro seções originais. As
- * operações persistentes permanecem encapsuladas nos componentes de aulas e
- * materiais, enquanto autenticação e encerramento de sessão continuam fora
- * desta camada.
+ * operações persistentes permanecem encapsuladas nos componentes de painel,
+ * aulas, materiais e calendário visual, enquanto autenticação e encerramento
+ * de sessão continuam fora desta camada.
  *
  * @param {object} props Propriedades da área autenticada.
  * @param {string | null} [props.administratorName=null]
@@ -192,7 +173,10 @@ function CalendarWorkspace({
         activeSectionId === CALENDAR_SECTION_IDS.CALENDAR
     ) {
         activeContent = (
-            <EmptyCalendarSection title="Calendário Visual" />
+            <CalendarVisual
+                lessonService={lessonService}
+                monthlyMaterialService={monthlyMaterialService}
+            />
         );
     }
 

@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 21 de setembro de 2026.
+> Última atualização desta documentação: 22 de setembro de 2026.
 
 ## Estado atual
 
@@ -31,8 +31,11 @@ permite organizar links específicos por aula e links aplicáveis ao mês inteir
 com cadastro e exclusão mensal. Carregamento, ausência, erro, sucesso e
 resultados possuem estados acessíveis. O painel geral consulta aulas e
 materiais mensais persistidos, apresenta totais, próximas aulas e registros
-marcados para revisão com a mesma precedência de links do protótipo. Depois da
-autenticação, a interface mantém a navegação entre as quatro seções originais.
+marcados para revisão com a mesma precedência de links do protótipo. O
+calendário visual organiza essas aulas em uma grade mensal navegável, aplica o
+filtro local de curso e apresenta detalhes e materiais efetivos de cada
+registro. Depois da autenticação, a interface mantém a navegação entre as
+quatro seções originais.
 
 A compilação de produção é validada e servida pelo próprio Express sob a mesma
 origem da API.
@@ -56,7 +59,9 @@ protótipo original. As aulas já podem ser criadas e consultadas por uma API
 administrativa protegida. Os materiais mensais podem ser listados, consultados, substituídos e
 excluídos pela API administrativa. O frontend consulta, filtra e cadastra
 aulas, gerencia os materiais mensais e calcula os links efetivos de cada aula
-com a mesma precedência definida no protótipo original.
+com a mesma precedência definida no protótipo original. O calendário visual
+consulta essas fontes persistentes e reúne os registros na grade civil de cada
+mês sem depender do armazenamento local do navegador.
 
 ### Funcionalidades concluídas
 
@@ -183,6 +188,13 @@ com a mesma precedência definida no protótipo original.
 - apresentação de todas as aulas marcadas para revisão;
 - resolução dos materiais do painel com precedência específica e fallback mensal;
 - estados acessíveis de carregamento, ausência, falha e repetição no painel;
+- calendário visual mensal ligado às aulas e aos materiais persistidos;
+- navegação civil pelo mês anterior, próximo mês e retorno à data atual;
+- grade semanal iniciada no domingo com destaque para hoje e fins de semana;
+- filtro local pelos três cursos sem novas requisições ao backend;
+- cores por curso e destaque dos registros marcados para revisão;
+- diálogo acessível com os dados públicos e materiais efetivos da aula;
+- proteção do calendário contra respostas antigas e atualizações após desmontagem;
 - preservação da sessão e dos erros públicos dentro da área autenticada;
 - apresentação responsiva da área do calendário em computador e celular;
 - bloqueio do servidor HTTP quando a inicialização falha;
@@ -192,7 +204,6 @@ com a mesma precedência definida no protótipo original.
 
 ### Ainda não implementado
 
-- ligação do calendário visual aos dados persistidos;
 - migração dos dados do protótipo;
 - acesso externo à aplicação;
 - implantação em ambiente de produção.
@@ -472,8 +483,8 @@ npm --prefix client test
 No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-821 testes
-118 suítes
+840 testes
+119 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -688,6 +699,8 @@ dionisio/
 │   │   │       ├── CalendarDashboard.test.jsx
 │   │   │       ├── CalendarNavigation.jsx
 │   │   │       ├── CalendarNavigation.test.jsx
+│   │   │       ├── CalendarVisual.jsx
+│   │   │       ├── CalendarVisual.test.jsx
 │   │   │       ├── CalendarWorkspace.jsx
 │   │   │       ├── CalendarWorkspace.test.jsx
 │   │   │       ├── LessonForm.jsx
@@ -833,12 +846,21 @@ Mantém o contrato das quatro seções previstas no HTML original, identifica de
 forma acessível a seleção atual e comunica mudanças sem carregar ou alterar
 dados do calendário.
 
+### `client/src/components/calendar/CalendarVisual.jsx`
+
+Consulta aulas e materiais mensais ao abrir a quarta seção e organiza os
+registros na grade civil do mês atual. Mantém localmente a navegação mensal e o
+filtro por curso, destaca hoje, fins de semana e revisões e apresenta detalhes
+em um diálogo acessível. Os links específicos preservam sua precedência e o
+material mensal somente é aplicado quando os dois links da aula estão
+ausentes. Consultas antigas ou concluídas depois da desmontagem são ignoradas.
+
 ### `client/src/components/calendar/CalendarWorkspace.jsx`
 
 Compõe o cabeçalho autenticado, a saída, a navegação e o conteúdo da seção
-ativa. Entrega ao `CalendarDashboard` os serviços persistentes na seção
-inicial; aulas e materiais montam suas próprias consultas somente quando a
-seção correspondente é selecionada.
+ativa. Entrega os mesmos serviços persistentes ao painel geral e ao calendário
+visual; aulas, materiais e calendário montam suas próprias consultas somente
+quando a seção correspondente é selecionada.
 
 ### `client/src/components/calendar/LessonForm.jsx`
 
@@ -902,9 +924,10 @@ interações sem depender de um navegador aberto ou de um backend externo.
 ### `client/src/styles/global.css`
 
 Define a base visual responsiva, as cores, o foco visível e a adaptação das
-telas de entrada, da área autenticada, dos formulários, filtros, cartões e
-tabelas para diferentes dimensões, sem recursos externos. O painel preserva
-suas colunas por meio de rolagem interna controlada em telas estreitas.
+telas de entrada, da área autenticada, dos formulários, filtros, cartões,
+tabelas e calendário visual para diferentes dimensões, sem recursos externos.
+O painel e a grade mensal preservam suas colunas por meio de rolagem interna
+controlada em telas estreitas.
 
 ### `client/vite.config.js`
 
@@ -1354,11 +1377,10 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. conectar o calendário visual aos dados persistidos;
-2. migrar com segurança os dados do protótipo;
-3. realizar testes completos de integração e interface;
-4. preparar os guias técnico e didático;
-5. publicar e validar a aplicação em computador e celular.
+1. migrar com segurança os dados do protótipo;
+2. realizar testes completos de integração e interface;
+3. preparar os guias técnico e didático;
+4. publicar e validar a aplicação em computador e celular.
 
 ## Fluxo de atualização pelo Git
 

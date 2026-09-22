@@ -2705,3 +2705,140 @@ controlada.
 
 Conectar o calendário visual aos dados persistidos, preservando a navegação e
 as regras já definidas pelo protótipo original.
+
+
+## 22 de setembro de 2026 — Calendário visual persistente
+
+### Objetivo
+
+Substituir a quarta seção temporária pela grade mensal do protótipo original,
+agora alimentada pelas aulas e pelos materiais mensais persistidos. O marco
+preserva navegação, filtro, cores, revisões e precedência dos materiais sem
+reintroduzir armazenamento local no navegador.
+
+### Contrato civil do calendário
+
+Foi criado o CalendarVisual, que recebe os serviços de aulas e materiais
+mensais por dependência. O componente obtém a data local por um relógio
+substituível e inicia no mês correspondente sem utilizar toISOString() nem
+converter o dia pelo fuso UTC.
+
+As funções auxiliares validam datas civis existentes, criam períodos mensais
+imutáveis e realizam a passagem entre dezembro e janeiro nos dois sentidos. A
+construção local das datas utiliza setFullYear(), evitando a interpretação
+histórica especial dos anos entre zero e 99 feita pelo construtor de Date.
+
+A grade começa no domingo, apresenta os sete cabeçalhos originais e cria
+somente as células vazias anteriores ao primeiro dia do mês. Os dias são
+agrupados de forma determinística, com destaque para a data atual e para fins
+de semana.
+
+### Consulta e interação local
+
+Aulas e materiais mensais são consultados em paralelo somente quando a seção
+do calendário é aberta. Navegar para o mês anterior ou seguinte, retornar a
+hoje e filtrar por APQSA, TECMKT ou TECADM são operações locais e não geram
+novas requisições.
+
+Cada registro mantém a cor correspondente ao curso, apresenta unidade
+curricular, tipo e número sem repetir a palavra “Aula” e recebe destaque
+adicional quando está marcado para revisão.
+
+### Detalhes e materiais efetivos
+
+O alert() bloqueante do HTML original foi substituído por um diálogo
+semântico. Ao selecionar um registro, a interface apresenta data, curso,
+unidade curricular, identificação, estado de revisão e links públicos.
+
+A resolução dos materiais reutiliza a regra já consolidada no projeto. Quando
+ao menos um link específico existe na aula, os dois campos específicos são
+preservados como estão, inclusive a ausência do outro link. O material mensal
+somente é utilizado quando PA e GD+AD específicos estão ambos ausentes.
+
+Os links externos mantêm noopener e noreferrer, e nenhum campo interno das
+respostas é apresentado pela nova seção.
+
+### Estados seguros e concorrência
+
+O calendário representa carregamento, falha pública, repetição e resultado.
+Erros conhecidos de aulas ou materiais preservam apenas a mensagem pública;
+falhas inesperadas recebem texto genérico sem detalhes técnicos.
+
+Uma sequência identifica a consulta vigente. Respostas antigas concluídas
+depois de uma nova solicitação são descartadas, assim como atualizações
+posteriores à desmontagem. Alterações de seção também fecham naturalmente os
+detalhes selecionados pela desmontagem do componente.
+
+### Integração com a área autenticada
+
+O componente provisório da quarta seção foi removido do
+CalendarWorkspace. Ao selecionar “Calendário visual”, o workspace monta o
+CalendarVisual e entrega os mesmos serviços já validados e utilizados pelo
+painel, pelas aulas e pelos materiais.
+
+Essa composição preserva o carregamento sob demanda: a quarta seção não
+consulta nenhuma fonte enquanto permanece fechada. Os demais fluxos de painel,
+cadastro, gerenciamento de materiais, sessão e logout não tiveram seus
+contratos alterados.
+
+### Acessibilidade e responsividade
+
+A grade possui identificação mensal, cada dia informa sua data e quantidade
+de registros e cada evento funciona como botão com descrição completa. O
+filtro possui rótulo, as ações mantêm foco visível e o diálogo relaciona título
+e descrição por atributos acessíveis.
+
+As cores seguem a identidade do protótipo para os três cursos. Hoje possui
+destaque próprio, revisões recebem borda amarela e uma legenda explica todos os
+indicadores sem depender somente da cor.
+
+Em telas estreitas, a rolagem horizontal fica restrita à grade de sete colunas,
+sem ampliar a página. Cabeçalho, navegação, erros e diálogo se reorganizam para
+preservar leitura e operação por toque. Movimentos são removidos quando o
+navegador informa preferência por animação reduzida.
+
+### Testes automatizados
+
+O CalendarVisual recebeu 18 testes. Eles cobrem contratos protegidos,
+dependências inválidas, datas civis, anos bissextos, períodos imutáveis,
+passagem entre anos, composição da grade, fins de semana, filtro local,
+consulta paralela, navegação, data atual, cursos, revisão, diálogo, fallback
+mensal, precedência específica, erros públicos e inesperados, repetição,
+respostas antigas e desmontagem.
+
+O CalendarWorkspace passou a possuir 18 testes. O cenário adicional confirma
+que a seção visual recebe as duas fontes somente quando é aberta. As duas
+suítes direcionadas aprovaram 36 testes.
+
+### Validação real
+
+A aplicação foi compilada e servida pelo Express com MongoDB local. A conexão,
+a preparação idempotente da conta administrativa e a abertura HTTP ocorreram
+normalmente.
+
+O calendário foi validado no navegador quanto à apresentação, navegação,
+filtro, eventos, detalhes e responsividade. O resultado visual foi aprovado. O
+processo encerrou por SIGINT, fechando a conexão com o MongoDB de maneira
+controlada.
+
+### Verificação
+
+- 575 testes do backend aprovados em 103 suítes;
+- 265 testes do frontend aprovados em 16 arquivos;
+- 840 testes aprovados em 119 conjuntos no total;
+- 18 testes próprios do calendário visual aprovados;
+- 36 testes direcionados aprovados nas duas suítes integradas;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- sintaxe e diff validados;
+- compilação de produção concluída com 31 módulos;
+- interface e responsividade validadas no navegador;
+- inicialização e encerramento seguros confirmados com MongoDB local;
+- contrato mensal original preservado sem funcionalidades adicionais.
+
+### Próximo marco
+
+Planejar a migração segura dos dados mantidos pelo protótipo, definindo formato,
+validação, prevenção de duplicidades, execução controlada e possibilidade de
+reversão antes de importar qualquer registro no MongoDB.
