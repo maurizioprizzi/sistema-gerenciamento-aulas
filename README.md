@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 22 de setembro de 2026.
+> Última atualização desta documentação: 23 de setembro de 2026.
 
 ## Estado atual
 
@@ -200,6 +200,7 @@ mês sem depender do armazenamento local do navegador.
 - bloqueio do servidor HTTP quando a inicialização falha;
 - validações reais com MongoDB local;
 - testes HTTP, unitários e de integração controlada;
+- guia de uso passo a passo escrito para o professor, sem exigir conhecimento técnico;
 - documentação das decisões de engenharia.
 
 ### Ainda não implementado
@@ -798,6 +799,8 @@ dionisio/
 │   ├── server.test.js
 │   ├── session.test.js
 │   └── user.test.js
+├── docs/
+│   └── GUIA_DO_USUARIO.md
 ├── .editorconfig
 ├── .env.example
 ├── .gitignore
@@ -806,6 +809,17 @@ dionisio/
 ├── package.json
 └── README.md
 ```
+
+## Guia do usuário
+
+O passo a passo destinado ao professor está disponível em:
+
+[`docs/GUIA_DO_USUARIO.md`](docs/GUIA_DO_USUARIO.md)
+
+O documento explica a entrada, o cadastro e a consulta de aulas, a organização
+dos materiais, o painel geral, o calendário visual e a saída segura. O texto foi
+preparado para leitores sem conhecimento de programação e deverá ser validado com
+o professor antes da primeira utilização real.
 
 ## Responsabilidades dos módulos
 
@@ -1379,7 +1393,7 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 1. migrar com segurança os dados do protótipo;
 2. realizar testes completos de integração e interface;
-3. preparar os guias técnico e didático;
+3. validar o guia de uso com o professor e preparar o guia técnico;
 4. publicar e validar a aplicação em computador e celular.
 
 ## Fluxo de atualização pelo Git

@@ -2842,3 +2842,85 @@ controlada.
 Planejar a migração segura dos dados mantidos pelo protótipo, definindo formato,
 validação, prevenção de duplicidades, execução controlada e possibilidade de
 reversão antes de importar qualquer registro no MongoDB.
+
+## 23 de setembro de 2026 — Guia de uso para o professor
+
+### Objetivo
+
+Preparar um manual completo para que o professor Dionísio consiga utilizar a
+aplicação sem conhecimento de programação e sem depender de instruções
+técnicas durante as tarefas normais do calendário.
+
+### Documento criado
+
+Foi criado o arquivo `docs/GUIA_DO_USUARIO.md`, escrito em linguagem direta e
+organizado como um passo a passo. O guia explica:
+
+- a finalidade da aplicação e os cuidados antes do primeiro acesso;
+- a entrada com e-mail e senha e a saída segura da sessão;
+- a leitura do painel geral;
+- o cadastro e a consulta de aulas, atividades e avaliações;
+- o uso dos filtros de curso, mês e data;
+- a diferença entre materiais específicos e materiais mensais;
+- a precedência aplicada aos links de PA e GD+AD;
+- o cadastro, a substituição e a exclusão de materiais mensais;
+- a navegação e a consulta de detalhes no calendário visual;
+- o comportamento esperado em computadores e celulares;
+- orientações simples para problemas comuns e boas práticas de uso.
+
+O documento também informa que o endereço público e as credenciais serão
+entregues somente depois da implantação e que os dados reais definitivos não
+devem ser cadastrados antes da confirmação oficial.
+
+### Decisões de comunicação e segurança
+
+As instruções utilizam os mesmos nomes apresentados nos botões, campos e
+seções da interface. Termos internos do backend, comandos de terminal e
+detalhes de infraestrutura foram excluídos do fluxo destinado ao professor.
+
+O guia reforça que a senha não deve ser compartilhada com alunos, grupos ou
+mensagens de e-mail e orienta o encerramento da sessão em computadores
+compartilhados.
+
+As regras dos materiais foram descritas explicitamente para evitar perda
+acidental de links: materiais específicos da aula têm precedência, e salvar
+novamente o mesmo mês substitui o conjunto mensal anterior.
+
+### Limitação registrada
+
+A interface atual permite criar e consultar aulas, mas ainda não oferece ações
+visuais para editar ou excluir um registro de aula. Por isso, o guia recomenda
+revisar os campos antes do cadastro e solicitar suporte quando uma correção for
+necessária.
+
+Essa limitação deverá ser avaliada antes da primeira utilização real. A decisão
+de implementar edição e exclusão deve incluir confirmação explícita, proteção
+administrativa e testes para evitar alterações acidentais.
+
+### README atualizado
+
+O `README.md` passou a:
+
+- registrar a atualização documental de 23 de setembro de 2026;
+- listar o guia entre as entregas concluídas;
+- incluir o arquivo na estrutura atual do projeto;
+- disponibilizar um link direto para o documento;
+- manter como próximo marco a validação do texto com o professor.
+
+### Verificações
+
+- integridade do arquivo recebido confirmada por SHA-256;
+- presença do guia conferida pelo status detalhado do Git;
+- atualização do README executada por script validado pelo Node.js;
+- formatação dos arquivos verificada por `git diff --check`;
+- nenhuma dependência, regra funcional ou arquivo da aplicação foi alterado.
+
+As suítes permanecem no último resultado integral aprovado: 575 testes do
+backend e 265 testes do frontend, totalizando 840 testes em 119 conjuntos, sem
+falhas ou testes ignorados.
+
+### Próximo marco
+
+Apresentar o guia ao professor Dionísio, recolher dúvidas reais de uso e ajustar
+o texto quando necessário. Em paralelo, preparar o guia técnico de implantação
+e decidir o fluxo seguro para correção de aulas cadastradas.
