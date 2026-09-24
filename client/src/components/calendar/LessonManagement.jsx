@@ -26,7 +26,7 @@ const LESSON_MANAGEMENT_IDS = Object.freeze({
  */
 const LESSON_MANAGEMENT_MESSAGES = Object.freeze({
     INVALID_LESSON_SERVICE:
-        'O gerenciamento de aulas exige um serviço de consulta e criação válido.',
+        'O gerenciamento de aulas exige um serviço de consulta, criação e edição válido.',
     LOADING: 'Carregando aulas...',
     EMPTY: 'Nenhuma aula encontrada para os filtros selecionados.',
     UNEXPECTED_ERROR:
@@ -127,8 +127,11 @@ function LessonMaterialLink({ label, url }) {
  * estado mais recente da interface.
  *
  * @param {object} props Propriedades da seção.
- * @param {{ listLessons: Function, createLesson: Function }}
- * [props.lessonService=lessonApi]
+ * @param {{
+ *     listLessons: Function,
+ *     createLesson: Function,
+ *     updateLesson: Function,
+ * }} [props.lessonService=lessonApi]
  * Serviço substituível nos testes.
  * @returns {import('react').ReactElement} Consulta visual das aulas.
  */
@@ -138,7 +141,8 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
         && typeof lessonService === 'object'
         && !Array.isArray(lessonService)
         && typeof lessonService.listLessons === 'function'
-        && typeof lessonService.createLesson === 'function';
+        && typeof lessonService.createLesson === 'function'
+        && typeof lessonService.updateLesson === 'function';
 
     if (!isValidLessonService) {
         throw new TypeError(
@@ -153,6 +157,7 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
     const [lessons, setLessons] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [errorMessage, setErrorMessage] = useState(null);
+    const [lessonToEdit, setLessonToEdit] = useState(null);
     const requestSequence = useRef(0);
 
     /**
@@ -209,6 +214,33 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
      * alterar silenciosamente a escolha do administrador.
      */
     const handleLessonCreated = useCallback(() => {
+        loadLessons(appliedFilters);
+    }, [appliedFilters, loadLessons]);
+
+    /**
+     * Abre o formulário com uma cópia pública da aula escolhida.
+     *
+     * @param {object} lesson Registro selecionado na lista.
+     */
+    function handleLessonEditRequested(lesson) {
+        setLessonToEdit(lesson);
+    }
+
+    /**
+     * Retorna o formulário ao modo de cadastro sem acessar a API.
+     */
+    function handleLessonEditCancelled() {
+        setLessonToEdit(null);
+    }
+
+    /**
+     * Encerra o modo de edição e consulta novamente o recorte atual.
+     *
+     * A nova consulta é importante porque uma alteração de data ou curso pode
+     * incluir ou retirar o registro dos filtros que continuam aplicados.
+     */
+    const handleLessonUpdated = useCallback(() => {
+        setLessonToEdit(null);
         loadLessons(appliedFilters);
     }, [appliedFilters, loadLessons]);
 
@@ -283,7 +315,10 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
 
             <LessonForm
                 lessonService={lessonService}
+                lessonToEdit={lessonToEdit}
                 onLessonCreated={handleLessonCreated}
+                onLessonUpdated={handleLessonUpdated}
+                onEditCancelled={handleLessonEditCancelled}
             />
 
             <form
@@ -439,6 +474,28 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
                                             label="Guia e atividades"
                                             url={lesson.studentGuideUrl}
                                         />
+                                    </div>
+
+                                    <div className="lesson-management-card-actions">
+                                        <button
+                                            type="button"
+                                            disabled={lessonToEdit?.id === lesson.id}
+                                            aria-label={
+                                                'Editar '
+                                                + lesson.type
+                                                + ' de '
+                                                + lesson.course
+                                                + ' em '
+                                                + formatCivilDate(lesson.date)
+                                            }
+                                            onClick={() => {
+                                                handleLessonEditRequested(lesson);
+                                            }}
+                                        >
+                                            {lessonToEdit?.id === lesson.id
+                                                ? 'Editando'
+                                                : 'Editar'}
+                                        </button>
                                     </div>
                                 </article>
                             </li>

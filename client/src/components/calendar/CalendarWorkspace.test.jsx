@@ -36,16 +36,18 @@ afterEach(() => {
 });
 
 /**
- * Cria o contrato mínimo da consulta e criação de aulas.
+ * Cria o contrato mínimo da consulta, criação e edição de aulas.
  *
  * @param {object} overrides Operações substituídas pelo cenário.
  * @returns {{ listLessons: ReturnType<typeof vi.fn>,
- * createLesson: ReturnType<typeof vi.fn> }} Serviço controlado.
+ * createLesson: ReturnType<typeof vi.fn>,
+ * updateLesson: ReturnType<typeof vi.fn> }} Serviço controlado.
  */
 function createLessonService(overrides = {}) {
     return {
         listLessons: vi.fn().mockResolvedValue([]),
         createLesson: vi.fn(),
+        updateLesson: vi.fn(),
         ...overrides,
     };
 }

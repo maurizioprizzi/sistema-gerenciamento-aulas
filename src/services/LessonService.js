@@ -16,6 +16,7 @@ const {
 const LESSON_SERVICE_CODES = Object.freeze({
     INVALID_LESSON_DATA: 'INVALID_LESSON_DATA',
     INVALID_LESSON_FILTERS: 'INVALID_LESSON_FILTERS',
+    INVALID_LESSON_ID: 'INVALID_LESSON_ID',
 });
 
 /**
@@ -28,6 +29,8 @@ const LESSON_SERVICE_MESSAGES = Object.freeze({
         'Os dados da aula são inválidos.',
     INVALID_LESSON_FILTERS:
         'Os filtros de consulta das aulas são inválidos.',
+    INVALID_LESSON_ID:
+        'O identificador da aula é inválido.',
     INVALID_LESSON_DOCUMENT:
         'O modelo retornou uma aula inválida.',
     INVALID_LESSON_LIST:
@@ -50,6 +53,35 @@ const LESSON_CREATION_FIELDS = Object.freeze([
     'lessonPlanUrl',
     'studentGuideUrl',
 ]);
+
+/**
+ * Campos exigidos durante a substituição funcional de uma aula.
+ *
+ * A edição recebe o estado completo apresentado pelo formulário. Isso evita
+ * que a ausência acidental de um campo mantenha silenciosamente um valor
+ * antigo. Campos opcionais podem ser removidos explicitamente com 'null'.
+ */
+const LESSON_UPDATE_FIELDS = LESSON_CREATION_FIELDS;
+
+/**
+ * Formato textual dos identificadores ObjectId utilizados pelo MongoDB.
+ *
+ * A validação ocorre antes do acesso ao modelo para que identificadores
+ * inválidos não se transformem em detalhes técnicos de conversão.
+ */
+const LESSON_ID_PATTERN = /^[a-fA-F0-9]{24}$/;
+
+/**
+ * Opções estáveis da atualização atômica.
+ *
+ * 'new' devolve o documento posterior à alteração e 'runValidators'
+ * mantém o schema como fonte única das regras funcionais.
+ */
+const LESSON_UPDATE_OPTIONS = Object.freeze({
+    new: true,
+    runValidators: true,
+    context: 'query',
+});
 
 /**
  * Filtros presentes na interface original de gerenciamento de aulas.
@@ -120,7 +152,22 @@ function createInvalidLessonFiltersError() {
 }
 
 /**
- * Coordena as regras de criação e consulta das aulas.
+ * Cria um erro operacional seguro para identificadores inválidos.
+ *
+ * @returns {AppError} Erro público de cliente.
+ */
+function createInvalidLessonIdError() {
+    return new AppError(
+        LESSON_SERVICE_MESSAGES.INVALID_LESSON_ID,
+        {
+            statusCode: 400,
+            code: LESSON_SERVICE_CODES.INVALID_LESSON_ID,
+        },
+    );
+}
+
+/**
+ * Coordena as regras de criação, edição e consulta das aulas.
  *
  * O serviço desconhece HTTP, sessões e detalhes visuais. O modelo é recebido
  * por injeção para permitir testes inteiramente isolados do MongoDB.
@@ -169,13 +216,14 @@ class LessonService {
      * Verifica as operações exigidas do modelo.
      *
      * @param {unknown} LessonModel Modelo que será validado.
-     * @throws {TypeError} Quando create() ou find() não estão disponíveis.
+     * @throws {TypeError} Quando alguma operação exigida não está disponível.
      */
     static validateLessonModel(LessonModel) {
         const isValid =
             LessonModel
             && typeof LessonModel.create === 'function'
-            && typeof LessonModel.find === 'function';
+            && typeof LessonModel.find === 'function'
+            && typeof LessonModel.findByIdAndUpdate === 'function';
 
         if (!isValid) {
             throw new TypeError(
@@ -218,6 +266,49 @@ class LessonService {
         }
 
         return Object.freeze(preparedData);
+    }
+
+    /**
+     * Valida um identificador antes de consultar o MongoDB.
+     *
+     * @param {unknown} lessonId Identificador recebido pela aplicação.
+     * @returns {string} Identificador validado sem transformação.
+     * @throws {AppError} Quando o valor não representa um ObjectId.
+     */
+    static prepareLessonId(lessonId) {
+        if (
+            typeof lessonId !== 'string'
+            || !LESSON_ID_PATTERN.test(lessonId)
+        ) {
+            throw createInvalidLessonIdError();
+        }
+
+        return lessonId;
+    }
+
+    /**
+     * Prepara o estado completo utilizado para editar uma aula.
+     *
+     * Os mesmos oito campos da criação são permitidos, mas todos devem estar
+     * presentes. Valores opcionais continuam podendo ser representados por
+     * 'null', permitindo limpar links e número durante a edição.
+     *
+     * @param {unknown} lessonData Estado funcional completo da aula.
+     * @returns {Readonly<object>} Cópia segura entregue ao modelo.
+     * @throws {AppError} Quando a estrutura está incompleta ou é inválida.
+     */
+    static prepareLessonUpdateData(lessonData) {
+        const preparedData =
+            LessonService.prepareLessonData(lessonData);
+        const hasEveryField = LESSON_UPDATE_FIELDS.every(
+            (field) => Object.hasOwn(preparedData, field),
+        );
+
+        if (!hasEveryField) {
+            throw createInvalidLessonDataError();
+        }
+
+        return preparedData;
     }
 
     /**
@@ -422,6 +513,23 @@ class LessonService {
     }
 
     /**
+     * Identifica falhas de conversão produzidas pelo Mongoose.
+     *
+     * Atualizações executam conversões diretamente na consulta. Uma falha de
+     * tipo conhecida pertence aos dados recebidos e deve produzir a mesma
+     * resposta pública segura utilizada pelas demais validações.
+     *
+     * @param {unknown} error Falha recebida do modelo.
+     * @returns {boolean} Verdadeiro para uma CastError do Mongoose.
+     */
+    static isModelCastError(error) {
+        return (
+            error instanceof Error
+            && error.name === 'CastError'
+        );
+    }
+
+    /**
      * Persiste uma nova aula.
      *
      * Erros de validação do schema tornam-se uma resposta operacional segura.
@@ -450,6 +558,54 @@ class LessonService {
 
         return LessonService.createLessonRepresentation(
             createdLesson,
+        );
+    }
+
+    /**
+     * Substitui atomicamente o estado funcional de uma aula existente.
+     *
+     * O identificador e o corpo são validados antes do acesso ao modelo. A
+     * atualização utiliza somente '$set' construído internamente, executa as
+     * validações do schema e devolve o documento posterior à alteração.
+     *
+     * @param {unknown} lessonId Identificador da aula.
+     * @param {unknown} lessonData Estado funcional completo.
+     * @returns {Promise<Readonly<object>|null>} Aula atualizada ou ausência.
+     */
+    async updateLesson(lessonId, lessonData) {
+        const preparedId =
+            LessonService.prepareLessonId(lessonId);
+        const preparedData =
+            LessonService.prepareLessonUpdateData(lessonData);
+        const update = Object.freeze({
+            $set: preparedData,
+        });
+
+        let updatedLesson;
+
+        try {
+            updatedLesson = await this.#LessonModel.findByIdAndUpdate(
+                preparedId,
+                update,
+                LESSON_UPDATE_OPTIONS,
+            );
+        } catch (error) {
+            if (
+                LessonService.isModelValidationError(error)
+                || LessonService.isModelCastError(error)
+            ) {
+                throw createInvalidLessonDataError();
+            }
+
+            throw error;
+        }
+
+        if (updatedLesson === null) {
+            return null;
+        }
+
+        return LessonService.createLessonRepresentation(
+            updatedLesson,
         );
     }
 
@@ -492,10 +648,13 @@ const lessonService = new LessonService();
 
 module.exports = {
     LESSON_CREATION_FIELDS,
+    LESSON_ID_PATTERN,
     LESSON_LIST_FILTER_FIELDS,
     LESSON_LIST_SORT,
     LESSON_SERVICE_CODES,
     LESSON_SERVICE_MESSAGES,
+    LESSON_UPDATE_FIELDS,
+    LESSON_UPDATE_OPTIONS,
     LessonService,
     lessonService,
 };

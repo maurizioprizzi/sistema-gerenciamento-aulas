@@ -936,6 +936,53 @@ noscript {
     color: var(--color-text-muted);
 }
 
+.lesson-management-card-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 1rem;
+    margin-top: 1rem;
+    border-top: 1px solid var(--color-border);
+}
+
+.lesson-management-card-actions button {
+    min-height: 2.65rem;
+    padding: 0.65rem 1rem;
+    font-weight: 750;
+    color: var(--color-brand-700);
+    cursor: pointer;
+    background: var(--color-surface);
+    border: 1px solid var(--color-brand-300);
+    border-radius: 0.75rem;
+    transition:
+        color 160ms ease,
+        background-color 160ms ease,
+        border-color 160ms ease,
+        transform 160ms ease;
+}
+
+.lesson-management-card-actions button:focus-visible {
+    border-color: var(--color-brand-600);
+    outline: 3px solid var(--color-focus);
+}
+
+.lesson-management-card-actions button:hover:not(:disabled) {
+    color: #ffffff;
+    background: var(--color-brand-700);
+    border-color: var(--color-brand-700);
+    transform: translateY(-1px);
+}
+
+.lesson-management-card-actions button:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.lesson-management-card-actions button:disabled {
+    color: var(--color-brand-700);
+    cursor: default;
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--color-brand-300);
+}
+
 @media (max-width: 760px) {
     .lesson-management-filters,
     .lesson-management-card dl {
@@ -961,6 +1008,14 @@ noscript {
 
     .lesson-management-actions {
         display: grid;
+    }
+
+    .lesson-management-card-actions {
+        justify-content: stretch;
+    }
+
+    .lesson-management-card-actions button {
+        width: 100%;
     }
 }
 /* LessonForm: cadastro administrativo de aulas */
@@ -1092,7 +1147,9 @@ noscript {
 
 .lesson-form-actions {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
+    gap: 0.75rem;
     grid-column: 1 / -1;
 }
 
@@ -1113,7 +1170,15 @@ noscript {
         transform 160ms ease;
 }
 
+.lesson-form-actions .lesson-form-secondary-action {
+    color: var(--color-brand-700);
+    background: var(--color-surface);
+    border-color: var(--color-brand-300);
+    box-shadow: none;
+}
+
 .lesson-form-actions button:hover:not(:disabled) {
+    color: #ffffff;
     background: var(--color-brand-700);
     border-color: var(--color-brand-700);
     box-shadow: 0 10px 24px rgba(67, 56, 202, 0.24);

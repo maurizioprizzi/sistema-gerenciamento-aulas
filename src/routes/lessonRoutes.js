@@ -8,10 +8,12 @@ const {
  * Caminhos internos do roteador de aulas.
  *
  * O prefixo `/api/lessons` será aplicado posteriormente por `app.js`. Criação
- * e consulta pertencem à mesma coleção e, portanto, utilizam a raiz interna.
+ * e consulta permanecem na raiz interna. A edição identifica um único recurso
+ * pelo parâmetro de caminho 'id'.
  */
 const LESSON_ROUTE_PATHS = Object.freeze({
     COLLECTION: '/',
+    ITEM: '/:id',
 });
 
 /**
@@ -46,7 +48,7 @@ function defaultLessonRouterFactory() {
  * Valida o controlador exigido pelas rotas da coleção.
  *
  * @param {unknown} controller Controlador recebido.
- * @throws {TypeError} Quando create() ou list() não estão disponíveis.
+ * @throws {TypeError} Quando algum handler exigido não está disponível.
  */
 function validateLessonController(controller) {
     const isValid =
@@ -54,6 +56,7 @@ function validateLessonController(controller) {
         && typeof controller === 'object'
         && !Array.isArray(controller)
         && typeof controller.create === 'function'
+        && typeof controller.update === 'function'
         && typeof controller.list === 'function';
 
     if (!isValid) {
@@ -64,7 +67,7 @@ function validateLessonController(controller) {
 }
 
 /**
- * Cria as rotas administrativas de criação e consulta das aulas.
+ * Cria as rotas administrativas de criação, edição e consulta das aulas.
  *
  * O middleware de autorização aparece antes de cada handler. Assim, nenhuma
  * consulta ao calendário nem tentativa de persistência ocorre sem uma sessão
@@ -115,6 +118,7 @@ function createLessonRouter({
         )
         || typeof router.get !== 'function'
         || typeof router.post !== 'function'
+        || typeof router.put !== 'function'
     ) {
         throw new TypeError(
             LESSON_ROUTE_ERRORS.INVALID_ROUTER,
@@ -131,6 +135,12 @@ function createLessonRouter({
         LESSON_ROUTE_PATHS.COLLECTION,
         administrativeAuthorizationMiddleware,
         controller.create,
+    );
+
+    router.put(
+        LESSON_ROUTE_PATHS.ITEM,
+        administrativeAuthorizationMiddleware,
+        controller.update,
     );
 
     return router;

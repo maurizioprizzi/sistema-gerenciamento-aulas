@@ -2,7 +2,7 @@
 
 ## Professor Dionísio Pereira — Senac Ceilândia
 
-> Guia preparado em 23 de setembro de 2026.
+> Guia atualizado em 24 de setembro de 2026.
 >
 > Este documento foi escrito para explicar o uso da aplicação sem exigir
 > conhecimento de programação.
@@ -12,6 +12,7 @@
 O Calendário de Aulas permite:
 
 - cadastrar aulas, atividades e avaliações;
+- editar registros já cadastrados;
 - consultar registros já cadastrados;
 - localizar registros por curso, mês ou data;
 - cadastrar links de materiais que valem para um mês inteiro;
@@ -200,20 +201,35 @@ visual.
 
 ### 6.2 Atenção antes de cadastrar
 
-Na versão atual, a interface ainda não possui botões para editar ou excluir uma
-aula já cadastrada. Por isso, confira principalmente:
+Confira principalmente a data, o curso, a unidade curricular, o tipo, o número e
+os links antes de cadastrar. Se perceber um erro depois, utilize a edição descrita
+na próxima seção em vez de criar outro registro igual.
 
-- a data;
-- o curso;
-- a unidade curricular;
-- o tipo;
-- o número;
-- os links.
+## 7. Editar uma aula, atividade ou avaliação
 
-Se cadastrar uma informação errada, não repita várias vezes o mesmo registro.
-Anote o que precisa ser corrigido e avise a pessoa responsável pelo sistema.
+1. Clique ou toque em **Gerenciar aulas**.
+2. Localize o cartão do registro que precisa ser corrigido.
+3. Clique ou toque em **Editar**.
+4. Confira os dados carregados na área **Editar registro**.
+5. Altere somente os campos necessários.
+6. Clique ou toque em **Salvar alterações**.
+7. Aguarde a lista ser atualizada.
 
-## 7. Consultar aulas cadastradas
+Durante a gravação, o botão mostrará **Salvando...**. Não clique novamente.
+
+Depois da confirmação, a alteração também será refletida no painel geral, nos
+materiais por aula e no calendário visual quando for aplicável.
+
+### 7.1 Cancelar uma edição
+
+Se não quiser salvar as mudanças, clique ou toque em **Cancelar edição**. O
+formulário voltará para **Cadastrar registro** e o registro continuará com os
+dados anteriores.
+
+> A versão atual permite editar, mas ainda não permite excluir aulas, atividades
+> ou avaliações. Se um registro precisar ser removido, solicite suporte.
+
+## 8. Consultar aulas cadastradas
 
 Na área **Gerenciar aulas**, abaixo do cadastro, estão os filtros de consulta.
 
@@ -237,20 +253,20 @@ Para voltar a mostrar todos os registros, clique em **Limpar filtros**.
 O número apresentado próximo ao título informa quantos registros foram
 encontrados.
 
-## 8. Entendendo os materiais
+## 9. Entendendo os materiais
 
 Na aplicação existem dois tipos de organização dos materiais.
 
-### 8.1 Material específico da aula
+### 9.1 Material específico da aula
 
 É o link informado diretamente no cadastro daquela aula, atividade ou
 avaliação.
 
-### 8.2 Material do mês
+### 9.2 Material do mês
 
 É um link geral que pode valer para os registros de um mês inteiro.
 
-### 8.3 Qual material tem prioridade
+### 9.3 Qual material tem prioridade
 
 O material específico tem prioridade.
 
@@ -267,7 +283,7 @@ misturará esse PA com o GD+AD mensal.
 
 Essa regra evita combinar materiais de origens diferentes sem confirmação.
 
-## 9. Consultar materiais por aula
+## 10. Consultar materiais por aula
 
 1. Clique ou toque em **Materiais**.
 2. Localize a área **Por aula (data específica)**.
@@ -281,7 +297,7 @@ Quando aparecer um traço (`—`), não existe link disponível para aquele camp
 
 Os links são abertos em outra aba do navegador.
 
-## 10. Cadastrar materiais para um mês inteiro
+## 11. Cadastrar materiais para um mês inteiro
 
 1. Na área **Materiais**, localize **Materiais por mês**.
 2. Clique em **Adicionar link mensal**.
@@ -304,7 +320,7 @@ mês será removido.
 Antes de substituir um mês, confira os dois campos, mesmo quando desejar
 alterar somente um dos links.
 
-## 11. Excluir materiais mensais
+## 12. Excluir materiais mensais
 
 1. Na tabela **Materiais por mês**, localize o período desejado.
 2. Confira o mês e os links apresentados.
@@ -315,7 +331,7 @@ alterar somente um dos links.
 A exclusão remove apenas o conjunto de links daquele mês. Ela não exclui as
 aulas cadastradas e não remove links específicos que já pertencem às aulas.
 
-## 12. Usar o calendário visual
+## 13. Usar o calendário visual
 
 1. Clique ou toque em **Calendário visual**.
 2. Aguarde a grade do mês atual aparecer.
@@ -329,7 +345,7 @@ Na parte superior estão os botões:
 
 O campo **Curso** permite mostrar todos os cursos ou somente um curso.
 
-### 12.1 Cores e destaques
+### 13.1 Cores e destaques
 
 Cada curso possui sua própria cor. A legenda abaixo da grade mostra a
 correspondência.
@@ -337,7 +353,7 @@ correspondência.
 O dia atual possui um destaque próprio. Um registro marcado para revisão
 recebe uma borda adicional e é identificado pela estrela da legenda.
 
-### 12.2 Ver os detalhes de um registro
+### 13.2 Ver os detalhes de um registro
 
 1. Clique ou toque no registro dentro do dia.
 2. Confira data, curso, unidade curricular, tipo, número e revisão.
@@ -345,7 +361,7 @@ recebe uma borda adicional e é identificado pela estrela da legenda.
 4. Para fechar os detalhes, clique no botão **Fechar detalhes da aula**,
    representado pelo símbolo `×`.
 
-### 12.3 Uso no celular
+### 13.3 Uso no celular
 
 No celular, a grade mantém as sete colunas da semana. Deslize a grade para os
 lados quando todas as colunas não couberem na tela.
@@ -353,7 +369,7 @@ lados quando todas as colunas não couberem na tela.
 A rolagem acontece dentro do calendário. Os demais elementos da página
 permanecem no lugar.
 
-## 13. O que fazer quando aparecer um erro
+## 14. O que fazer quando aparecer um erro
 
 Quando houver uma falha temporária, a tela poderá mostrar o botão
 **Tentar novamente**.
@@ -377,7 +393,7 @@ Ao pedir ajuda, informe:
 
 Não envie sua senha junto com o pedido de ajuda.
 
-## 14. Como sair com segurança
+## 15. Como sair com segurança
 
 1. Localize o botão **Sair** na parte superior da tela.
 2. Clique ou toque uma vez.
@@ -388,7 +404,7 @@ Durante o encerramento, o botão poderá mostrar **Saindo...**.
 Em computador compartilhado, confirme que a tela de entrada apareceu antes de
 fechar o navegador.
 
-## 15. Boas práticas de uso
+## 16. Boas práticas de uso
 
 - Confira os dados antes de cadastrar.
 - Evite clicar repetidamente enquanto aparecer uma mensagem de processamento.
@@ -396,15 +412,20 @@ fechar o navegador.
 - Não compartilhe sua senha.
 - Sempre saia da aplicação em aparelhos compartilhados.
 - Não cadastre informações reais antes da liberação oficial da aplicação.
-- Em caso de dúvida sobre exclusão ou substituição, peça orientação antes de
-  confirmar.
+- Em caso de dúvida sobre a exclusão de um material ou a correção de uma aula,
+  peça orientação antes de confirmar.
 
-## 16. Resumo rápido
+## 17. Resumo rápido
 
 ### Para cadastrar um registro
 
 **Gerenciar aulas** → preencher **Cadastrar registro** → conferir →
 **Cadastrar registro**.
+
+### Para editar um registro
+
+**Gerenciar aulas** → localizar o cartão → **Editar** → corrigir →
+**Salvar alterações**.
 
 ### Para localizar uma aula
 
@@ -423,7 +444,7 @@ fechar o navegador.
 
 Clique em **Sair** e aguarde a tela de entrada.
 
-## 17. Suporte
+## 18. Suporte
 
 O contato de suporte e o endereço definitivo da aplicação serão informados
 antes da liberação para uso real.

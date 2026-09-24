@@ -2924,3 +2924,148 @@ falhas ou testes ignorados.
 Apresentar o guia ao professor Dionísio, recolher dúvidas reais de uso e ajustar
 o texto quando necessário. Em paralelo, preparar o guia técnico de implantação
 e decidir o fluxo seguro para correção de aulas cadastradas.
+
+## 24 de setembro de 2026 — Edição persistente de aulas
+
+### Contexto confirmado com o professor
+
+O professor Dionísio informou que não existem aulas ou materiais que precisem
+ser recuperados do calendário antigo e que a utilização começará do zero. A
+migração do protótipo deixou, portanto, de ser uma etapa necessária. O próximo
+risco funcional relevante passou a ser a correção segura de um registro já
+cadastrado.
+
+### Objetivo
+
+Permitir que uma aula, atividade ou avaliação seja editada pela própria
+interface, sem duplicar o registro, sem expor campos internos e sem descartar
+os filtros utilizados pelo administrador.
+
+A exclusão de aulas permaneceu fora deste marco. Ela exigirá confirmação
+explícita e testes próprios para reduzir o risco de remoções acidentais.
+
+### Serviço persistente
+
+O `LessonService` passou a oferecer uma atualização completa e atômica por
+identificador. A operação:
+
+- aceita somente identificadores MongoDB com 24 caracteres hexadecimais;
+- exige os mesmos oito campos funcionais usados pelo calendário;
+- rejeita estados incompletos, propriedades desconhecidas e campos internos;
+- utiliza `findByIdAndUpdate` com retorno do documento novo e validação do
+  schema;
+- converte erros conhecidos de validação e conversão em respostas públicas
+  seguras;
+- devolve ausência quando o identificador válido não corresponde a uma aula;
+- mantém falhas inesperadas intactas para o tratamento centralizado.
+
+### Controlador e rota HTTP
+
+O `LessonController` recebeu um handler vinculado de edição. Ele encaminha o
+identificador do caminho e o corpo ao serviço, seleciona novamente somente os
+campos públicos e responde com estado `200`.
+
+Uma aula inexistente produz resposta `404` com código estável e mensagem
+segura. A rota `PUT /api/lessons/:id` foi incluída depois do middleware de
+autorização administrativa, preservando a mesma proteção da criação e da
+consulta.
+
+### Cliente HTTP do navegador
+
+O `LessonApi` passou a validar o identificador, exigir uma substituição
+completa dos oito campos e enviar a requisição `PUT`. Respostas conhecidas do
+backend continuam públicas; falhas de rede, envelopes inconsistentes e estados
+HTTP inesperados não expõem os dados submetidos.
+
+### Formulário e gerenciamento visual
+
+O `LessonForm` agora reutiliza os controles de cadastro em dois modos:
+
+- **Cadastrar registro**, com o comportamento anterior preservado;
+- **Editar registro**, preenchido com a representação pública selecionada.
+
+No modo de edição, a interface oferece **Cancelar edição** e **Salvar
+alterações**. O cancelamento não acessa a API. Durante a gravação, todos os
+controles e ações ficam bloqueados para impedir envios repetidos.
+
+O `LessonManagement` mantém a aula selecionada, apresenta **Editar** em cada
+cartão e identifica o registro ativo como **Editando**. Depois da confirmação,
+encerra o modo de edição e consulta novamente os filtros aplicados. Dessa
+forma, alterações de curso ou data incluem ou retiram corretamente o registro
+do recorte atual.
+
+Os novos controles receberam foco visível, estados de interação e adaptação
+para telas estreitas no `global.css`.
+
+### Cobertura automatizada
+
+Foram ampliados os testes do serviço, controlador, roteador, integração HTTP,
+cliente do navegador, formulário, gerenciamento e composição do workspace.
+Entre os cenários cobertos estão:
+
+- contratos e dependências inválidas;
+- identificadores válidos e recusados antes do modelo;
+- substituição atômica e retorno público defensivo;
+- aula inexistente e resposta `404`;
+- autenticação obrigatória antes da edição;
+- validação do schema e ocultação de falhas inesperadas;
+- requisição `PUT` e resposta HTTP `200`;
+- preenchimento dos oito controles;
+- cancelamento sem comunicação externa;
+- preservação dos campos durante recusas;
+- bloqueio durante o salvamento;
+- troca do registro selecionado;
+- atualização da lista com preservação dos filtros.
+
+A primeira execução integral do frontend revelou dois cenários do
+`CalendarWorkspace` cujo serviço controlado ainda descrevia somente consulta
+e criação. O duplo de teste recebeu `updateLesson`, e os 18 testes do
+workspace voltaram a passar sem alteração funcional na aplicação.
+
+### Validação real no navegador
+
+A compilação foi servida pelo Express com MongoDB local. Depois do login, a
+edição foi validada manualmente com uma aula existente:
+
+- presença e apresentação responsiva do botão **Editar**;
+- preenchimento correto dos oito campos;
+- indicação visual **Editando** no cartão selecionado;
+- cancelamento depois de uma alteração local sem modificar o banco;
+- alteração real da marcação de revisão;
+- persistência confirmada depois de atualizar a página;
+- reflexo da mudança no painel geral e no calendário visual;
+- restauração do dado original ao final do teste;
+- encerramento seguro do servidor e da conexão com o MongoDB.
+
+### Documentação
+
+O `README.md` passou a registrar a edição no backend e no frontend, a rota
+protegida, os novos totais e a exclusão segura como próximo marco. A migração
+foi removida das pendências depois da confirmação de que o professor começará
+sem dados antigos.
+
+O `docs/GUIA_DO_USUARIO.md` recebeu um passo a passo não técnico para editar,
+salvar e cancelar. O texto esclarece que a exclusão de aulas ainda não está
+disponível e deve ser solicitada ao suporte.
+
+### Verificação consolidada
+
+- 599 testes do backend aprovados em 106 suítes;
+- 289 testes do frontend aprovados em 16 arquivos;
+- 888 testes aprovados em 122 conjuntos no total;
+- zero falhas;
+- zero testes ignorados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- verificação sintática aprovada;
+- formatação validada por `git diff --check`;
+- compilação de produção concluída com 31 módulos;
+- edição, cancelamento, persistência e integração visual confirmados no
+  navegador;
+- nenhuma dependência adicionada ou atualizada neste marco.
+
+### Próximo marco
+
+Implementar a exclusão segura de aulas com confirmação explícita, proteção
+administrativa, resposta idempotente quando apropriado e cobertura completa do
+backend à interface. Depois disso, validar o guia com o professor e preparar a
+implantação controlada.

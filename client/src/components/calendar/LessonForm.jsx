@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import {
     LESSON_API_COURSES,
     LESSON_API_TYPES,
+    LessonApi,
     LessonApiError,
     lessonApi,
 } from '../../services/LessonApi.js';
@@ -21,12 +22,21 @@ const LESSON_FORM_IDS = Object.freeze({
  */
 const LESSON_FORM_MESSAGES = Object.freeze({
     INVALID_LESSON_SERVICE:
-        'O formulário de aulas exige um serviço de criação válido.',
+        'O formulário de aulas exige um serviço válido.',
     INVALID_CREATED_HANDLER:
-        'O formulário de aulas exige uma função de confirmação válida.',
-    UNEXPECTED_ERROR:
+        'O formulário de aulas exige uma confirmação de cadastro válida.',
+    INVALID_UPDATED_HANDLER:
+        'O formulário de aulas exige uma confirmação de edição válida.',
+    INVALID_CANCEL_HANDLER:
+        'O formulário de aulas exige uma função de cancelamento válida.',
+    INVALID_EDITING_LESSON:
+        'O formulário de aulas recebeu um registro inválido para edição.',
+    UNEXPECTED_CREATE_ERROR:
         'Não foi possível cadastrar o registro agora. Tente novamente em instantes.',
-    SUCCESS: 'Registro cadastrado com sucesso.',
+    UNEXPECTED_UPDATE_ERROR:
+        'Não foi possível salvar as alterações agora. Tente novamente em instantes.',
+    CREATE_SUCCESS: 'Registro cadastrado com sucesso.',
+    UPDATE_SUCCESS: 'Alterações salvas com sucesso.',
 });
 
 /**
@@ -53,28 +63,74 @@ function createInitialLessonFormData() {
 }
 
 /**
+ * Converte uma aula pública nos oito valores editáveis do formulário.
+ *
+ * A validação reaproveita o contrato do cliente HTTP. Valores opcionais
+ * representados por null tornam-se textos vazios somente na interface.
+ *
+ * @param {unknown} lesson Aula pública recebida da listagem.
+ * @returns {object} Estado independente pronto para os controles.
+ * @throws {TypeError} Quando a aula não pode ser editada com segurança.
+ */
+function createEditingLessonFormData(lesson) {
+    try {
+        const publicLesson = LessonApi.createPublicLesson(lesson);
+        const lessonId = LessonApi.createLessonId(publicLesson.id);
+
+        return {
+            lessonId,
+            formData: {
+                date: publicLesson.date,
+                course: publicLesson.course,
+                curricularUnit: publicLesson.curricularUnit,
+                type: publicLesson.type,
+                lessonNumber: publicLesson.lessonNumber ?? '',
+                needsReview: publicLesson.needsReview,
+                lessonPlanUrl: publicLesson.lessonPlanUrl ?? '',
+                studentGuideUrl: publicLesson.studentGuideUrl ?? '',
+            },
+        };
+    } catch {
+        throw new TypeError(
+            LESSON_FORM_MESSAGES.INVALID_EDITING_LESSON,
+        );
+    }
+}
+
+/**
  * Formulário administrativo para aulas, atividades e avaliações.
  *
  * O componente mantém somente o estado visual. A seleção estrutural dos
  * campos, a normalização e a comunicação HTTP continuam pertencendo ao
- * LessonApi. Depois de uma criação válida, a representação pública recebida
+ * LessonApi. Depois de uma operação válida, a representação pública recebida
  * é entregue ao responsável pela seção para atualização da consulta.
  *
  * @param {object} props Propriedades do formulário.
- * @param {{ createLesson: Function }} [props.lessonService=lessonApi]
- * Serviço substituível nos testes.
- * @param {Function} props.onLessonCreated Confirmação da aula criada.
+ * @param {{ createLesson: Function, updateLesson?: Function }}
+ * [props.lessonService=lessonApi] Serviço substituível nos testes.
+ * @param {object | null} [props.lessonToEdit=null] Aula selecionada.
+ * @param {Function} props.onLessonCreated Confirmação do cadastro.
+ * @param {Function} [props.onLessonUpdated] Confirmação da edição.
+ * @param {Function} [props.onEditCancelled] Cancelamento da edição.
  * @returns {import('react').ReactElement} Formulário administrativo.
  */
 function LessonForm({
     lessonService = lessonApi,
+    lessonToEdit = null,
     onLessonCreated,
+    onLessonUpdated,
+    onEditCancelled,
 } = {}) {
+    const isEditing = lessonToEdit !== null;
     const isValidLessonService =
         lessonService !== null
         && typeof lessonService === 'object'
         && !Array.isArray(lessonService)
-        && typeof lessonService.createLesson === 'function';
+        && typeof lessonService.createLesson === 'function'
+        && (
+            !isEditing
+            || typeof lessonService.updateLesson === 'function'
+        );
 
     if (!isValidLessonService) {
         throw new TypeError(
@@ -88,12 +144,42 @@ function LessonForm({
         );
     }
 
+    if (isEditing && typeof onLessonUpdated !== 'function') {
+        throw new TypeError(
+            LESSON_FORM_MESSAGES.INVALID_UPDATED_HANDLER,
+        );
+    }
+
+    if (isEditing && typeof onEditCancelled !== 'function') {
+        throw new TypeError(
+            LESSON_FORM_MESSAGES.INVALID_CANCEL_HANDLER,
+        );
+    }
+
+    const editingState = isEditing
+        ? createEditingLessonFormData(lessonToEdit)
+        : null;
     const [formData, setFormData] = useState(
-        createInitialLessonFormData,
+        () => editingState?.formData
+            ?? createInitialLessonFormData(),
     );
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [errorMessage, setErrorMessage] = useState(null);
     const [successMessage, setSuccessMessage] = useState(null);
+
+    /**
+     * Sincroniza os controles quando a seção escolhe outra aula ou encerra
+     * a edição sem desmontar o formulário.
+     */
+    useEffect(() => {
+        setFormData(
+            lessonToEdit === null
+                ? createInitialLessonFormData()
+                : createEditingLessonFormData(lessonToEdit).formData,
+        );
+        setErrorMessage(null);
+        setSuccessMessage(null);
+    }, [lessonToEdit]);
 
     /**
      * Atualiza textos e seleções sem alterar os demais campos.
@@ -119,7 +205,10 @@ function LessonForm({
     }
 
     /**
-     * Solicita a criação e só limpa os campos depois da confirmação da API.
+     * Solicita o cadastro ou a substituição completa dos dados atuais.
+     *
+     * O cadastro limpa os controles somente depois da confirmação. A edição
+     * mantém o estado confirmado até que a seção encerre ou troque o registro.
      *
      * @param {import('react').FormEvent<HTMLFormElement>} event Envio.
      * @returns {Promise<void>}
@@ -136,17 +225,35 @@ function LessonForm({
         setSuccessMessage(null);
 
         try {
-            const createdLesson = await lessonService.createLesson(
-                formData,
-            );
+            if (isEditing) {
+                const updatedLesson = await lessonService.updateLesson(
+                    editingState.lessonId,
+                    formData,
+                );
+                const confirmedState =
+                    createEditingLessonFormData(updatedLesson);
 
-            setFormData(createInitialLessonFormData());
-            setSuccessMessage(LESSON_FORM_MESSAGES.SUCCESS);
-            onLessonCreated(createdLesson);
+                setFormData(confirmedState.formData);
+                setSuccessMessage(
+                    LESSON_FORM_MESSAGES.UPDATE_SUCCESS,
+                );
+                onLessonUpdated(updatedLesson);
+            } else {
+                const createdLesson =
+                    await lessonService.createLesson(formData);
+
+                setFormData(createInitialLessonFormData());
+                setSuccessMessage(
+                    LESSON_FORM_MESSAGES.CREATE_SUCCESS,
+                );
+                onLessonCreated(createdLesson);
+            }
         } catch (error) {
             const publicMessage = error instanceof LessonApiError
                 ? error.message
-                : LESSON_FORM_MESSAGES.UNEXPECTED_ERROR;
+                : isEditing
+                    ? LESSON_FORM_MESSAGES.UNEXPECTED_UPDATE_ERROR
+                    : LESSON_FORM_MESSAGES.UNEXPECTED_CREATE_ERROR;
 
             setErrorMessage(publicMessage);
         } finally {
@@ -161,16 +268,24 @@ function LessonForm({
         >
             <div className="lesson-form-heading">
                 <h3 id={LESSON_FORM_IDS.TITLE}>
-                    Cadastrar registro
+                    {isEditing
+                        ? 'Editar registro'
+                        : 'Cadastrar registro'}
                 </h3>
                 <p>
-                    Inclua uma aula, atividade ou avaliação no calendário.
+                    {isEditing
+                        ? 'Revise os campos e salve somente as alterações desejadas.'
+                        : 'Inclua uma aula, atividade ou avaliação no calendário.'}
                 </p>
             </div>
 
             <form
                 className="lesson-form"
-                aria-label="Cadastro de aula"
+                aria-label={
+                    isEditing
+                        ? 'Edição de aula'
+                        : 'Cadastro de aula'
+                }
                 aria-describedby={
                     errorMessage
                         ? LESSON_FORM_IDS.ERROR
@@ -329,10 +444,25 @@ function LessonForm({
                 )}
 
                 <div className="lesson-form-actions">
+                    {isEditing && (
+                        <button
+                            type="button"
+                            className="lesson-form-secondary-action"
+                            disabled={isSubmitting}
+                            onClick={onEditCancelled}
+                        >
+                            Cancelar edição
+                        </button>
+                    )}
+
                     <button type="submit" disabled={isSubmitting}>
                         {isSubmitting
-                            ? 'Cadastrando...'
-                            : 'Cadastrar registro'}
+                            ? isEditing
+                                ? 'Salvando...'
+                                : 'Cadastrando...'
+                            : isEditing
+                                ? 'Salvar alterações'
+                                : 'Cadastrar registro'}
                     </button>
                 </div>
             </form>
@@ -345,5 +475,6 @@ export {
     LESSON_FORM_IDS,
     LESSON_FORM_MESSAGES,
     LessonForm,
+    createEditingLessonFormData,
     createInitialLessonFormData,
 };

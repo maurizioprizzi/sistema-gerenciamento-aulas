@@ -14,6 +14,8 @@ import {
     LESSON_API_TYPES,
     LESSON_DATA_FIELDS,
     LESSON_FILTER_FIELDS,
+    LESSON_ID_PATTERN,
+    LESSON_UPDATE_FIELDS,
     LessonApi,
     LessonApiError,
     lessonApi,
@@ -129,6 +131,10 @@ describe('configuração da LessonApi', () => {
             'lessonPlanUrl',
             'studentGuideUrl',
         ]);
+        expect(LESSON_UPDATE_FIELDS).toBe(LESSON_DATA_FIELDS);
+        expect(LESSON_ID_PATTERN.test(
+            '64f000000000000000000001',
+        )).toBe(true);
 
         for (const contract of [
             LESSON_API_PATHS,
@@ -138,6 +144,7 @@ describe('configuração da LessonApi', () => {
             LESSON_API_TYPES,
             LESSON_FILTER_FIELDS,
             LESSON_DATA_FIELDS,
+            LESSON_UPDATE_FIELDS,
         ]) {
             expect(Object.isFrozen(contract)).toBe(true);
         }
@@ -148,6 +155,7 @@ describe('configuração da LessonApi', () => {
         expect(Object.isFrozen(lessonApi)).toBe(true);
         expect(typeof lessonApi.listLessons).toBe('function');
         expect(typeof lessonApi.createLesson).toBe('function');
+        expect(typeof lessonApi.updateLesson).toBe('function');
     });
 
     test('rejeita clientes HTTP inválidos', () => {
@@ -183,6 +191,28 @@ describe('configuração da LessonApi', () => {
         const lesson = await createLesson(createLessonData());
 
         expect(lesson.id).toBe('lesson-123');
+        expect(fetchClient).toHaveBeenCalledOnce();
+    });
+
+    test('mantém o contexto quando a edição é extraída', async () => {
+        const lessonId = '64f000000000000000000001';
+        const fetchClient = vi.fn().mockResolvedValue(
+            createJsonResponse(
+                200,
+                createCreatedPayload(
+                    createPublicLesson({ id: lessonId }),
+                ),
+            ),
+        );
+        const api = new LessonApi({ fetchClient });
+        const updateLesson = api.updateLesson;
+
+        const lesson = await updateLesson(
+            lessonId,
+            createLessonData(),
+        );
+
+        expect(lesson.id).toBe(lessonId);
         expect(fetchClient).toHaveBeenCalledOnce();
     });
 });
@@ -387,6 +417,102 @@ describe('preparação dos dados de criação', () => {
                 () => LessonApi.createLessonData(lessonData),
             ).toThrowError(
                 LESSON_API_MESSAGES.INVALID_LESSON_DATA,
+            );
+        }
+    });
+});
+
+describe('preparação dos dados de edição', () => {
+    test('normaliza um identificador MongoDB válido', () => {
+        const lessonId = LessonApi.createLessonId(
+            ' 64f000000000000000000001 ',
+        );
+
+        expect(lessonId).toBe('64f000000000000000000001');
+    });
+
+    test('rejeita identificadores inválidos', () => {
+        for (const lessonId of [
+            undefined,
+            null,
+            '',
+            'lesson-123',
+            '64f00000000000000000000g',
+            42,
+            {},
+        ]) {
+            expect(
+                () => LessonApi.createLessonId(lessonId),
+            ).toThrowError(
+                LESSON_API_MESSAGES.INVALID_LESSON_ID,
+            );
+        }
+    });
+
+    test('prepara os oito campos completos e imutáveis', () => {
+        const lessonData = LessonApi.createLessonUpdateData({
+            date: ' 2026-09-25 ',
+            course: ' TECMKT ',
+            curricularUnit: '  Marketing Digital  ',
+            type: ' Atividade ',
+            lessonNumber: '   ',
+            needsReview: true,
+            lessonPlanUrl: null,
+            studentGuideUrl:
+                '  https://example.com/guia-atualizado  ',
+        });
+
+        expect(lessonData).toEqual({
+            date: '2026-09-25',
+            course: 'TECMKT',
+            curricularUnit: 'Marketing Digital',
+            type: 'Atividade',
+            lessonNumber: null,
+            needsReview: true,
+            lessonPlanUrl: null,
+            studentGuideUrl:
+                'https://example.com/guia-atualizado',
+        });
+        expect(Object.isFrozen(lessonData)).toBe(true);
+    });
+
+    test('rejeita estados incompletos ou com campos desconhecidos', () => {
+        const completeData = createLessonData();
+        const { studentGuideUrl, ...incompleteData } = completeData;
+
+        for (const lessonData of [
+            undefined,
+            null,
+            [],
+            incompleteData,
+            {
+                ...completeData,
+                internalNote: 'não autorizado',
+            },
+        ]) {
+            expect(
+                () => LessonApi.createLessonUpdateData(lessonData),
+            ).toThrowError(
+                LESSON_API_MESSAGES.INVALID_LESSON_UPDATE_DATA,
+            );
+        }
+
+        expect(studentGuideUrl).toBe(
+            'https://example.com/gd-ad',
+        );
+    });
+
+    test('traduz valores inválidos para o contrato da edição', () => {
+        for (const lessonData of [
+            createLessonData({ date: '2026-02-30' }),
+            createLessonData({ course: 'OUTRO' }),
+            createLessonData({ type: 'Outro' }),
+            createLessonData({ needsReview: 'false' }),
+        ]) {
+            expect(
+                () => LessonApi.createLessonUpdateData(lessonData),
+            ).toThrowError(
+                LESSON_API_MESSAGES.INVALID_LESSON_UPDATE_DATA,
             );
         }
     });
@@ -618,6 +744,157 @@ describe('consulta de aulas', () => {
             code: LESSON_API_CODES.INVALID_RESPONSE,
             message: LESSON_API_MESSAGES.INVALID_RESPONSE,
         });
+        expect(error.cause).toBe(cause);
+    });
+});
+
+describe('edição de aulas', () => {
+    const lessonId = '64f000000000000000000001';
+
+    test('envia uma substituição completa e devolve a aula pública', async () => {
+        const input = createLessonData({
+            date: ' 2026-09-25 ',
+            course: ' TECMKT ',
+            curricularUnit: '  Marketing Digital  ',
+            lessonNumber: '   ',
+            lessonPlanUrl: null,
+        });
+        const expectedData = {
+            date: '2026-09-25',
+            course: 'TECMKT',
+            curricularUnit: 'Marketing Digital',
+            type: 'Aula',
+            lessonNumber: null,
+            needsReview: false,
+            lessonPlanUrl: null,
+            studentGuideUrl: 'https://example.com/gd-ad',
+        };
+        const fetchClient = vi.fn().mockResolvedValue(
+            createJsonResponse(
+                200,
+                createCreatedPayload(
+                    createPublicLesson({
+                        id: lessonId,
+                        ...expectedData,
+                    }),
+                ),
+            ),
+        );
+        const api = new LessonApi({ fetchClient });
+
+        const lesson = await api.updateLesson(lessonId, input);
+
+        expect(fetchClient).toHaveBeenCalledWith(
+            '/api/lessons/64f000000000000000000001',
+            {
+                method: 'PUT',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'same-origin',
+                cache: 'no-store',
+                body: JSON.stringify(expectedData),
+            },
+        );
+        expect(lesson).toEqual({
+            id: lessonId,
+            ...expectedData,
+        });
+        expect(Object.isFrozen(lesson)).toBe(true);
+        expect('internalNote' in lesson).toBe(false);
+    });
+
+    test('preserva recusas públicas conhecidas do backend', async () => {
+        const scenarios = [
+            {
+                status: 400,
+                code: 'INVALID_LESSON_DATA',
+                message: 'Os dados da aula são inválidos.',
+            },
+            {
+                status: 404,
+                code: 'LESSON_NOT_FOUND',
+                message: 'A aula informada não foi encontrada.',
+            },
+        ];
+
+        for (const scenario of scenarios) {
+            const fetchClient = vi.fn().mockResolvedValue(
+                createJsonResponse(scenario.status, {
+                    error: {
+                        code: scenario.code,
+                        message: scenario.message,
+                    },
+                }),
+            );
+            const api = new LessonApi({ fetchClient });
+
+            await expect(
+                api.updateLesson(lessonId, createLessonData()),
+            ).rejects.toMatchObject({
+                statusCode: scenario.status,
+                code: scenario.code,
+                message: scenario.message,
+            });
+        }
+    });
+
+    test('rejeita estado de sucesso diferente de 200', async () => {
+        const fetchClient = vi.fn().mockResolvedValue(
+            createJsonResponse(201, createCreatedPayload()),
+        );
+        const api = new LessonApi({ fetchClient });
+
+        await expect(
+            api.updateLesson(lessonId, createLessonData()),
+        ).rejects.toMatchObject({
+            statusCode: 201,
+            code: LESSON_API_CODES.INVALID_RESPONSE,
+        });
+    });
+
+    test('rejeita envelopes de edição inconsistentes', async () => {
+        for (const payload of [
+            null,
+            {},
+            { data: {} },
+            createCreatedPayload(createPublicLesson({ id: '' })),
+        ]) {
+            const api = new LessonApi({
+                fetchClient: vi.fn().mockResolvedValue(
+                    createJsonResponse(200, payload),
+                ),
+            });
+
+            await expect(
+                api.updateLesson(lessonId, createLessonData()),
+            ).rejects.toMatchObject({
+                code: LESSON_API_CODES.INVALID_RESPONSE,
+            });
+        }
+    });
+
+    test('converte falha de rede sem expor dados da edição', async () => {
+        const cause = new Error(
+            'Falha com https://example.com/material-confidencial.',
+        );
+        const fetchClient = vi.fn().mockRejectedValue(cause);
+        const api = new LessonApi({ fetchClient });
+
+        const error = await api.updateLesson(
+            lessonId,
+            createLessonData({
+                lessonPlanUrl:
+                    'https://example.com/material-confidencial',
+            }),
+        ).catch((receivedError) => receivedError);
+
+        expect(error).toBeInstanceOf(LessonApiError);
+        expect(error.code).toBe(LESSON_API_CODES.NETWORK_ERROR);
+        expect(error.message).not.toContain(
+            'material-confidencial',
+        );
         expect(error.cause).toBe(cause);
     });
 });

@@ -1,5 +1,14 @@
 'use strict';
 
+const { AppError } = require('../errors/AppError');
+
+/**
+ * Códigos públicos produzidos diretamente pela fronteira HTTP de aulas.
+ */
+const LESSON_CONTROLLER_CODES = Object.freeze({
+    LESSON_NOT_FOUND: 'LESSON_NOT_FOUND',
+});
+
 /**
  * Mensagens relacionadas à configuração e às respostas do controlador.
  *
@@ -13,6 +22,8 @@ const LESSON_CONTROLLER_ERRORS = Object.freeze({
         'O serviço de aulas retornou uma aula inválida.',
     INVALID_LESSON_LIST_RESPONSE:
         'O serviço de aulas retornou uma lista inválida.',
+    LESSON_NOT_FOUND:
+        'A aula informada não foi encontrada.',
 });
 
 /**
@@ -30,7 +41,7 @@ function isObject(value) {
 }
 
 /**
- * Coordena as requisições HTTP de criação e consulta das aulas.
+ * Coordena as requisições HTTP de criação, edição e consulta das aulas.
  *
  * O controlador não conhece Mongoose nem regras de persistência. Ele recebe
  * um serviço pronto, traduz a entrada HTTP e limita explicitamente o formato
@@ -47,7 +58,7 @@ class LessonController {
     /**
      * @param {object} dependencies Dependências do controlador.
      * @param {object} dependencies.lessonService
-     * Serviço que oferece createLesson() e listLessons().
+     * Serviço que oferece createLesson(), updateLesson() e listLessons().
      */
     constructor({ lessonService } = {}) {
         LessonController.validateLessonService(lessonService);
@@ -59,6 +70,7 @@ class LessonController {
          * ao Router do Express sem perder o acesso ao campo privado.
          */
         this.create = this.create.bind(this);
+        this.update = this.update.bind(this);
         this.list = this.list.bind(this);
 
         Object.freeze(this);
@@ -74,6 +86,7 @@ class LessonController {
         if (
             !isObject(service)
             || typeof service.createLesson !== 'function'
+            || typeof service.updateLesson !== 'function'
             || typeof service.listLessons !== 'function'
         ) {
             throw new TypeError(
@@ -217,6 +230,50 @@ class LessonController {
     }
 
     /**
+     * Atualiza uma aula a partir do identificador e do corpo da requisição.
+     *
+     * O serviço valida a entrada e devolve 'null' quando o identificador não
+     * corresponde a uma aula existente. O controlador converte essa ausência
+     * em uma resposta operacional 404 antes de iniciar a resposta HTTP.
+     *
+     * @param {import('express').Request} request Requisição HTTP.
+     * @param {import('express').Response} response Resposta HTTP.
+     * @param {import('express').NextFunction} next Tratamento seguinte.
+     * @returns {Promise<void>}
+     */
+    async update(request, response, next) {
+        try {
+            const lesson = await this.#lessonService.updateLesson(
+                request?.params?.id,
+                request?.body,
+            );
+
+            if (lesson === null) {
+                throw new AppError(
+                    LESSON_CONTROLLER_ERRORS.LESSON_NOT_FOUND,
+                    {
+                        statusCode: 404,
+                        code:
+                            LESSON_CONTROLLER_CODES
+                                .LESSON_NOT_FOUND,
+                    },
+                );
+            }
+
+            const publicLesson =
+                LessonController.createPublicLesson(lesson);
+
+            response.status(200).json({
+                data: {
+                    lesson: publicLesson,
+                },
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
      * Lista as aulas conforme os filtros recebidos na query string.
      *
      * O serviço continua responsável por reconhecer os nomes e validar os
@@ -249,6 +306,7 @@ class LessonController {
 }
 
 module.exports = {
+    LESSON_CONTROLLER_CODES,
     LESSON_CONTROLLER_ERRORS,
     LessonController,
 };

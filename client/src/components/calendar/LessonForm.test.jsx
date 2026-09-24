@@ -19,6 +19,7 @@ import {
     LESSON_FORM_IDS,
     LESSON_FORM_MESSAGES,
     LessonForm,
+    createEditingLessonFormData,
     createInitialLessonFormData,
 } from './LessonForm.jsx';
 import { LessonApiError } from '../../services/LessonApi.js';
@@ -28,15 +29,40 @@ afterEach(() => {
 });
 
 /**
- * Cria o contrato mínimo de criação utilizado pelo formulário.
+ * Cria uma aula pública válida para os cenários de edição.
+ *
+ * @param {object} overrides Valores específicos do cenário.
+ * @returns {Readonly<object>} Aula controlada.
+ */
+function createEditableLesson(overrides = {}) {
+    return Object.freeze({
+        id: '64f000000000000000000001',
+        date: '2026-09-18',
+        course: 'APQSA',
+        curricularUnit: 'Qualidade de Software',
+        type: 'Aula',
+        lessonNumber: '12',
+        needsReview: false,
+        lessonPlanUrl: 'https://example.com/plano',
+        studentGuideUrl: 'https://example.com/guia',
+        ...overrides,
+    });
+}
+
+/**
+ * Cria o contrato mínimo utilizado pelo formulário.
  *
  * @param {object} overrides Operações substituídas pelo cenário.
- * @returns {{ createLesson: ReturnType<typeof vi.fn> }} Serviço controlado.
+ * @returns {{ createLesson: ReturnType<typeof vi.fn>,
+ * updateLesson: ReturnType<typeof vi.fn> }} Serviço controlado.
  */
 function createLessonService(overrides = {}) {
     return {
         createLesson: vi.fn().mockResolvedValue(
-            Object.freeze({ id: 'lesson-123' }),
+            Object.freeze({ id: 'lesson-created' }),
+        ),
+        updateLesson: vi.fn().mockResolvedValue(
+            createEditableLesson(),
         ),
         ...overrides,
     };
@@ -47,21 +73,34 @@ function createLessonService(overrides = {}) {
  *
  * @param {object} overrides Dependências específicas do cenário.
  * @returns {{ lessonService: object,
- * onLessonCreated: ReturnType<typeof vi.fn> }} Dependências utilizadas.
+ * onLessonCreated: ReturnType<typeof vi.fn>,
+ * onLessonUpdated: ReturnType<typeof vi.fn>,
+ * onEditCancelled: ReturnType<typeof vi.fn> }} Dependências utilizadas.
  */
 function renderLessonForm(overrides = {}) {
     const lessonService = overrides.lessonService
         ?? createLessonService();
+    const lessonToEdit = overrides.lessonToEdit ?? null;
     const onLessonCreated = overrides.onLessonCreated ?? vi.fn();
+    const onLessonUpdated = overrides.onLessonUpdated ?? vi.fn();
+    const onEditCancelled = overrides.onEditCancelled ?? vi.fn();
 
     render(
         <LessonForm
             lessonService={lessonService}
+            lessonToEdit={lessonToEdit}
             onLessonCreated={onLessonCreated}
+            onLessonUpdated={onLessonUpdated}
+            onEditCancelled={onEditCancelled}
         />,
     );
 
-    return { lessonService, onLessonCreated };
+    return {
+        lessonService,
+        onLessonCreated,
+        onLessonUpdated,
+        onEditCancelled,
+    };
 }
 
 /**
@@ -136,6 +175,20 @@ describe('configuração do formulário de aulas', () => {
         }
     });
 
+    test('rejeita serviços sem edição no modo correspondente', () => {
+        expect(() => render(
+            <LessonForm
+                lessonService={{ createLesson() {} }}
+                lessonToEdit={createEditableLesson()}
+                onLessonCreated={() => {}}
+                onLessonUpdated={() => {}}
+                onEditCancelled={() => {}}
+            />,
+        )).toThrowError(
+            LESSON_FORM_MESSAGES.INVALID_LESSON_SERVICE,
+        );
+    });
+
     test('rejeita confirmações de criação inválidas', () => {
         const invalidHandlers = [
             undefined,
@@ -157,6 +210,49 @@ describe('configuração do formulário de aulas', () => {
 
             cleanup();
         }
+    });
+
+    test('rejeita confirmações e cancelamentos de edição inválidos', () => {
+        const commonProps = {
+            lessonService: createLessonService(),
+            lessonToEdit: createEditableLesson(),
+            onLessonCreated() {},
+        };
+
+        expect(() => render(
+            <LessonForm
+                {...commonProps}
+                onLessonUpdated={null}
+                onEditCancelled={() => {}}
+            />,
+        )).toThrowError(
+            LESSON_FORM_MESSAGES.INVALID_UPDATED_HANDLER,
+        );
+        cleanup();
+
+        expect(() => render(
+            <LessonForm
+                {...commonProps}
+                onLessonUpdated={() => {}}
+                onEditCancelled={null}
+            />,
+        )).toThrowError(
+            LESSON_FORM_MESSAGES.INVALID_CANCEL_HANDLER,
+        );
+    });
+
+    test('rejeita aulas inválidas antes de iniciar a edição', () => {
+        expect(() => render(
+            <LessonForm
+                lessonService={createLessonService()}
+                lessonToEdit={{ id: 'invalido' }}
+                onLessonCreated={() => {}}
+                onLessonUpdated={() => {}}
+                onEditCancelled={() => {}}
+            />,
+        )).toThrowError(
+            LESSON_FORM_MESSAGES.INVALID_EDITING_LESSON,
+        );
     });
 });
 
@@ -196,6 +292,230 @@ describe('estrutura do formulário de aulas', () => {
             Array.from(screen.getByLabelText('Tipo').options)
                 .map((option) => option.value),
         ).toEqual(['Aula', 'Atividade', 'Avaliação']);
+    });
+});
+
+describe('edição de aulas', () => {
+    test('prepara os oito controles a partir da aula pública', () => {
+        const editingState = createEditingLessonFormData(
+            createEditableLesson({
+                lessonNumber: null,
+                lessonPlanUrl: null,
+                studentGuideUrl: null,
+            }),
+        );
+
+        expect(editingState).toEqual({
+            lessonId: '64f000000000000000000001',
+            formData: {
+                date: '2026-09-18',
+                course: 'APQSA',
+                curricularUnit: 'Qualidade de Software',
+                type: 'Aula',
+                lessonNumber: '',
+                needsReview: false,
+                lessonPlanUrl: '',
+                studentGuideUrl: '',
+            },
+        });
+    });
+
+    test('apresenta os valores atuais e ações de edição', () => {
+        renderLessonForm({
+            lessonToEdit: createEditableLesson({
+                type: 'Avaliação',
+                needsReview: true,
+            }),
+        });
+
+        expect(screen.getByRole('form', {
+            name: 'Edição de aula',
+        })).toBeTruthy();
+        expect(screen.getByRole('heading', {
+            name: 'Editar registro',
+        })).toBeTruthy();
+        expect(screen.getByLabelText('Data').value).toBe('2026-09-18');
+        expect(screen.getByLabelText('Curso').value).toBe('APQSA');
+        expect(screen.getByLabelText('Unidade curricular').value).toBe(
+            'Qualidade de Software',
+        );
+        expect(screen.getByLabelText('Tipo').value).toBe('Avaliação');
+        expect(screen.getByLabelText('Número da aula').value).toBe('12');
+        expect(
+            screen.getByLabelText('Marcar para revisão').checked,
+        ).toBe(true);
+        expect(screen.getByRole('button', {
+            name: 'Salvar alterações',
+        })).toBeTruthy();
+        expect(screen.getByRole('button', {
+            name: 'Cancelar edição',
+        })).toBeTruthy();
+    });
+
+    test('cancela sem enviar alterações', async () => {
+        const user = userEvent.setup();
+        const {
+            lessonService,
+            onEditCancelled,
+        } = renderLessonForm({
+            lessonToEdit: createEditableLesson(),
+        });
+
+        await user.click(screen.getByRole('button', {
+            name: 'Cancelar edição',
+        }));
+
+        expect(onEditCancelled).toHaveBeenCalledOnce();
+        expect(lessonService.updateLesson).not.toHaveBeenCalled();
+    });
+
+    test('envia os oito campos e confirma a representação editada', async () => {
+        const user = userEvent.setup();
+        const updatedLesson = createEditableLesson({
+            curricularUnit: 'Testes Automatizados',
+            lessonNumber: null,
+            needsReview: true,
+        });
+        const lessonService = createLessonService({
+            updateLesson: vi.fn().mockResolvedValue(updatedLesson),
+        });
+        const {
+            onLessonCreated,
+            onLessonUpdated,
+        } = renderLessonForm({
+            lessonService,
+            lessonToEdit: createEditableLesson(),
+        });
+
+        await user.clear(
+            screen.getByLabelText('Unidade curricular'),
+        );
+        await user.type(
+            screen.getByLabelText('Unidade curricular'),
+            'Testes Automatizados',
+        );
+        await user.clear(screen.getByLabelText('Número da aula'));
+        await user.click(
+            screen.getByLabelText('Marcar para revisão'),
+        );
+        await user.click(screen.getByRole('button', {
+            name: 'Salvar alterações',
+        }));
+
+        await waitFor(() => {
+            expect(lessonService.updateLesson).toHaveBeenCalledTimes(1);
+        });
+        expect(lessonService.updateLesson).toHaveBeenCalledWith(
+            '64f000000000000000000001',
+            {
+                date: '2026-09-18',
+                course: 'APQSA',
+                curricularUnit: 'Testes Automatizados',
+                type: 'Aula',
+                lessonNumber: '',
+                needsReview: true,
+                lessonPlanUrl: 'https://example.com/plano',
+                studentGuideUrl: 'https://example.com/guia',
+            },
+        );
+        expect(onLessonUpdated).toHaveBeenCalledWith(updatedLesson);
+        expect(onLessonCreated).not.toHaveBeenCalled();
+        expect(screen.getByRole('status').textContent).toBe(
+            LESSON_FORM_MESSAGES.UPDATE_SUCCESS,
+        );
+        expect(screen.getByLabelText('Número da aula').value).toBe('');
+    });
+
+    test('mantém os campos durante uma recusa conhecida', async () => {
+        const user = userEvent.setup();
+        const publicMessage = 'A alteração foi recusada.';
+        const lessonService = createLessonService({
+            updateLesson: vi.fn().mockRejectedValue(
+                new LessonApiError(publicMessage, {
+                    statusCode: 400,
+                    code: 'INVALID_LESSON_DATA',
+                }),
+            ),
+        });
+
+        renderLessonForm({
+            lessonService,
+            lessonToEdit: createEditableLesson(),
+        });
+        await user.clear(
+            screen.getByLabelText('Unidade curricular'),
+        );
+        await user.type(
+            screen.getByLabelText('Unidade curricular'),
+            'Alteração local',
+        );
+        await user.click(screen.getByRole('button', {
+            name: 'Salvar alterações',
+        }));
+
+        expect((await screen.findByRole('alert')).textContent).toBe(
+            publicMessage,
+        );
+        expect(screen.getByLabelText('Unidade curricular').value).toBe(
+            'Alteração local',
+        );
+    });
+
+    test('oculta detalhes de uma falha inesperada', async () => {
+        const user = userEvent.setup();
+        const technicalMessage = 'Falha interna durante a edição.';
+        const lessonService = createLessonService({
+            updateLesson: vi.fn().mockRejectedValue(
+                new Error(technicalMessage),
+            ),
+        });
+
+        renderLessonForm({
+            lessonService,
+            lessonToEdit: createEditableLesson(),
+        });
+        await user.click(screen.getByRole('button', {
+            name: 'Salvar alterações',
+        }));
+
+        expect((await screen.findByRole('alert')).textContent).toBe(
+            LESSON_FORM_MESSAGES.UNEXPECTED_UPDATE_ERROR,
+        );
+        expect(document.body.textContent).not.toContain(
+            technicalMessage,
+        );
+    });
+
+    test('bloqueia controles e cancelamento durante o salvamento', async () => {
+        const user = userEvent.setup();
+        const lessonService = createLessonService({
+            updateLesson: vi.fn().mockReturnValue(
+                new Promise(() => {}),
+            ),
+        });
+
+        renderLessonForm({
+            lessonService,
+            lessonToEdit: createEditableLesson(),
+        });
+        await user.click(screen.getByRole('button', {
+            name: 'Salvar alterações',
+        }));
+
+        const form = screen.getByRole('form', {
+            name: 'Edição de aula',
+        });
+        const controls = form.querySelectorAll(
+            'input, select, button',
+        );
+
+        expect(screen.getByRole('button', {
+            name: 'Salvando...',
+        })).toBeTruthy();
+        expect(
+            Array.from(controls).every((control) => control.disabled),
+        ).toBe(true);
+        expect(lessonService.updateLesson).toHaveBeenCalledOnce();
     });
 });
 
@@ -252,7 +572,7 @@ describe('cadastro de aulas', () => {
         });
         expect(onLessonCreated).toHaveBeenCalledWith(createdLesson);
         expect(screen.getByRole('status').textContent).toBe(
-            LESSON_FORM_MESSAGES.SUCCESS,
+            LESSON_FORM_MESSAGES.CREATE_SUCCESS,
         );
     });
 
@@ -265,7 +585,7 @@ describe('cadastro de aulas', () => {
             screen.getByRole('button', { name: 'Cadastrar registro' }),
         );
 
-        await screen.findByText(LESSON_FORM_MESSAGES.SUCCESS);
+        await screen.findByText(LESSON_FORM_MESSAGES.CREATE_SUCCESS);
         expect(screen.getByLabelText('Data').value).toBe('');
         expect(screen.getByLabelText('Curso').value).toBe('');
         expect(screen.getByLabelText('Unidade curricular').value).toBe('');
@@ -320,7 +640,7 @@ describe('cadastro de aulas', () => {
         );
 
         expect((await screen.findByRole('alert')).textContent).toBe(
-            LESSON_FORM_MESSAGES.UNEXPECTED_ERROR,
+            LESSON_FORM_MESSAGES.UNEXPECTED_CREATE_ERROR,
         );
         expect(document.body.textContent).not.toContain(
             technicalMessage,
@@ -365,14 +685,14 @@ describe('cadastro de aulas', () => {
         await user.click(
             screen.getByRole('button', { name: 'Cadastrar registro' }),
         );
-        await screen.findByText(LESSON_FORM_MESSAGES.SUCCESS);
+        await screen.findByText(LESSON_FORM_MESSAGES.CREATE_SUCCESS);
 
         fireEvent.change(screen.getByLabelText('Data'), {
             target: { value: '2026-09-20' },
         });
 
         expect(
-            screen.queryByText(LESSON_FORM_MESSAGES.SUCCESS),
+            screen.queryByText(LESSON_FORM_MESSAGES.CREATE_SUCCESS),
         ).toBeNull();
     });
 });

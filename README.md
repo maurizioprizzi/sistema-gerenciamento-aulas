@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 23 de setembro de 2026.
+> Última atualização desta documentação: 24 de setembro de 2026.
 
 ## Estado atual
 
@@ -25,8 +25,8 @@ utiliza React e Vite, apresenta uma interface responsiva e exibe a data local
 em português. O formulário administrativo consome a API real, restaura a
 sessão depois de uma atualização da página e permite encerrá-la com segurança.
 Os clientes HTTP de aulas e materiais mensais encapsulam seus contratos
-com validações defensivas. A seção de aulas consulta, filtra e cadastra aulas,
-atividades e avaliações pelos oito campos originais. A seção de materiais
+com validações defensivas. A seção de aulas consulta, filtra, cadastra e edita
+aulas, atividades e avaliações pelos oito campos originais. A seção de materiais
 permite organizar links específicos por aula e links aplicáveis ao mês inteiro,
 com cadastro e exclusão mensal. Carregamento, ausência, erro, sucesso e
 resultados possuem estados acessíveis. O painel geral consulta aulas e
@@ -55,10 +55,11 @@ servidor e invalida o cookie no navegador.
 
 Os registros do calendário possuem modelos Mongoose próprios para aulas e
 materiais mensais. Atividade e avaliação permanecem tipos de aula, conforme o
-protótipo original. As aulas já podem ser criadas e consultadas por uma API
-administrativa protegida. Os materiais mensais podem ser listados, consultados, substituídos e
-excluídos pela API administrativa. O frontend consulta, filtra e cadastra
-aulas, gerencia os materiais mensais e calcula os links efetivos de cada aula
+protótipo original. As aulas já podem ser criadas, consultadas e editadas por uma
+API administrativa protegida. Os materiais mensais podem ser listados, consultados,
+substituídos e excluídos pela API administrativa. O frontend consulta, filtra,
+cadastra e edita aulas, gerencia os materiais mensais e calcula os links efetivos
+de cada aula
 com a mesma precedência definida no protótipo original. O calendário visual
 consulta essas fontes persistentes e reúne os registros na grade civil de cada
 mês sem depender do armazenamento local do navegador.
@@ -82,12 +83,15 @@ mês sem depender do armazenamento local do navegador.
 - modelo Mongoose para o usuário administrativo;
 - modelo Mongoose para aulas, atividades e avaliações do calendário;
 - modelo Mongoose para os materiais aplicáveis a um mês inteiro;
-- serviço isolado para criação e consulta de aulas;
-- seleção estrutural dos oito campos permitidos durante a criação;
+- serviço isolado para criação, edição e consulta de aulas;
+- seleção estrutural dos oito campos permitidos durante a criação e a edição;
+- validação estrita do identificador antes de editar uma aula;
+- substituição completa, atômica e validada dos dados de uma aula;
+- resposta pública segura quando o registro solicitado para edição não existe;
 - filtros de aulas por curso, mês e data mínima;
 - ordenação determinística das aulas por data e identificador;
 - controlador HTTP com representações públicas defensivas;
-- rotas protegidas `GET /api/lessons` e `POST /api/lessons`;
+- rotas protegidas `GET /api/lessons`, `POST /api/lessons` e `PUT /api/lessons/:id`;
 - composição da API de aulas no ciclo real do servidor;
 - serviço isolado para listagem, consulta, substituição e exclusão dos materiais mensais;
 - seleção explícita dos dois links aceitos nos materiais mensais;
@@ -153,7 +157,7 @@ mês sem depender do armazenamento local do navegador.
 - separação entre rotas da API, arquivos estáticos e caminhos visuais;
 - testes de componentes com Vitest, jsdom e Testing Library;
 - serviço isolado para consumir a API de autenticação no navegador;
-- serviço frontend isolado para consulta e criação de aulas;
+- serviço frontend isolado para consulta, criação e edição de aulas;
 - filtros de aulas serializados em ordem determinística;
 - seleção defensiva e imutável das aulas recebidas pelo navegador;
 - erros públicos seguros para rede, recusas e respostas inválidas da API de aulas;
@@ -163,11 +167,12 @@ mês sem depender do armazenamento local do navegador.
 - descarte de respostas antigas e atualizações posteriores à desmontagem;
 - cartões responsivos com os campos e links públicos das aulas;
 - formulário visual para cadastrar aulas, atividades e avaliações;
-- oito controles correspondentes ao contrato original de criação;
+- oito controles correspondentes ao contrato original de criação e edição;
 - validação nativa dos campos obrigatórios antes da requisição;
 - preservação dos dados recusados e limpeza somente depois do sucesso;
+- seleção visual do registro, cancelamento local e gravação persistente da edição;
 - atualização da consulta com preservação dos filtros aplicados;
-- estados acessíveis de cadastro pendente, erro e confirmação;
+- estados acessíveis de cadastro e edição pendentes, erro e confirmação;
 - serviço frontend isolado para listar, consultar, salvar e excluir materiais mensais;
 - formulário visual dos três campos mensais previstos no protótipo;
 - listagem e exclusão visual dos materiais mensais;
@@ -205,7 +210,7 @@ mês sem depender do armazenamento local do navegador.
 
 ### Ainda não implementado
 
-- migração dos dados do protótipo;
+- exclusão segura de aulas pela API e pela interface;
 - acesso externo à aplicação;
 - implantação em ambiente de produção.
 
@@ -484,8 +489,8 @@ npm --prefix client test
 No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-840 testes
-119 suítes
+888 testes
+122 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -509,13 +514,13 @@ Os testes verificam, entre outros comportamentos:
 - exclusão idempotente de períodos existentes ou ausentes;
 - integração HTTP mensal sem dependência de MongoDB externo;
 - fábricas isoladas dos modelos sem conexão externa;
-- contrato estrutural dos dados aceitos pela criação de aulas;
+- contrato estrutural dos dados aceitos pela criação e edição de aulas;
 - filtros combinados por curso, mês e data mínima;
 - preservação do intervalo interno validado diante do sanitizador do Mongoose;
 - ordenação determinística da consulta de aulas;
 - representações públicas sem campos internos do Mongoose;
-- respostas HTTP `200` e `201` para consulta e criação;
-- proteção administrativa das duas operações de aulas;
+- respostas HTTP `200` e `201` para consulta, edição e criação;
+- proteção administrativa das três operações de aulas;
 - respostas `400` para dados e filtros inválidos;
 - integração HTTP das aulas sem dependência de MongoDB externo;
 - interrupção antes do modelo para respostas `401` e `403`;
@@ -878,16 +883,18 @@ quando a seção correspondente é selecionada.
 
 ### `client/src/components/calendar/LessonForm.jsx`
 
-Mantém os oito controles de criação previstos no protótipo, representa envio,
-erro e sucesso e entrega a criação ao `LessonApi`. Preserva os dados quando a
-operação falha e limpa o formulário somente depois da confirmação do backend.
+Mantém os oito controles de criação previstos no protótipo e os reutiliza para
+editar um registro selecionado. Representa envio, erro e sucesso, permite cancelar
+a edição sem acessar a API e entrega criações e atualizações ao `LessonApi`.
+Preserva os dados quando uma operação falha e limpa o cadastro somente depois da
+confirmação do backend.
 
 ### `client/src/components/calendar/LessonManagement.jsx`
 
-Coordena o cadastro, os filtros e a consulta visual das aulas. Apresenta
-carregamento, ausência, falha segura, repetição e cartões responsivos, impede
-respostas antigas de substituir o estado atual e atualiza a lista depois de
-uma criação sem descartar os filtros aplicados.
+Coordena o cadastro, a edição, os filtros e a consulta visual das aulas. Apresenta
+carregamento, ausência, falha segura, repetição e cartões responsivos, controla o
+registro selecionado e atualiza a lista depois de criar ou editar sem descartar os
+filtros aplicados. Respostas antigas não podem substituir o estado atual.
 
 ### `client/src/components/calendar/LessonMaterialManagement.jsx`
 
@@ -1391,7 +1398,7 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. migrar com segurança os dados do protótipo;
+1. implementar a exclusão segura de aulas com confirmação explícita;
 2. realizar testes completos de integração e interface;
 3. validar o guia de uso com o professor e preparar o guia técnico;
 4. publicar e validar a aplicação em computador e celular.

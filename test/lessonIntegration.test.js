@@ -9,6 +9,8 @@ const {
 
 const { createApp } = require('../src/app');
 const {
+    LESSON_CONTROLLER_CODES,
+    LESSON_CONTROLLER_ERRORS,
     LessonController,
 } = require('../src/controllers/LessonController');
 const {
@@ -25,6 +27,7 @@ const {
     LESSON_LIST_SORT,
     LESSON_SERVICE_CODES,
     LESSON_SERVICE_MESSAGES,
+    LESSON_UPDATE_OPTIONS,
     LessonService,
 } = require('../src/services/LessonService');
 const {
@@ -40,6 +43,11 @@ const ADMINISTRATIVE_AUTHENTICATION = Object.freeze({
     userId: 'administrador-1',
     role: USER_ROLES.ADMIN,
 });
+
+/**
+ * Identificador válido utilizado nas operações de edição.
+ */
+const EDITABLE_LESSON_ID = '64f000000000000000000001';
 
 /**
  * Inicia uma aplicação em uma porta efêmera e garante seu encerramento.
@@ -109,18 +117,25 @@ function createLessonDocument(overrides = {}) {
  * @param {object} options Comportamentos do modelo.
  * @param {object[]} [options.lessons] Resultado da consulta.
  * @param {object} [options.createdLesson] Resultado da criação.
+ * @param {object | null} [options.updatedLesson] Resultado da edição.
  * @param {Error | null} [options.createError] Falha da criação.
+ * @param {Error | null} [options.updateError] Falha da edição.
  * @param {Error | null} [options.sortError] Falha da consulta ordenada.
  * @returns {{ LessonModel: object, calls: object }} Modelo e chamadas.
  */
 function createFakeLessonModel({
     lessons = [],
     createdLesson = createLessonDocument(),
+    updatedLesson = createLessonDocument({
+        _id: EDITABLE_LESSON_ID,
+    }),
     createError = null,
+    updateError = null,
     sortError = null,
 } = {}) {
     const calls = {
         create: [],
+        findByIdAndUpdate: [],
         find: [],
         sort: [],
     };
@@ -134,6 +149,24 @@ function createFakeLessonModel({
             }
 
             return createdLesson;
+        },
+
+        async findByIdAndUpdate(
+            lessonId,
+            update,
+            options,
+        ) {
+            calls.findByIdAndUpdate.push([
+                lessonId,
+                update,
+                options,
+            ]);
+
+            if (updateError) {
+                throw updateError;
+            }
+
+            return updatedLesson;
         },
 
         find(filter) {
@@ -291,6 +324,48 @@ describe('integração HTTP administrativa das aulas', () => {
     );
 
     test(
+        'recusa edição sem autenticação antes de acessar o modelo',
+        async () => {
+            const { LessonModel, calls } =
+                createFakeLessonModel();
+            const app = createLessonTestApp({
+                LessonModel,
+                authentication: undefined,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    baseUrl
+                        + '/api/lessons/'
+                        + EDITABLE_LESSON_ID,
+                    {
+                        method: 'PUT',
+                        headers: {
+                            'content-type': 'application/json',
+                        },
+                        body: JSON.stringify({}),
+                    },
+                );
+                const body = await response.json();
+
+                assert.equal(response.status, 401);
+                assert.deepEqual(body, {
+                    error: {
+                        code:
+                            ADMINISTRATIVE_AUTHORIZATION_CODES
+                                .AUTHENTICATION_REQUIRED,
+                        message:
+                            ADMINISTRATIVE_AUTHORIZATION_ERRORS
+                                .AUTHENTICATION_REQUIRED,
+                    },
+                });
+            });
+
+            assert.equal(calls.findByIdAndUpdate.length, 0);
+        },
+    );
+
+    test(
         'consulta com filtros e ordenação pela cadeia HTTP completa',
         async () => {
             const documents = [
@@ -439,6 +514,230 @@ describe('integração HTTP administrativa das aulas', () => {
             });
 
             assert.deepEqual(calls.create, [lessonData]);
+        },
+    );
+
+    test(
+        'edita uma aula autorizada e responde somente com campos públicos',
+        async () => {
+            const lessonData = {
+                date: '2026-09-25',
+                course: 'TECMKT',
+                curricularUnit: 'Marketing Digital',
+                type: 'Atividade',
+                lessonNumber: '13',
+                needsReview: true,
+                lessonPlanUrl: null,
+                studentGuideUrl:
+                    'https://example.com/guia-atualizado.pdf',
+            };
+            const updatedLesson = createLessonDocument({
+                _id: EDITABLE_LESSON_ID,
+                ...lessonData,
+                updatedAt: new Date('2026-09-24T18:00:00.000Z'),
+            });
+            const { LessonModel, calls } =
+                createFakeLessonModel({ updatedLesson });
+            const app = createLessonTestApp({
+                LessonModel,
+                authentication: ADMINISTRATIVE_AUTHENTICATION,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    baseUrl
+                        + '/api/lessons/'
+                        + EDITABLE_LESSON_ID,
+                    {
+                        method: 'PUT',
+                        headers: {
+                            'content-type': 'application/json',
+                        },
+                        body: JSON.stringify(lessonData),
+                    },
+                );
+                const body = await response.json();
+
+                assert.equal(response.status, 200);
+                assert.deepEqual(body, {
+                    data: {
+                        lesson: {
+                            id: EDITABLE_LESSON_ID,
+                            ...lessonData,
+                        },
+                    },
+                });
+                assert.equal(
+                    JSON.stringify(body).includes('internalNote'),
+                    false,
+                );
+                assert.equal(
+                    JSON.stringify(body).includes('updatedAt'),
+                    false,
+                );
+            });
+
+            assert.deepEqual(calls.findByIdAndUpdate, [
+                [
+                    EDITABLE_LESSON_ID,
+                    {
+                        $set: lessonData,
+                    },
+                    LESSON_UPDATE_OPTIONS,
+                ],
+            ]);
+        },
+    );
+
+    test(
+        'rejeita identificador inválido antes de editar no modelo',
+        async () => {
+            const { LessonModel, calls } =
+                createFakeLessonModel();
+            const app = createLessonTestApp({
+                LessonModel,
+                authentication: ADMINISTRATIVE_AUTHENTICATION,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    baseUrl + '/api/lessons/id-invalido',
+                    {
+                        method: 'PUT',
+                        headers: {
+                            'content-type': 'application/json',
+                        },
+                        body: JSON.stringify({}),
+                    },
+                );
+                const body = await response.json();
+
+                assert.equal(response.status, 400);
+                assert.deepEqual(body, {
+                    error: {
+                        code:
+                            LESSON_SERVICE_CODES.INVALID_LESSON_ID,
+                        message:
+                            LESSON_SERVICE_MESSAGES.INVALID_LESSON_ID,
+                    },
+                });
+            });
+
+            assert.equal(calls.findByIdAndUpdate.length, 0);
+        },
+    );
+
+    test(
+        'responde 404 quando a aula editada não existe',
+        async () => {
+            const lessonData = {
+                date: '2026-09-25',
+                course: 'TECMKT',
+                curricularUnit: 'Marketing Digital',
+                type: 'Aula',
+                lessonNumber: null,
+                needsReview: false,
+                lessonPlanUrl: null,
+                studentGuideUrl: null,
+            };
+            const { LessonModel, calls } =
+                createFakeLessonModel({
+                    updatedLesson: null,
+                });
+            const app = createLessonTestApp({
+                LessonModel,
+                authentication: ADMINISTRATIVE_AUTHENTICATION,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    baseUrl
+                        + '/api/lessons/'
+                        + EDITABLE_LESSON_ID,
+                    {
+                        method: 'PUT',
+                        headers: {
+                            'content-type': 'application/json',
+                        },
+                        body: JSON.stringify(lessonData),
+                    },
+                );
+                const body = await response.json();
+
+                assert.equal(response.status, 404);
+                assert.deepEqual(body, {
+                    error: {
+                        code:
+                            LESSON_CONTROLLER_CODES.LESSON_NOT_FOUND,
+                        message:
+                            LESSON_CONTROLLER_ERRORS.LESSON_NOT_FOUND,
+                    },
+                });
+            });
+
+            assert.equal(calls.findByIdAndUpdate.length, 1);
+        },
+    );
+
+    test(
+        'transforma validação da edição em resposta segura de cliente',
+        async () => {
+            const validationError = new Error(
+                'course: valor interno rejeitado durante a edição',
+            );
+            validationError.name = 'ValidationError';
+            const lessonData = {
+                date: '2026-09-25',
+                course: 'CURSO_INEXISTENTE',
+                curricularUnit: 'Marketing Digital',
+                type: 'Aula',
+                lessonNumber: null,
+                needsReview: false,
+                lessonPlanUrl: null,
+                studentGuideUrl: null,
+            };
+            const { LessonModel, calls } =
+                createFakeLessonModel({
+                    updateError: validationError,
+                });
+            const app = createLessonTestApp({
+                LessonModel,
+                authentication: ADMINISTRATIVE_AUTHENTICATION,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    baseUrl
+                        + '/api/lessons/'
+                        + EDITABLE_LESSON_ID,
+                    {
+                        method: 'PUT',
+                        headers: {
+                            'content-type': 'application/json',
+                        },
+                        body: JSON.stringify(lessonData),
+                    },
+                );
+                const body = await response.json();
+
+                assert.equal(response.status, 400);
+                assert.deepEqual(body, {
+                    error: {
+                        code:
+                            LESSON_SERVICE_CODES.INVALID_LESSON_DATA,
+                        message:
+                            LESSON_SERVICE_MESSAGES.INVALID_LESSON_DATA,
+                    },
+                });
+                assert.equal(
+                    JSON.stringify(body).includes(
+                        validationError.message,
+                    ),
+                    false,
+                );
+            });
+
+            assert.equal(calls.findByIdAndUpdate.length, 1);
         },
     );
 

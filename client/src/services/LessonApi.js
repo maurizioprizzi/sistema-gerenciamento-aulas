@@ -30,6 +30,10 @@ const LESSON_API_MESSAGES = Object.freeze({
         'A consulta de aulas recebeu filtros inválidos.',
     INVALID_LESSON_DATA:
         'A criação da aula recebeu dados inválidos.',
+    INVALID_LESSON_ID:
+        'A edição da aula recebeu um identificador inválido.',
+    INVALID_LESSON_UPDATE_DATA:
+        'A edição da aula recebeu dados inválidos.',
     INVALID_ERROR_MESSAGE:
         'O erro da API exige uma mensagem válida.',
     INVALID_ERROR_STATUS:
@@ -79,7 +83,13 @@ const LESSON_DATA_FIELDS = Object.freeze([
     'studentGuideUrl',
 ]);
 
+/**
+ * A edição utiliza uma substituição completa dos oito campos funcionais.
+ */
+const LESSON_UPDATE_FIELDS = LESSON_DATA_FIELDS;
+
 const ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+const LESSON_ID_PATTERN = /^[a-fA-F0-9]{24}$/;
 const CALENDAR_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 const CALENDAR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -246,7 +256,7 @@ class LessonApiError extends Error {
 }
 
 /**
- * Encapsula consulta e criação de aulas pela API administrativa.
+ * Encapsula consulta, criação e edição de aulas pela API administrativa.
  */
 class LessonApi {
     /** @type {Function} */
@@ -267,6 +277,7 @@ class LessonApi {
         this.#fetchClient = fetchClient;
         this.listLessons = this.listLessons.bind(this);
         this.createLesson = this.createLesson.bind(this);
+        this.updateLesson = this.updateLesson.bind(this);
 
         Object.freeze(this);
     }
@@ -430,6 +441,68 @@ class LessonApi {
     }
 
     /**
+     * Valida e normaliza o identificador utilizado na edição.
+     *
+     * @param {unknown} lessonId Identificador recebido da interface.
+     * @returns {string} Identificador MongoDB normalizado.
+     */
+    static createLessonId(lessonId) {
+        const normalizedId = hasText(lessonId)
+            ? lessonId.trim()
+            : '';
+
+        if (!LESSON_ID_PATTERN.test(normalizedId)) {
+            throw new TypeError(
+                LESSON_API_MESSAGES.INVALID_LESSON_ID,
+            );
+        }
+
+        return normalizedId;
+    }
+
+    /**
+     * Prepara a substituição completa de uma aula existente.
+     *
+     * Todos os oito campos devem estar presentes para que uma edição não
+     * remova informações por acidente. Campos opcionais podem utilizar null
+     * para representar uma remoção explícita.
+     *
+     * @param {unknown} lessonData Estado completo recebido do formulário.
+     * @returns {Readonly<object>} Dados normalizados e imutáveis.
+     */
+    static createLessonUpdateData(lessonData) {
+        const hasCompleteStructure =
+            isObject(lessonData)
+            && Object.keys(lessonData).length
+                === LESSON_UPDATE_FIELDS.length
+            && LESSON_UPDATE_FIELDS.every(
+                (field) => Object.hasOwn(lessonData, field),
+            );
+
+        if (!hasCompleteStructure) {
+            throw new TypeError(
+                LESSON_API_MESSAGES.INVALID_LESSON_UPDATE_DATA,
+            );
+        }
+
+        try {
+            return LessonApi.createLessonData(lessonData);
+        } catch (error) {
+            if (
+                error instanceof TypeError
+                && error.message
+                    === LESSON_API_MESSAGES.INVALID_LESSON_DATA
+            ) {
+                throw new TypeError(
+                    LESSON_API_MESSAGES.INVALID_LESSON_UPDATE_DATA,
+                );
+            }
+
+            throw error;
+        }
+    }
+
+    /**
      * Seleciona somente os nove campos públicos de uma aula.
      *
      * @param {unknown} lesson Candidato recebido do backend.
@@ -569,7 +642,7 @@ class LessonApi {
      *
      * @param {object} request Configuração interna.
      * @param {string} request.path Caminho relativo.
-     * @param {'GET' | 'POST'} request.method Método HTTP.
+     * @param {'GET' | 'POST' | 'PUT'} request.method Método HTTP.
      * @param {number} request.expectedStatus Estado esperado.
      * @param {object} [request.body] Corpo opcional.
      * @returns {Promise<unknown>} Corpo JSON interpretado.
@@ -706,6 +779,27 @@ class LessonApi {
 
         return LessonApi.createPublicCreatedLesson(payload);
     }
+
+    /**
+     * Substitui os dados funcionais de uma aula existente.
+     *
+     * @param {string} lessonId Identificador público da aula.
+     * @param {object} lessonData Estado completo recebido do formulário.
+     * @returns {Promise<Readonly<object>>} Aula atualizada.
+     */
+    async updateLesson(lessonId, lessonData) {
+        const preparedId = LessonApi.createLessonId(lessonId);
+        const preparedData =
+            LessonApi.createLessonUpdateData(lessonData);
+        const payload = await this.#request({
+            path: LESSON_API_PATHS.LESSONS + '/' + preparedId,
+            method: 'PUT',
+            expectedStatus: 200,
+            body: preparedData,
+        });
+
+        return LessonApi.createPublicCreatedLesson(payload);
+    }
 }
 
 /**
@@ -721,6 +815,8 @@ export {
     LESSON_API_TYPES,
     LESSON_DATA_FIELDS,
     LESSON_FILTER_FIELDS,
+    LESSON_ID_PATTERN,
+    LESSON_UPDATE_FIELDS,
     LessonApi,
     LessonApiError,
     defaultFetchClient,

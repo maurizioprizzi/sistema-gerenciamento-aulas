@@ -38,7 +38,7 @@ afterEach(() => {
  */
 function createLesson(overrides = {}) {
     return Object.freeze({
-        id: 'lesson-123',
+        id: '64f000000000000000000123',
         date: '2026-09-18',
         course: 'APQSA',
         curricularUnit: 'Qualidade de Software',
@@ -55,12 +55,17 @@ function createLesson(overrides = {}) {
  * Cria o contrato mínimo injetado no componente.
  *
  * @param {object} overrides Operações substituídas.
- * @returns {{ listLessons: ReturnType<typeof vi.fn> }} Serviço controlado.
+ * @returns {{
+ *     listLessons: ReturnType<typeof vi.fn>,
+ *     createLesson: ReturnType<typeof vi.fn>,
+ *     updateLesson: ReturnType<typeof vi.fn>,
+ * }} Serviço controlado.
  */
 function createLessonService(overrides = {}) {
     return {
         listLessons: vi.fn().mockResolvedValue([]),
         createLesson: vi.fn().mockResolvedValue(createLesson()),
+        updateLesson: vi.fn().mockResolvedValue(createLesson()),
         ...overrides,
     };
 }
@@ -109,6 +114,11 @@ describe('configuração do gerenciamento de aulas', () => {
             { listLessons: true },
             { listLessons() {} },
             { createLesson() {} },
+            { updateLesson() {} },
+            {
+                listLessons() {},
+                createLesson() {},
+            },
         ];
 
         for (const lessonService of invalidServices) {
@@ -387,6 +397,198 @@ describe('integração do cadastro com a consulta', () => {
         expect(lessonService.listLessons).toHaveBeenLastCalledWith({
             course: 'TECMKT',
         });
+    });
+});
+
+describe('integração da edição com a consulta', () => {
+    test('abre e cancela a edição sem acessar a API', async () => {
+        const user = userEvent.setup();
+        const lesson = createLesson();
+        const lessonService = createLessonService({
+            listLessons: vi.fn().mockResolvedValue([lesson]),
+        });
+
+        render(
+            <LessonManagement lessonService={lessonService} />,
+        );
+
+        await screen.findByRole('heading', {
+            level: 3,
+            name: 'Qualidade de Software',
+        });
+
+        const editButton = screen.getByRole('button', {
+            name: 'Editar Aula de APQSA em 18/09/2026',
+        });
+
+        await user.click(editButton);
+
+        const editingForm = screen.getByRole('form', {
+            name: 'Edição de aula',
+        });
+
+        expect(
+            within(editingForm).getByLabelText('Data').value,
+        ).toBe('2026-09-18');
+        expect(
+            within(editingForm).getByLabelText('Curso').value,
+        ).toBe('APQSA');
+        expect(
+            within(editingForm).getByLabelText('Unidade curricular').value,
+        ).toBe('Qualidade de Software');
+        expect(screen.getByText('Editando')).toBeTruthy();
+        expect(editButton.disabled).toBe(true);
+
+        await user.click(screen.getByRole('button', {
+            name: 'Cancelar edição',
+        }));
+
+        expect(screen.getByRole('form', {
+            name: 'Cadastro de aula',
+        })).toBeTruthy();
+        expect(editButton.disabled).toBe(false);
+        expect(lessonService.updateLesson).not.toHaveBeenCalled();
+        expect(lessonService.listLessons).toHaveBeenCalledTimes(1);
+    });
+
+    test('troca os controles para outra aula selecionada', async () => {
+        const user = userEvent.setup();
+        const firstLesson = createLesson();
+        const secondLesson = createLesson({
+            id: '64f000000000000000000124',
+            date: '2026-09-19',
+            course: 'TECMKT',
+            curricularUnit: 'Marketing Digital',
+            type: 'Atividade',
+            lessonNumber: '4',
+        });
+        const lessonService = createLessonService({
+            listLessons: vi.fn().mockResolvedValue([
+                firstLesson,
+                secondLesson,
+            ]),
+        });
+
+        render(
+            <LessonManagement lessonService={lessonService} />,
+        );
+
+        await screen.findByRole('heading', {
+            level: 3,
+            name: 'Marketing Digital',
+        });
+
+        await user.click(screen.getByRole('button', {
+            name: 'Editar Aula de APQSA em 18/09/2026',
+        }));
+        await user.click(screen.getByRole('button', {
+            name: 'Editar Atividade de TECMKT em 19/09/2026',
+        }));
+
+        const editingForm = screen.getByRole('form', {
+            name: 'Edição de aula',
+        });
+
+        expect(
+            within(editingForm).getByLabelText('Data').value,
+        ).toBe('2026-09-19');
+        expect(
+            within(editingForm).getByLabelText('Curso').value,
+        ).toBe('TECMKT');
+        expect(
+            within(editingForm).getByLabelText('Unidade curricular').value,
+        ).toBe('Marketing Digital');
+        expect(
+            within(editingForm).getByLabelText('Tipo').value,
+        ).toBe('Atividade');
+    });
+
+    test('salva a edição e atualiza o recorte aplicado', async () => {
+        const user = userEvent.setup();
+        const lesson = createLesson({
+            course: 'TECMKT',
+            curricularUnit: 'Marketing Digital',
+        });
+        const updatedLesson = createLesson({
+            course: 'TECMKT',
+            curricularUnit: 'Marketing Digital Aplicado',
+        });
+        const lessonService = createLessonService({
+            listLessons: vi.fn()
+                .mockResolvedValueOnce([lesson])
+                .mockResolvedValueOnce([lesson])
+                .mockResolvedValueOnce([updatedLesson]),
+            updateLesson: vi.fn().mockResolvedValue(updatedLesson),
+        });
+
+        render(
+            <LessonManagement lessonService={lessonService} />,
+        );
+
+        await screen.findByRole('heading', {
+            level: 3,
+            name: 'Marketing Digital',
+        });
+
+        const filterForm = screen.getByRole('form', {
+            name: 'Filtros de aulas',
+        });
+
+        await user.selectOptions(
+            within(filterForm).getByLabelText('Curso'),
+            'TECMKT',
+        );
+        await user.click(screen.getByRole('button', {
+            name: 'Aplicar filtros',
+        }));
+        await waitFor(() => {
+            expect(lessonService.listLessons).toHaveBeenCalledTimes(2);
+        });
+
+        await user.click(screen.getByRole('button', {
+            name: 'Editar Aula de TECMKT em 18/09/2026',
+        }));
+
+        const editingForm = screen.getByRole('form', {
+            name: 'Edição de aula',
+        });
+        const curricularUnitField = within(editingForm)
+            .getByLabelText('Unidade curricular');
+
+        await user.clear(curricularUnitField);
+        await user.type(
+            curricularUnitField,
+            'Marketing Digital Aplicado',
+        );
+        await user.click(within(editingForm).getByRole('button', {
+            name: 'Salvar alterações',
+        }));
+
+        expect(await screen.findByRole('heading', {
+            level: 3,
+            name: 'Marketing Digital Aplicado',
+        })).toBeTruthy();
+        expect(lessonService.updateLesson).toHaveBeenCalledTimes(1);
+        expect(lessonService.updateLesson).toHaveBeenCalledWith(
+            '64f000000000000000000123',
+            {
+                date: '2026-09-18',
+                course: 'TECMKT',
+                curricularUnit: 'Marketing Digital Aplicado',
+                type: 'Aula',
+                lessonNumber: '12',
+                needsReview: false,
+                lessonPlanUrl: 'https://example.com/plano',
+                studentGuideUrl: 'https://example.com/guia',
+            },
+        );
+        expect(lessonService.listLessons).toHaveBeenCalledTimes(3);
+        expect(lessonService.listLessons).toHaveBeenLastCalledWith({
+            course: 'TECMKT',
+        });
+        expect(screen.getByRole('form', {
+            name: 'Cadastro de aula',
+        })).toBeTruthy();
     });
 });
 

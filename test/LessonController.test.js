@@ -6,7 +6,9 @@ const {
     test,
 } = require('node:test');
 
+const { AppError } = require('../src/errors/AppError');
 const {
+    LESSON_CONTROLLER_CODES,
     LESSON_CONTROLLER_ERRORS,
     LessonController,
 } = require('../src/controllers/LessonController');
@@ -43,19 +45,24 @@ function createLesson(overrides = {}) {
  *
  * @param {object} options Comportamento das operações.
  * @param {object} options.createdLesson Aula devolvida pela criação.
+ * @param {object|null} options.updatedLesson Resultado da edição.
  * @param {Array|unknown} options.lessons Resultado devolvido pela consulta.
  * @param {Error|null} options.createError Falha opcional da criação.
+ * @param {Error|null} options.updateError Falha opcional da edição.
  * @param {Error|null} options.listError Falha opcional da consulta.
  * @returns {{ lessonService: object, calls: object }} Serviço e chamadas.
  */
 function createFakeLessonService({
     createdLesson = createLesson(),
+    updatedLesson = createLesson(),
     lessons = [createLesson()],
     createError = null,
+    updateError = null,
     listError = null,
 } = {}) {
     const calls = {
         createLesson: [],
+        updateLesson: [],
         listLessons: [],
     };
 
@@ -68,6 +75,19 @@ function createFakeLessonService({
             }
 
             return createdLesson;
+        },
+
+        async updateLesson(lessonId, lessonData) {
+            calls.updateLesson.push({
+                lessonId,
+                lessonData,
+            });
+
+            if (updateError) {
+                throw updateError;
+            }
+
+            return updatedLesson;
         },
 
         async listLessons(filters) {
@@ -170,7 +190,10 @@ function createExpectedPublicLesson(overrides = {}) {
 }
 
 describe('configuração do LessonController', () => {
-    test('expõe mensagens internas estáveis e protegidas', () => {
+    test('expõe códigos e mensagens estáveis e protegidos', () => {
+        assert.deepEqual(LESSON_CONTROLLER_CODES, {
+            LESSON_NOT_FOUND: 'LESSON_NOT_FOUND',
+        });
         assert.deepEqual(LESSON_CONTROLLER_ERRORS, {
             INVALID_LESSON_SERVICE:
                 'O controlador exige um serviço de aulas válido.',
@@ -178,7 +201,13 @@ describe('configuração do LessonController', () => {
                 'O serviço de aulas retornou uma aula inválida.',
             INVALID_LESSON_LIST_RESPONSE:
                 'O serviço de aulas retornou uma lista inválida.',
+            LESSON_NOT_FOUND:
+                'A aula informada não foi encontrada.',
         });
+        assert.equal(
+            Object.isFrozen(LESSON_CONTROLLER_CODES),
+            true,
+        );
         assert.equal(
             Object.isFrozen(LESSON_CONTROLLER_ERRORS),
             true,
@@ -190,6 +219,7 @@ describe('configuração do LessonController', () => {
         const controller = new LessonController({ lessonService });
 
         assert.equal(typeof controller.create, 'function');
+        assert.equal(typeof controller.update, 'function');
         assert.equal(typeof controller.list, 'function');
         assert.equal(Object.isFrozen(controller), true);
     });
@@ -206,6 +236,12 @@ describe('configuração do LessonController', () => {
             { createLesson: 'não é função', listLessons() {} },
             { createLesson() {} },
             { createLesson() {}, listLessons: 'não é função' },
+            { createLesson() {}, listLessons() {} },
+            {
+                createLesson() {},
+                updateLesson: 'não é função',
+                listLessons() {},
+            },
         ];
 
         for (const lessonService of invalidServices) {
@@ -513,6 +549,206 @@ describe('criação de uma aula pelo controlador', () => {
         );
 
         assert.deepEqual(responseCalls.status, [201]);
+        assert.equal(responseCalls.json.length, 1);
+        assert.equal(nextCalls.length, 1);
+        assert.strictEqual(nextCalls[0], expectedError);
+    });
+});
+
+describe('edição de uma aula pelo controlador', () => {
+    test('encaminha identificador e corpo e responde 200', async () => {
+        const lessonId = '507f1f77bcf86cd799439011';
+        const receivedBody = {
+            date: '2026-09-24',
+            course: 'TECADM',
+            curricularUnit: 'UC atualizada',
+        };
+        const updatedLesson = createLesson({
+            id: lessonId,
+            ...receivedBody,
+        });
+        const {
+            lessonService,
+            calls: serviceCalls,
+        } = createFakeLessonService({ updatedLesson });
+        const {
+            response,
+            calls: responseCalls,
+        } = createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+        const controller = new LessonController({ lessonService });
+
+        await controller.update(
+            {
+                params: { id: lessonId },
+                body: receivedBody,
+            },
+            response,
+            next,
+        );
+
+        assert.deepEqual(serviceCalls.updateLesson, [
+            {
+                lessonId,
+                lessonData: receivedBody,
+            },
+        ]);
+        assert.strictEqual(
+            serviceCalls.updateLesson[0].lessonData,
+            receivedBody,
+        );
+        assert.deepEqual(responseCalls.status, [200]);
+        assert.deepEqual(responseCalls.json, [
+            {
+                data: {
+                    lesson: createExpectedPublicLesson({
+                        id: lessonId,
+                        ...receivedBody,
+                    }),
+                },
+            },
+        ]);
+        assert.equal(
+            Object.isFrozen(
+                responseCalls.json[0].data.lesson,
+            ),
+            true,
+        );
+        assert.deepEqual(nextCalls, []);
+    });
+
+    test('mantém o contexto quando o handler é extraído', async () => {
+        const {
+            lessonService,
+            calls: serviceCalls,
+        } = createFakeLessonService();
+        const { response, calls: responseCalls } =
+            createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+        const controller = new LessonController({ lessonService });
+        const update = controller.update;
+
+        await update(
+            {
+                params: { id: 'aula-extraída' },
+                body: { course: 'TECMKT' },
+            },
+            response,
+            next,
+        );
+
+        assert.deepEqual(serviceCalls.updateLesson, [
+            {
+                lessonId: 'aula-extraída',
+                lessonData: { course: 'TECMKT' },
+            },
+        ]);
+        assert.deepEqual(responseCalls.status, [200]);
+        assert.deepEqual(nextCalls, []);
+    });
+
+    test('encaminha um erro 404 quando a aula não existe', async () => {
+        const { lessonService } = createFakeLessonService({
+            updatedLesson: null,
+        });
+        const { response, calls: responseCalls } =
+            createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+        const controller = new LessonController({ lessonService });
+
+        await controller.update(
+            {
+                params: { id: 'aula-ausente' },
+                body: {},
+            },
+            response,
+            next,
+        );
+
+        assert.deepEqual(responseCalls.status, []);
+        assert.deepEqual(responseCalls.json, []);
+        assert.equal(nextCalls.length, 1);
+        assert.equal(nextCalls[0] instanceof AppError, true);
+        assert.equal(nextCalls[0].statusCode, 404);
+        assert.equal(
+            nextCalls[0].code,
+            LESSON_CONTROLLER_CODES.LESSON_NOT_FOUND,
+        );
+        assert.equal(
+            nextCalls[0].message,
+            LESSON_CONTROLLER_ERRORS.LESSON_NOT_FOUND,
+        );
+        assert.equal(nextCalls[0].isOperational, true);
+    });
+
+    test('encaminha falha do serviço sem responder', async () => {
+        const expectedError = new Error(
+            'Falha controlada na edição.',
+        );
+        const { lessonService } = createFakeLessonService({
+            updateError: expectedError,
+        });
+        const { response, calls: responseCalls } =
+            createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+        const controller = new LessonController({ lessonService });
+
+        await controller.update(
+            { params: { id: 'aula-123' }, body: {} },
+            response,
+            next,
+        );
+
+        assert.deepEqual(responseCalls.status, []);
+        assert.deepEqual(responseCalls.json, []);
+        assert.equal(nextCalls.length, 1);
+        assert.strictEqual(nextCalls[0], expectedError);
+    });
+
+    test('encaminha uma aula inválida sem enviá-la', async () => {
+        const { lessonService } = createFakeLessonService({
+            updatedLesson: createLesson({
+                studentGuideUrl: undefined,
+            }),
+        });
+        const { response, calls: responseCalls } =
+            createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+        const controller = new LessonController({ lessonService });
+
+        await controller.update(
+            { params: { id: 'aula-123' }, body: {} },
+            response,
+            next,
+        );
+
+        assert.deepEqual(responseCalls.status, []);
+        assert.deepEqual(responseCalls.json, []);
+        assert.equal(nextCalls.length, 1);
+        assert.equal(nextCalls[0] instanceof TypeError, true);
+        assert.equal(
+            nextCalls[0].message,
+            LESSON_CONTROLLER_ERRORS.INVALID_LESSON_RESPONSE,
+        );
+    });
+
+    test('encaminha uma falha produzida pela resposta HTTP', async () => {
+        const expectedError = new Error(
+            'Falha controlada ao serializar a edição.',
+        );
+        const { lessonService } = createFakeLessonService();
+        const { response, calls: responseCalls } =
+            createFakeResponse({ jsonError: expectedError });
+        const { next, calls: nextCalls } = createNextRecorder();
+        const controller = new LessonController({ lessonService });
+
+        await controller.update(
+            { params: { id: 'aula-123' }, body: {} },
+            response,
+            next,
+        );
+
+        assert.deepEqual(responseCalls.status, [200]);
         assert.equal(responseCalls.json.length, 1);
         assert.equal(nextCalls.length, 1);
         assert.strictEqual(nextCalls[0], expectedError);
