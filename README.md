@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 25 de setembro de 2026.
+> Última atualização desta documentação: 26 de setembro de 2026.
 
 ## Estado atual
 
@@ -39,6 +39,12 @@ quatro seções originais.
 
 A compilação de produção é validada e servida pelo próprio Express sob a mesma
 origem da API.
+
+Foi iniciada a preparação técnica para um possível primeiro cadastro
+administrativo por convite. O ambiente valida opcionalmente o formato desse
+convite, e a aplicação possui um ponto de montagem ainda inativo para a futura
+rota. O cadastro inicial, sua interface e sua integração ao servidor ainda não
+foram implementados. O fluxo administrativo atual continua funcionando.
 
 O administrador é preparado depois da conexão com o banco e antes da abertura
 da porta HTTP. O processo é idempotente: uma conta existente é preservada e
@@ -213,6 +219,7 @@ mês sem depender do armazenamento local do navegador.
 
 ### Ainda não implementado
 
+- primeiro cadastro administrativo protegido por convite de uso único;
 - acesso externo à aplicação;
 - implantação em ambiente de produção.
 
@@ -375,6 +382,7 @@ Nunca envie o conteúdo de `.env` por e-mail, mensagem ou commit.
 | `SESSION_HOURS` | Não | `8` | Duração máxima da sessão |
 | `APP_ORIGIN` | Sim | — | Origem autorizada da aplicação |
 | `TRUST_PROXY` | Não | `0` | Uso de proxy reverso |
+| `INITIAL_SETUP_TOKEN` | Não | — | Reservado para o futuro convite inicial; ainda não deve ser configurado |
 
 `PASSWORD_HASH_ROUNDS` aceita somente números inteiros entre 10 e 15. O valor
 recomendado para o projeto é 12.
@@ -491,8 +499,8 @@ npm --prefix client test
 No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-919 testes
-124 suítes
+923 testes
+125 suítes/conjuntos
 0 falhas
 0 testes ignorados
 ```

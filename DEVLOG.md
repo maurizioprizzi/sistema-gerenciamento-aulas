@@ -3219,3 +3219,40 @@ Apresentar ao professor Dionísio o fluxo completo de cadastro, edição e
 exclusão, recolher dúvidas reais de uso e ajustar o guia quando necessário.
 Em paralelo, preparar o guia técnico e a implantação controlada para acesso
 externo em computador e celular.
+
+---
+
+## 26 de setembro de 2026 — Preparação do primeiro acesso
+
+### Objetivo
+
+Preparar a estrutura para que, futuramente, o Prof. Dionísio possa definir
+suas próprias credenciais no primeiro acesso, mediante um convite protegido.
+Esta etapa não disponibiliza o cadastro inicial.
+
+### Implementado
+
+- validação opcional de `INITIAL_SETUP_TOKEN` como 64 caracteres hexadecimais;
+- configuração existente preservada quando o convite está ausente;
+- mensagens de validação que não revelam o valor recebido;
+- ponto de montagem opcional para um futuro roteador em `/api/setup`;
+- manutenção do fluxo atual de criação administrativa e autenticação.
+
+O roteador de primeiro acesso ainda não existe e não é fornecido por
+`server.js`. Portanto, nenhuma nova rota de cadastro está disponível.
+
+### Verificação
+
+- 620 testes do backend aprovados em 109 suítes;
+- 303 testes do frontend aprovados em 16 arquivos;
+- 923 testes aprovados em 125 conjuntos no total;
+- zero falhas e zero testes ignorados;
+- `git diff --check` sem problemas após a atualização do README.
+
+### Próximos passos
+
+Confirmar com o professor a preferência pelo cadastro das próprias credenciais
+e a responsabilidade pela escolha da hospedagem. Depois, implementar e testar
+o uso único do convite, a criação segura da conta, a interface de primeiro
+acesso e a integração com a inicialização do servidor. A hospedagem ainda não
+foi escolhida e a aplicação não foi publicada.

@@ -15,6 +15,8 @@ const APP_ERROR_MESSAGES = Object.freeze({
         'A aplicação exige um middleware de segurança válido quando ele é informado.',
     INVALID_SESSION_MIDDLEWARE:
         'A aplicação exige um middleware de sessão válido quando ele é informado.',
+    INVALID_INITIAL_SETUP_ROUTER:
+        'A aplicação exige um roteador de primeiro acesso válido quando ele é informado.',
     INVALID_AUTHENTICATION_ROUTER:
         'A aplicação exige um roteador de autenticação válido quando ele é informado.',
     INVALID_LESSON_ROUTER:
@@ -29,20 +31,11 @@ const APP_ERROR_MESSAGES = Object.freeze({
  * Cria e configura a aplicação Express.
  *
  * A aplicação é construída dentro de uma função para que cada teste possa
- * receber uma instância nova e isolada. Isso também evita que o servidor
- * comece a escutar uma porta simplesmente porque este arquivo foi importado.
+ * receber uma instância nova e isolada. Importar este arquivo não abre uma
+ * porta HTTP.
  *
- * O app recebe componentes HTTP já construídos. Ele não conhece:
- * - o segredo utilizado para assinar cookies;
- * - o MongoClient;
- * - o connect-mongo;
- * - as regras de autenticação;
- * - as regras de persistência das aulas e dos materiais mensais;
- * - o serviço de proteção de senhas;
- * - o caminho físico da compilação do frontend.
- *
- * Essa separação mantém a infraestrutura e as regras de negócio fora da
- * camada responsável por organizar os middlewares e as rotas.
+ * Os componentes são construídos fora daqui. Esta função apenas valida sua
+ * presença e determina a ordem dos middlewares e das rotas.
  *
  * @param {object} options Opções da aplicação.
  * @param {{ error: Function }} [options.logger=console]
@@ -51,6 +44,8 @@ const APP_ERROR_MESSAGES = Object.freeze({
  * Middleware de cabeçalhos HTTP previamente configurado.
  * @param {Function | null} [options.sessionMiddleware=null]
  * Middleware de sessão previamente configurado.
+ * @param {Function | null} [options.initialSetupRouter=null]
+ * Roteador futuro para o primeiro cadastro com convite.
  * @param {Function | null} [options.authenticationRouter=null]
  * Roteador responsável pela entrada e saída administrativas.
  * @param {Function | null} [options.lessonRouter=null]
@@ -66,6 +61,7 @@ function createApp({
     logger = console,
     securityHeadersMiddleware = null,
     sessionMiddleware = null,
+    initialSetupRouter = null,
     authenticationRouter = null,
     lessonRouter = null,
     monthlyMaterialRouter = null,
@@ -87,6 +83,15 @@ function createApp({
     ) {
         throw new TypeError(
             APP_ERROR_MESSAGES.INVALID_SESSION_MIDDLEWARE,
+        );
+    }
+
+    if (
+        initialSetupRouter !== null
+        && typeof initialSetupRouter !== 'function'
+    ) {
+        throw new TypeError(
+            APP_ERROR_MESSAGES.INVALID_INITIAL_SETUP_ROUTER,
         );
     }
 
@@ -131,81 +136,60 @@ function createApp({
     const app = express();
 
     /**
-     * Remove o cabeçalho "X-Powered-By".
-     *
-     * Esse cabeçalho revelaria desnecessariamente que o servidor utiliza
-     * Express. Sua remoção é uma pequena medida de redução de exposição.
+     * Evita divulgar desnecessariamente que o servidor utiliza Express.
      */
     app.disable('x-powered-by');
 
     /**
-     * Os cabeçalhos de segurança devem proteger todas as respostas, inclusive
-     * diagnóstico, autenticação, erros de validação e rotas inexistentes.
-     *
-     * Eles são instalados antes de qualquer parser, sessão ou rota.
+     * Os cabeçalhos de segurança protegem também erros e rotas públicas.
      */
     if (securityHeadersMiddleware) {
         app.use(securityHeadersMiddleware);
     }
 
     /**
-     * Permite que a aplicação receba corpos de requisição no formato JSON.
-     *
-     * O limite evita que uma requisição excessivamente grande consuma
-     * memória desnecessária. Neste projeto, 100 KB é mais do que suficiente
-     * para os cadastros de aulas e materiais previstos.
+     * Limita o tamanho dos corpos JSON recebidos.
      */
     app.use(express.json({
         limit: '100kb',
     }));
 
     /**
-     * O middleware de sessão deve ser instalado antes das rotas de
-     * autenticação e de calendário. Login e logout utilizam request.session,
-     * enquanto aulas e materiais dependem da identidade validada a partir dela.
-     *
-     * Ele permanece opcional para permitir testes isolados da fundação HTTP.
-     * O ciclo real do servidor sempre fornece o middleware configurado.
+     * Login e rotas administrativas utilizam a sessão. O primeiro cadastro
+     * poderá ser montado aqui sem criar uma sessão para visitantes anônimos,
+     * pois o middleware de sessão usa saveUninitialized: false.
      */
     if (sessionMiddleware) {
         app.use(sessionMiddleware);
     }
 
     /**
-     * As rotas administrativas de autenticação ficam sob um prefixo estável.
+     * Este ponto fica inativo enquanto server.js não fornecer o roteador.
      *
-     * Endereços resultantes:
-     * - POST /api/auth/login;
-     * - GET /api/auth/session;
-     * - POST /api/auth/logout.
+     * Quando o fluxo estiver completo, o roteador ficará responsável por
+     * validar o convite e impedir um segundo cadastro inicial.
+     */
+    if (initialSetupRouter) {
+        app.use('/api/setup', initialSetupRouter);
+    }
+
+    /**
+     * Rotas administrativas de entrada, consulta de sessão e saída.
      */
     if (authenticationRouter) {
         app.use('/api/auth', authenticationRouter);
     }
 
     /**
-     * As primeiras operações do calendário compartilham o prefixo de aulas.
-     *
-     * Endereços resultantes:
-     * - GET /api/lessons;
-     * - POST /api/lessons.
-     *
-     * A proteção administrativa pertence ao próprio roteador, mantendo sua
-     * aplicação obrigatória mesmo se ele for montado em outro contexto.
+     * O próprio roteador exige autorização administrativa antes das
+     * operações de consulta, criação, edição e exclusão de aulas.
      */
     if (lessonRouter) {
         app.use('/api/lessons', lessonRouter);
     }
 
     /**
-     * Cada conjunto mensal possui um endereço determinado pelo próprio mês.
-     *
-     * Endereços resultantes:
-     * - GET /api/monthly-materials/:month;
-     * - PUT /api/monthly-materials/:month.
-     *
-     * A autorização administrativa permanece dentro do roteador para proteger
-     * as operações mesmo quando ele for montado em outro contexto.
+     * A autorização das operações mensais pertence ao próprio roteador.
      */
     if (monthlyMaterialRouter) {
         app.use(
@@ -227,23 +211,19 @@ function createApp({
     });
 
     /**
-     * O frontend é instalado somente depois de todas as rotas da API.
-     *
-     * O middleware recebido também preserva caminhos desconhecidos sob
-     * `/api`, permitindo que eles cheguem ao tratamento JSON de rota ausente.
-     * Arquivos reais e navegações visuais são atendidos antes do 404.
+     * Os arquivos do frontend são oferecidos depois das rotas da API.
      */
     if (frontendAssetsMiddleware) {
         app.use(frontendAssetsMiddleware);
     }
 
     /**
-     * Este middleware deve permanecer depois de todas as rotas válidas.
+     * Uma rota desconhecida recebe a resposta JSON padronizada.
      */
     app.use(notFoundHandler);
 
     /**
-     * O middleware de erro deve ser sempre o último da aplicação.
+     * O tratamento centralizado de erros permanece por último.
      */
     app.use(createErrorHandler({
         logger,
