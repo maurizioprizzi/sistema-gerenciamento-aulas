@@ -3069,3 +3069,153 @@ Implementar a exclusão segura de aulas com confirmação explícita, proteção
 administrativa, resposta idempotente quando apropriado e cobertura completa do
 backend à interface. Depois disso, validar o guia com o professor e preparar a
 implantação controlada.
+
+## 25 de setembro de 2026 — Exclusão persistente de aulas
+
+### Objetivo
+
+Concluir o ciclo administrativo das aulas permitindo remover definitivamente
+uma aula, atividade ou avaliação pela própria interface. A operação deveria
+ser protegida, explícita, idempotente e resistente a envios repetidos, sem
+expor detalhes internos em falhas e sem perder os filtros ativos da consulta.
+
+### Serviço persistente
+
+O `LessonService` passou a exigir do modelo a operação
+`findByIdAndDelete` e recebeu `deleteLesson`. O serviço:
+
+- valida identificadores MongoDB com 24 caracteres hexadecimais antes de
+  acessar o modelo;
+- executa a remoção atômica por identificador;
+- devolve a representação pública da aula removida quando ela existia;
+- devolve ausência quando o recurso já não existe, permitindo repetição
+  segura da mesma solicitação;
+- converte erros conhecidos de conversão em falhas operacionais públicas;
+- preserva falhas inesperadas para o tratamento centralizado;
+- rejeita defensivamente documentos inconsistentes retornados pelo modelo.
+
+### Controlador e rota HTTP
+
+O `LessonController` recebeu um handler vinculado de exclusão. Ele encaminha
+o identificador ao serviço, valida defensivamente o resultado e encerra a
+resposta com estado `204`, sem corpo.
+
+A ausência da aula também produz `204`. Essa semântica torna a exclusão
+idempotente: repetir a mesma solicitação mantém o estado desejado sem revelar
+se o registro existia anteriormente.
+
+A rota `DELETE /api/lessons/:id` foi registrada depois do middleware de
+autorização administrativa. Identificadores inválidos são recusados antes do
+modelo, e falhas inesperadas permanecem ocultas do cliente e registradas no
+servidor.
+
+### Cliente HTTP do navegador
+
+O `LessonApi` passou a expor `deleteLesson`. A operação valida e normaliza
+o identificador, envia `DELETE` sem corpo e aceita exclusivamente a resposta
+`204`. Recusas públicas conhecidas são preservadas, enquanto falhas de rede,
+respostas malformadas e estados inesperados são convertidos em mensagens
+seguras.
+
+### Exclusão confirmada na interface
+
+O `LessonManagement` recebeu a ação **Excluir** em cada cartão. O primeiro
+clique não remove dados: ele abre uma confirmação no próprio cartão, informa
+que a ação é permanente e oferece **Confirmar exclusão** e **Cancelar**.
+
+Durante a operação:
+
+- confirmação e cancelamento ficam bloqueados;
+- o botão informa **Excluindo...**;
+- uma edição aberta impede o início de uma exclusão;
+- erros públicos podem ser apresentados e a operação pode ser repetida;
+- detalhes de falhas inesperadas não são exibidos;
+- respostas concluídas depois da desmontagem não alteram a interface.
+
+Depois do sucesso, a lista é consultada novamente com os filtros aplicados.
+Assim, contagem, ordenação e recorte permanecem coerentes com o banco.
+
+O `CalendarWorkspace` também passou a validar o contrato completo do serviço
+de aulas, incluindo `updateLesson` e `deleteLesson`.
+
+### Apresentação e acessibilidade
+
+O `global.css` recebeu estilos próprios para a ação destrutiva, o painel de
+confirmação, mensagens de erro, foco visível, estados desabilitados e botões de
+confirmação e cancelamento. Em telas estreitas, as ações ocupam a largura
+disponível e permanecem adequadas para interação por toque.
+
+### Cobertura automatizada
+
+Foram ampliados os testes do serviço, controlador, roteador, integração HTTP,
+cliente do navegador, gerenciamento de aulas e composição do workspace. Os
+novos cenários cobrem:
+
+- dependências inválidas e handlers vinculados;
+- exclusão atômica e retorno público defensivo;
+- recurso existente e recurso já ausente;
+- identificador inválido recusado antes do modelo;
+- conversão segura de erros conhecidos;
+- propagação e ocultação apropriadas de falhas inesperadas;
+- autorização executada antes do acesso ao modelo;
+- resposta `204` sem corpo;
+- requisição `DELETE` sem dados submetidos;
+- abertura e cancelamento da confirmação sem acessar a API;
+- bloqueio entre edição e exclusão;
+- bloqueio durante uma exclusão pendente;
+- repetição depois de erro público;
+- atualização da lista com preservação dos filtros;
+- desmontagem do componente durante a operação.
+
+### Validação real no navegador
+
+A aplicação foi compilada e servida pelo Express com MongoDB local. Como o
+serviço `mongod` estava inicialmente inativo, a inicialização falhou de forma
+segura, sem colocar o servidor HTTP em operação. Depois da ativação do banco, a
+conexão e a conta administrativa foram reconhecidas normalmente.
+
+Foi criado o registro fictício **Teste temporário de exclusão**, do curso
+APQSA, para 5 de outubro de 2026. No navegador foram confirmados:
+
+- apresentação correta do cartão e das ações **Editar** e **Excluir**;
+- abertura clara da confirmação permanente;
+- cancelamento sem alteração do registro;
+- nova abertura e confirmação da exclusão;
+- desaparecimento imediato do registro da lista;
+- persistência da remoção depois de atualizar a página;
+- apresentação responsiva em largura aproximada de 390 pixels;
+- encerramento controlado do servidor e da conexão com o MongoDB.
+
+O serviço local do MongoDB também foi interrompido ao final da validação.
+
+### Documentação
+
+O `README.md` passou a registrar a exclusão atômica e idempotente, a rota
+protegida, a confirmação visual, os novos totais de testes e os próximos
+marcos sem tratar essa funcionalidade como pendente.
+
+O `docs/GUIA_DO_USUARIO.md` recebeu instruções não técnicas para localizar,
+revisar, excluir, confirmar ou cancelar a operação. O texto destaca que a
+remoção confirmada é permanente e atualiza a numeração e o resumo rápido.
+
+### Verificação consolidada
+
+- 616 testes do backend aprovados em 108 suítes;
+- 303 testes do frontend aprovados em 16 arquivos;
+- 919 testes aprovados em 124 conjuntos no total;
+- zero falhas;
+- zero testes ignorados ou cancelados;
+- zero vulnerabilidades conhecidas nos dois workspaces;
+- formatação validada por `git diff --check`;
+- compilação de produção concluída com 31 módulos;
+- confirmação, cancelamento, responsividade e persistência validados no
+  navegador;
+- inicialização e encerramento seguros confirmados com MongoDB local;
+- nenhuma dependência adicionada ou atualizada neste marco.
+
+### Próximo marco
+
+Apresentar ao professor Dionísio o fluxo completo de cadastro, edição e
+exclusão, recolher dúvidas reais de uso e ajustar o guia quando necessário.
+Em paralelo, preparar o guia técnico e a implantação controlada para acesso
+externo em computador e celular.

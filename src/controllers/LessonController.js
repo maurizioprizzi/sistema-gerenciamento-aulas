@@ -41,7 +41,7 @@ function isObject(value) {
 }
 
 /**
- * Coordena as requisições HTTP de criação, edição e consulta das aulas.
+ * Coordena criação, edição, exclusão e consulta HTTP das aulas.
  *
  * O controlador não conhece Mongoose nem regras de persistência. Ele recebe
  * um serviço pronto, traduz a entrada HTTP e limita explicitamente o formato
@@ -58,7 +58,7 @@ class LessonController {
     /**
      * @param {object} dependencies Dependências do controlador.
      * @param {object} dependencies.lessonService
-     * Serviço que oferece createLesson(), updateLesson() e listLessons().
+     * Serviço que oferece criação, edição, exclusão e consulta de aulas.
      */
     constructor({ lessonService } = {}) {
         LessonController.validateLessonService(lessonService);
@@ -71,6 +71,7 @@ class LessonController {
          */
         this.create = this.create.bind(this);
         this.update = this.update.bind(this);
+        this.delete = this.delete.bind(this);
         this.list = this.list.bind(this);
 
         Object.freeze(this);
@@ -87,6 +88,7 @@ class LessonController {
             !isObject(service)
             || typeof service.createLesson !== 'function'
             || typeof service.updateLesson !== 'function'
+            || typeof service.deleteLesson !== 'function'
             || typeof service.listLessons !== 'function'
         ) {
             throw new TypeError(
@@ -268,6 +270,37 @@ class LessonController {
                     lesson: publicLesson,
                 },
             });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * Exclui uma aula pelo identificador informado na rota.
+     *
+     * A operação responde 204 tanto quando o registro é removido quanto
+     * quando ele já não existe. Essa idempotência permite repetir uma
+     * solicitação interrompida sem transformar a ausência em uma falha.
+     *
+     * Quando o serviço devolve o documento excluído, sua estrutura ainda é
+     * conferida pela seleção pública. Nenhum conteúdo é enviado na resposta.
+     *
+     * @param {import('express').Request} request Requisição HTTP.
+     * @param {import('express').Response} response Resposta HTTP.
+     * @param {import('express').NextFunction} next Tratamento seguinte.
+     * @returns {Promise<void>}
+     */
+    async delete(request, response, next) {
+        try {
+            const lesson = await this.#lessonService.deleteLesson(
+                request?.params?.id,
+            );
+
+            if (lesson !== null) {
+                LessonController.createPublicLesson(lesson);
+            }
+
+            response.status(204).end();
         } catch (error) {
             next(error);
         }

@@ -938,7 +938,9 @@ noscript {
 
 .lesson-management-card-actions {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
+    gap: 0.75rem;
     padding-top: 1rem;
     margin-top: 1rem;
     border-top: 1px solid var(--color-border);
@@ -983,6 +985,102 @@ noscript {
     border-color: var(--color-brand-300);
 }
 
+.lesson-management-card-actions .lesson-management-delete-action {
+    color: var(--color-error);
+    border-color: var(--color-error-border);
+}
+
+.lesson-management-card-actions
+    .lesson-management-delete-action:hover:not(:disabled) {
+    color: #ffffff;
+    background: var(--color-error);
+    border-color: var(--color-error);
+}
+
+.lesson-management-card-actions
+    .lesson-management-delete-action:disabled {
+    color: var(--color-error);
+    background: var(--color-error-surface);
+    border-color: var(--color-error-border);
+    opacity: 0.68;
+}
+
+.lesson-management-delete-confirmation {
+    padding: 1rem;
+    margin-top: 1rem;
+    color: var(--color-error);
+    background: var(--color-error-surface);
+    border: 1px solid var(--color-error-border);
+    border-radius: 0.8rem;
+}
+
+.lesson-management-delete-confirmation h4 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.lesson-management-delete-confirmation p {
+    margin: 0.5rem 0 0;
+    line-height: 1.5;
+}
+
+.lesson-management-delete-error {
+    padding: 0.75rem;
+    font-weight: 700;
+    background: var(--color-surface);
+    border: 1px solid var(--color-error-border);
+    border-radius: 0.65rem;
+}
+
+.lesson-management-delete-confirmation-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.lesson-management-delete-confirmation-actions button {
+    min-height: 2.75rem;
+    padding: 0.65rem 1rem;
+    font-weight: 750;
+    color: var(--color-text);
+    cursor: pointer;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    transition:
+        background-color 160ms ease,
+        border-color 160ms ease,
+        transform 160ms ease;
+}
+
+.lesson-management-delete-confirmation-actions button:focus-visible {
+    border-color: var(--color-error);
+    outline: 3px solid var(--color-focus);
+}
+
+.lesson-management-delete-confirmation-actions
+    button:hover:not(:disabled) {
+    border-color: var(--color-error);
+    transform: translateY(-1px);
+}
+
+.lesson-management-delete-confirmation-actions
+    .lesson-management-delete-confirm-button {
+    color: #ffffff;
+    background: var(--color-error);
+    border-color: var(--color-error);
+}
+
+.lesson-management-delete-confirmation-actions button:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background: var(--color-surface-muted);
+    border-color: var(--color-border);
+    opacity: 0.72;
+    transform: none;
+}
+
 @media (max-width: 760px) {
     .lesson-management-filters,
     .lesson-management-card dl {
@@ -1015,6 +1113,14 @@ noscript {
     }
 
     .lesson-management-card-actions button {
+        width: 100%;
+    }
+
+    .lesson-management-delete-confirmation-actions {
+        display: grid;
+    }
+
+    .lesson-management-delete-confirmation-actions button {
         width: 100%;
     }
 }

@@ -59,6 +59,7 @@ function createLesson(overrides = {}) {
  *     listLessons: ReturnType<typeof vi.fn>,
  *     createLesson: ReturnType<typeof vi.fn>,
  *     updateLesson: ReturnType<typeof vi.fn>,
+ *     deleteLesson: ReturnType<typeof vi.fn>,
  * }} Serviço controlado.
  */
 function createLessonService(overrides = {}) {
@@ -66,6 +67,7 @@ function createLessonService(overrides = {}) {
         listLessons: vi.fn().mockResolvedValue([]),
         createLesson: vi.fn().mockResolvedValue(createLesson()),
         updateLesson: vi.fn().mockResolvedValue(createLesson()),
+        deleteLesson: vi.fn().mockResolvedValue(undefined),
         ...overrides,
     };
 }
@@ -118,6 +120,11 @@ describe('configuração do gerenciamento de aulas', () => {
             {
                 listLessons() {},
                 createLesson() {},
+            },
+            {
+                listLessons() {},
+                createLesson() {},
+                updateLesson() {},
             },
         ];
 
@@ -592,6 +599,273 @@ describe('integração da edição com a consulta', () => {
     });
 });
 
+describe('integração da exclusão com a consulta', () => {
+    test('abre e cancela a confirmação sem acessar a API', async () => {
+        const user = userEvent.setup();
+        const lesson = createLesson();
+        const lessonService = createLessonService({
+            listLessons: vi.fn().mockResolvedValue([lesson]),
+        });
+
+        render(
+            <LessonManagement lessonService={lessonService} />,
+        );
+
+        await screen.findByRole('heading', {
+            level: 3,
+            name: 'Qualidade de Software',
+        });
+
+        const deleteButton = screen.getByRole('button', {
+            name: 'Excluir Aula de APQSA em 18/09/2026',
+        });
+
+        await user.click(deleteButton);
+
+        const confirmation = screen.getByRole('alertdialog', {
+            name: 'Confirmar exclusão',
+        });
+
+        expect(confirmation.textContent).toContain(
+            LESSON_MANAGEMENT_MESSAGES.DELETE_CONFIRMATION,
+        );
+        expect(deleteButton.disabled).toBe(true);
+        expect(
+            within(confirmation).getByRole('button', {
+                name: 'Confirmar exclusão',
+            }),
+        ).toBeTruthy();
+
+        await user.click(within(confirmation).getByRole('button', {
+            name: 'Cancelar',
+        }));
+
+        expect(screen.queryByRole('alertdialog')).toBeNull();
+        expect(deleteButton.disabled).toBe(false);
+        expect(lessonService.deleteLesson).not.toHaveBeenCalled();
+        expect(lessonService.listLessons).toHaveBeenCalledTimes(1);
+    });
+
+    test('mantém a exclusão bloqueada enquanto existe uma edição', async () => {
+        const user = userEvent.setup();
+        const lesson = createLesson();
+        const lessonService = createLessonService({
+            listLessons: vi.fn().mockResolvedValue([lesson]),
+        });
+
+        render(
+            <LessonManagement lessonService={lessonService} />,
+        );
+
+        await screen.findByRole('heading', {
+            level: 3,
+            name: 'Qualidade de Software',
+        });
+
+        await user.click(screen.getByRole('button', {
+            name: 'Editar Aula de APQSA em 18/09/2026',
+        }));
+
+        const deleteButton = screen.getByRole('button', {
+            name: 'Excluir Aula de APQSA em 18/09/2026',
+        });
+
+        expect(deleteButton.disabled).toBe(true);
+        expect(screen.queryByRole('alertdialog')).toBeNull();
+        expect(lessonService.deleteLesson).not.toHaveBeenCalled();
+    });
+
+    test('exclui e atualiza a lista preservando os filtros', async () => {
+        const user = userEvent.setup();
+        const lesson = createLesson({ course: 'TECMKT' });
+        const lessonService = createLessonService({
+            listLessons: vi.fn()
+                .mockResolvedValueOnce([lesson])
+                .mockResolvedValueOnce([lesson])
+                .mockResolvedValueOnce([]),
+        });
+
+        render(
+            <LessonManagement lessonService={lessonService} />,
+        );
+
+        await screen.findByRole('heading', {
+            level: 3,
+            name: 'Qualidade de Software',
+        });
+
+        const filterForm = screen.getByRole('form', {
+            name: 'Filtros de aulas',
+        });
+
+        await user.selectOptions(
+            within(filterForm).getByLabelText('Curso'),
+            'TECMKT',
+        );
+        await user.click(screen.getByRole('button', {
+            name: 'Aplicar filtros',
+        }));
+        await waitFor(() => {
+            expect(lessonService.listLessons).toHaveBeenCalledTimes(2);
+        });
+
+        await user.click(screen.getByRole('button', {
+            name: 'Excluir Aula de TECMKT em 18/09/2026',
+        }));
+        await user.click(screen.getByRole('button', {
+            name: 'Confirmar exclusão',
+        }));
+
+        expect(await screen.findByText(
+            LESSON_MANAGEMENT_MESSAGES.EMPTY,
+        )).toBeTruthy();
+        expect(lessonService.deleteLesson).toHaveBeenCalledOnce();
+        expect(lessonService.deleteLesson).toHaveBeenCalledWith(
+            '64f000000000000000000123',
+        );
+        expect(lessonService.listLessons).toHaveBeenCalledTimes(3);
+        expect(lessonService.listLessons).toHaveBeenLastCalledWith({
+            course: 'TECMKT',
+        });
+        expect(screen.queryByRole('alertdialog')).toBeNull();
+    });
+
+    test('bloqueia confirmação e cancelamento durante a exclusão', async () => {
+        const user = userEvent.setup();
+        const deletion = createDeferredPromise();
+        const lesson = createLesson();
+        const lessonService = createLessonService({
+            listLessons: vi.fn().mockResolvedValue([lesson]),
+            deleteLesson: vi.fn().mockReturnValue(deletion.promise),
+        });
+
+        render(
+            <LessonManagement lessonService={lessonService} />,
+        );
+
+        await screen.findByRole('heading', {
+            level: 3,
+            name: 'Qualidade de Software',
+        });
+        await user.click(screen.getByRole('button', {
+            name: 'Excluir Aula de APQSA em 18/09/2026',
+        }));
+        await user.click(screen.getByRole('button', {
+            name: 'Confirmar exclusão',
+        }));
+
+        const deletingButton = screen.getByRole('button', {
+            name: 'Excluindo...',
+        });
+        const cancelButton = screen.getByRole('button', {
+            name: 'Cancelar',
+        });
+
+        expect(deletingButton.disabled).toBe(true);
+        expect(deletingButton.getAttribute('aria-busy')).toBe('true');
+        expect(cancelButton.disabled).toBe(true);
+        expect(lessonService.deleteLesson).toHaveBeenCalledOnce();
+
+        await act(async () => {
+            deletion.resolve(undefined);
+            await deletion.promise;
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByRole('alertdialog')).toBeNull();
+        });
+        expect(lessonService.deleteLesson).toHaveBeenCalledOnce();
+    });
+
+    test('apresenta erro público e permite repetir a exclusão', async () => {
+        const user = userEvent.setup();
+        const publicMessage =
+            'Não foi possível excluir este registro agora.';
+        const lesson = createLesson();
+        const lessonService = createLessonService({
+            listLessons: vi.fn()
+                .mockResolvedValueOnce([lesson])
+                .mockResolvedValueOnce([]),
+            deleteLesson: vi.fn()
+                .mockRejectedValueOnce(new LessonApiError(
+                    publicMessage,
+                    {
+                        statusCode: 409,
+                        code: 'LESSON_DELETE_CONFLICT',
+                    },
+                ))
+                .mockResolvedValueOnce(undefined),
+        });
+
+        render(
+            <LessonManagement lessonService={lessonService} />,
+        );
+
+        await screen.findByRole('heading', {
+            level: 3,
+            name: 'Qualidade de Software',
+        });
+        await user.click(screen.getByRole('button', {
+            name: 'Excluir Aula de APQSA em 18/09/2026',
+        }));
+        await user.click(screen.getByRole('button', {
+            name: 'Confirmar exclusão',
+        }));
+
+        expect((await screen.findByRole('alert')).textContent).toBe(
+            publicMessage,
+        );
+        expect(screen.getByRole('alertdialog')).toBeTruthy();
+
+        await user.click(screen.getByRole('button', {
+            name: 'Confirmar exclusão',
+        }));
+
+        expect(await screen.findByText(
+            LESSON_MANAGEMENT_MESSAGES.EMPTY,
+        )).toBeTruthy();
+        expect(lessonService.deleteLesson).toHaveBeenCalledTimes(2);
+        expect(screen.queryByRole('alertdialog')).toBeNull();
+    });
+
+    test('oculta detalhes de uma falha inesperada da exclusão', async () => {
+        const user = userEvent.setup();
+        const technicalMessage =
+            'Falha técnica controlada com detalhes internos.';
+        const lessonService = createLessonService({
+            listLessons: vi.fn().mockResolvedValue([
+                createLesson(),
+            ]),
+            deleteLesson: vi.fn().mockRejectedValue(
+                new Error(technicalMessage),
+            ),
+        });
+
+        render(
+            <LessonManagement lessonService={lessonService} />,
+        );
+
+        await screen.findByRole('heading', {
+            level: 3,
+            name: 'Qualidade de Software',
+        });
+        await user.click(screen.getByRole('button', {
+            name: 'Excluir Aula de APQSA em 18/09/2026',
+        }));
+        await user.click(screen.getByRole('button', {
+            name: 'Confirmar exclusão',
+        }));
+
+        expect((await screen.findByRole('alert')).textContent).toBe(
+            LESSON_MANAGEMENT_MESSAGES.UNEXPECTED_DELETE_ERROR,
+        );
+        expect(document.body.textContent).not.toContain(
+            technicalMessage,
+        );
+        expect(screen.getByRole('alertdialog')).toBeTruthy();
+    });
+});
+
 describe('falhas durante a consulta', () => {
     test('apresenta uma mensagem pública conhecida e permite repetir', async () => {
         const user = userEvent.setup();
@@ -706,5 +980,38 @@ describe('concorrência e ciclo de vida da consulta', () => {
         await request.promise;
 
         expect(screen.queryByText('Qualidade de Software')).toBeNull();
+    });
+
+    test('ignora o término da exclusão depois da desmontagem', async () => {
+        const user = userEvent.setup();
+        const deletion = createDeferredPromise();
+        const lessonService = createLessonService({
+            listLessons: vi.fn().mockResolvedValue([
+                createLesson(),
+            ]),
+            deleteLesson: vi.fn().mockReturnValue(deletion.promise),
+        });
+        const view = render(
+            <LessonManagement lessonService={lessonService} />,
+        );
+
+        await screen.findByRole('heading', {
+            level: 3,
+            name: 'Qualidade de Software',
+        });
+        await user.click(screen.getByRole('button', {
+            name: 'Excluir Aula de APQSA em 18/09/2026',
+        }));
+        await user.click(screen.getByRole('button', {
+            name: 'Confirmar exclusão',
+        }));
+
+        view.unmount();
+        deletion.resolve(undefined);
+
+        await deletion.promise;
+
+        expect(lessonService.listLessons).toHaveBeenCalledTimes(1);
+        expect(screen.queryByRole('alertdialog')).toBeNull();
     });
 });

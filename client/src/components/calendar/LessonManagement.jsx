@@ -26,11 +26,15 @@ const LESSON_MANAGEMENT_IDS = Object.freeze({
  */
 const LESSON_MANAGEMENT_MESSAGES = Object.freeze({
     INVALID_LESSON_SERVICE:
-        'O gerenciamento de aulas exige um serviço de consulta, criação e edição válido.',
+        'O gerenciamento de aulas exige um serviço de consulta, criação, edição e exclusão válido.',
     LOADING: 'Carregando aulas...',
     EMPTY: 'Nenhuma aula encontrada para os filtros selecionados.',
     UNEXPECTED_ERROR:
         'Não foi possível carregar as aulas agora. Tente novamente em instantes.',
+    DELETE_CONFIRMATION:
+        'Esta ação excluirá o registro permanentemente e não poderá ser desfeita.',
+    UNEXPECTED_DELETE_ERROR:
+        'Não foi possível excluir o registro agora. Tente novamente em instantes.',
 });
 
 /**
@@ -131,6 +135,7 @@ function LessonMaterialLink({ label, url }) {
  *     listLessons: Function,
  *     createLesson: Function,
  *     updateLesson: Function,
+ *     deleteLesson: Function,
  * }} [props.lessonService=lessonApi]
  * Serviço substituível nos testes.
  * @returns {import('react').ReactElement} Consulta visual das aulas.
@@ -142,7 +147,8 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
         && !Array.isArray(lessonService)
         && typeof lessonService.listLessons === 'function'
         && typeof lessonService.createLesson === 'function'
-        && typeof lessonService.updateLesson === 'function';
+        && typeof lessonService.updateLesson === 'function'
+        && typeof lessonService.deleteLesson === 'function';
 
     if (!isValidLessonService) {
         throw new TypeError(
@@ -158,7 +164,11 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
     const [isLoading, setIsLoading] = useState(true);
     const [errorMessage, setErrorMessage] = useState(null);
     const [lessonToEdit, setLessonToEdit] = useState(null);
+    const [lessonToDelete, setLessonToDelete] = useState(null);
+    const [deletingLessonId, setDeletingLessonId] = useState(null);
+    const [deleteErrorMessage, setDeleteErrorMessage] = useState(null);
     const requestSequence = useRef(0);
+    const deletionSequence = useRef(0);
 
     /**
      * Executa uma consulta e aceita seu resultado somente enquanto ela for a
@@ -203,6 +213,7 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
 
         return () => {
             requestSequence.current += 1;
+            deletionSequence.current += 1;
         };
     }, [loadLessons]);
 
@@ -223,6 +234,8 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
      * @param {object} lesson Registro selecionado na lista.
      */
     function handleLessonEditRequested(lesson) {
+        setLessonToDelete(null);
+        setDeleteErrorMessage(null);
         setLessonToEdit(lesson);
     }
 
@@ -243,6 +256,79 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
         setLessonToEdit(null);
         loadLessons(appliedFilters);
     }, [appliedFilters, loadLessons]);
+
+    /**
+     * Abre a confirmação explícita para o registro escolhido.
+     *
+     * A exclusão permanece indisponível durante uma edição para não descartar
+     * silenciosamente alterações que ainda estejam no formulário.
+     *
+     * @param {object} lesson Registro selecionado na lista.
+     */
+    function handleLessonDeleteRequested(lesson) {
+        if (lessonToEdit !== null || deletingLessonId !== null) {
+            return;
+        }
+
+        setLessonToDelete(lesson);
+        setDeleteErrorMessage(null);
+    }
+
+    /**
+     * Fecha a confirmação sem acessar a API nem alterar a lista.
+     */
+    function handleLessonDeleteCancelled() {
+        if (deletingLessonId !== null) {
+            return;
+        }
+
+        setLessonToDelete(null);
+        setDeleteErrorMessage(null);
+    }
+
+    /**
+     * Confirma a exclusão e atualiza o mesmo recorte aplicado à consulta.
+     *
+     * Um identificador sequencial impede atualizações de estado caso o
+     * componente seja desmontado enquanto a operação estiver pendente.
+     */
+    async function handleLessonDeleteConfirmed() {
+        if (
+            lessonToDelete === null
+            || deletingLessonId !== null
+        ) {
+            return;
+        }
+
+        const lessonId = lessonToDelete.id;
+        const deletionId = deletionSequence.current + 1;
+
+        deletionSequence.current = deletionId;
+        setDeletingLessonId(lessonId);
+        setDeleteErrorMessage(null);
+
+        try {
+            await lessonService.deleteLesson(lessonId);
+
+            if (deletionSequence.current === deletionId) {
+                setLessonToDelete(null);
+                await loadLessons(appliedFilters);
+            }
+        } catch (error) {
+            if (deletionSequence.current === deletionId) {
+                const publicMessage = error instanceof LessonApiError
+                    ? error.message
+                    : LESSON_MANAGEMENT_MESSAGES
+                        .UNEXPECTED_DELETE_ERROR;
+
+                setDeleteErrorMessage(publicMessage);
+            }
+        } finally {
+            if (deletionSequence.current === deletionId) {
+                setDeletingLessonId(null);
+            }
+        }
+    }
 
     /**
      * Atualiza somente o controle que originou o evento.
@@ -479,7 +565,11 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
                                     <div className="lesson-management-card-actions">
                                         <button
                                             type="button"
-                                            disabled={lessonToEdit?.id === lesson.id}
+                                            disabled={
+                                                lessonToEdit?.id === lesson.id
+                                                || lessonToDelete !== null
+                                                || deletingLessonId !== null
+                                            }
                                             aria-label={
                                                 'Editar '
                                                 + lesson.type
@@ -496,7 +586,112 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
                                                 ? 'Editando'
                                                 : 'Editar'}
                                         </button>
+
+                                        <button
+                                            type="button"
+                                            className="lesson-management-delete-action"
+                                            disabled={
+                                                lessonToEdit !== null
+                                                || lessonToDelete?.id === lesson.id
+                                                || deletingLessonId !== null
+                                            }
+                                            aria-label={
+                                                'Excluir '
+                                                + lesson.type
+                                                + ' de '
+                                                + lesson.course
+                                                + ' em '
+                                                + formatCivilDate(lesson.date)
+                                            }
+                                            onClick={() => {
+                                                handleLessonDeleteRequested(lesson);
+                                            }}
+                                        >
+                                            {lessonToDelete?.id === lesson.id
+                                                ? 'Confirmação aberta'
+                                                : 'Excluir'}
+                                        </button>
                                     </div>
+
+                                    {lessonToDelete?.id === lesson.id && (
+                                        <div
+                                            className="lesson-management-delete-confirmation"
+                                            role="alertdialog"
+                                            aria-modal="false"
+                                            aria-labelledby={
+                                                'lesson-delete-title-'
+                                                + lesson.id
+                                            }
+                                            aria-describedby={
+                                                'lesson-delete-description-'
+                                                + lesson.id
+                                            }
+                                        >
+                                            <h4
+                                                id={
+                                                    'lesson-delete-title-'
+                                                    + lesson.id
+                                                }
+                                            >
+                                                Confirmar exclusão
+                                            </h4>
+
+                                            <p
+                                                id={
+                                                    'lesson-delete-description-'
+                                                    + lesson.id
+                                                }
+                                            >
+                                                {LESSON_MANAGEMENT_MESSAGES
+                                                    .DELETE_CONFIRMATION}
+                                            </p>
+
+                                            {deleteErrorMessage && (
+                                                <p
+                                                    className="lesson-management-delete-error"
+                                                    role="alert"
+                                                >
+                                                    {deleteErrorMessage}
+                                                </p>
+                                            )}
+
+                                            <div className="lesson-management-delete-confirmation-actions">
+                                                <button
+                                                    type="button"
+                                                    className="lesson-management-delete-confirm-button"
+                                                    disabled={
+                                                        deletingLessonId
+                                                            !== null
+                                                    }
+                                                    aria-busy={
+                                                        deletingLessonId
+                                                            === lesson.id
+                                                    }
+                                                    onClick={
+                                                        handleLessonDeleteConfirmed
+                                                    }
+                                                >
+                                                    {deletingLessonId
+                                                        === lesson.id
+                                                        ? 'Excluindo...'
+                                                        : 'Confirmar exclusão'}
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    disabled={
+                                                        deletingLessonId
+                                                            !== null
+                                                    }
+                                                    onClick={
+                                                        handleLessonDeleteCancelled
+                                                    }
+                                                >
+                                                    Cancelar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </article>
                             </li>
                         ))}

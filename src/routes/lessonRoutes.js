@@ -8,8 +8,8 @@ const {
  * Caminhos internos do roteador de aulas.
  *
  * O prefixo `/api/lessons` será aplicado posteriormente por `app.js`. Criação
- * e consulta permanecem na raiz interna. A edição identifica um único recurso
- * pelo parâmetro de caminho 'id'.
+ * e consulta permanecem na raiz interna. Edição e exclusão identificam um
+ * único recurso pelo parâmetro de caminho 'id'.
  */
 const LESSON_ROUTE_PATHS = Object.freeze({
     COLLECTION: '/',
@@ -57,6 +57,7 @@ function validateLessonController(controller) {
         && !Array.isArray(controller)
         && typeof controller.create === 'function'
         && typeof controller.update === 'function'
+        && typeof controller.delete === 'function'
         && typeof controller.list === 'function';
 
     if (!isValid) {
@@ -67,7 +68,7 @@ function validateLessonController(controller) {
 }
 
 /**
- * Cria as rotas administrativas de criação, edição e consulta das aulas.
+ * Cria as rotas administrativas de criação, edição, exclusão e consulta.
  *
  * O middleware de autorização aparece antes de cada handler. Assim, nenhuma
  * consulta ao calendário nem tentativa de persistência ocorre sem uma sessão
@@ -119,6 +120,7 @@ function createLessonRouter({
         || typeof router.get !== 'function'
         || typeof router.post !== 'function'
         || typeof router.put !== 'function'
+        || typeof router.delete !== 'function'
     ) {
         throw new TypeError(
             LESSON_ROUTE_ERRORS.INVALID_ROUTER,
@@ -141,6 +143,12 @@ function createLessonRouter({
         LESSON_ROUTE_PATHS.ITEM,
         administrativeAuthorizationMiddleware,
         controller.update,
+    );
+
+    router.delete(
+        LESSON_ROUTE_PATHS.ITEM,
+        administrativeAuthorizationMiddleware,
+        controller.delete,
     );
 
     return router;

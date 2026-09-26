@@ -46,23 +46,28 @@ function createLesson(overrides = {}) {
  * @param {object} options Comportamento das operações.
  * @param {object} options.createdLesson Aula devolvida pela criação.
  * @param {object|null} options.updatedLesson Resultado da edição.
+ * @param {object|null} options.deletedLesson Resultado da exclusão.
  * @param {Array|unknown} options.lessons Resultado devolvido pela consulta.
  * @param {Error|null} options.createError Falha opcional da criação.
  * @param {Error|null} options.updateError Falha opcional da edição.
+ * @param {Error|null} options.deleteError Falha opcional da exclusão.
  * @param {Error|null} options.listError Falha opcional da consulta.
  * @returns {{ lessonService: object, calls: object }} Serviço e chamadas.
  */
 function createFakeLessonService({
     createdLesson = createLesson(),
     updatedLesson = createLesson(),
+    deletedLesson = createLesson(),
     lessons = [createLesson()],
     createError = null,
     updateError = null,
+    deleteError = null,
     listError = null,
 } = {}) {
     const calls = {
         createLesson: [],
         updateLesson: [],
+        deleteLesson: [],
         listLessons: [],
     };
 
@@ -90,6 +95,16 @@ function createFakeLessonService({
             return updatedLesson;
         },
 
+        async deleteLesson(lessonId) {
+            calls.deleteLesson.push(lessonId);
+
+            if (deleteError) {
+                throw deleteError;
+            }
+
+            return deletedLesson;
+        },
+
         async listLessons(filters) {
             calls.listLessons.push(filters);
 
@@ -113,15 +128,18 @@ function createFakeLessonService({
  * @param {object} options Falhas opcionais da resposta.
  * @param {Error|null} options.statusError Falha produzida por status().
  * @param {Error|null} options.jsonError Falha produzida por json().
+ * @param {Error|null} options.endError Falha produzida por end().
  * @returns {{ response: object, calls: object }} Resposta e chamadas.
  */
 function createFakeResponse({
     statusError = null,
     jsonError = null,
+    endError = null,
 } = {}) {
     const calls = {
         status: [],
         json: [],
+        end: [],
     };
 
     const response = {
@@ -140,6 +158,16 @@ function createFakeResponse({
 
             if (jsonError) {
                 throw jsonError;
+            }
+
+            return response;
+        },
+
+        end() {
+            calls.end.push(undefined);
+
+            if (endError) {
+                throw endError;
             }
 
             return response;
@@ -220,6 +248,7 @@ describe('configuração do LessonController', () => {
 
         assert.equal(typeof controller.create, 'function');
         assert.equal(typeof controller.update, 'function');
+        assert.equal(typeof controller.delete, 'function');
         assert.equal(typeof controller.list, 'function');
         assert.equal(Object.isFrozen(controller), true);
     });
@@ -240,6 +269,12 @@ describe('configuração do LessonController', () => {
             {
                 createLesson() {},
                 updateLesson: 'não é função',
+                listLessons() {},
+            },
+            {
+                createLesson() {},
+                updateLesson() {},
+                deleteLesson: 'não é função',
                 listLessons() {},
             },
         ];
@@ -750,6 +785,156 @@ describe('edição de uma aula pelo controlador', () => {
 
         assert.deepEqual(responseCalls.status, [200]);
         assert.equal(responseCalls.json.length, 1);
+        assert.equal(nextCalls.length, 1);
+        assert.strictEqual(nextCalls[0], expectedError);
+    });
+});
+
+describe('exclusão de uma aula pelo controlador', () => {
+    test('encaminha o identificador e responde 204 sem corpo', async () => {
+        const lessonId = '507f1f77bcf86cd799439011';
+        const {
+            lessonService,
+            calls: serviceCalls,
+        } = createFakeLessonService({
+            deletedLesson: createLesson({ id: lessonId }),
+        });
+        const {
+            response,
+            calls: responseCalls,
+        } = createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+        const controller = new LessonController({ lessonService });
+
+        await controller.delete(
+            { params: { id: lessonId } },
+            response,
+            next,
+        );
+
+        assert.deepEqual(serviceCalls.deleteLesson, [lessonId]);
+        assert.deepEqual(responseCalls.status, [204]);
+        assert.deepEqual(responseCalls.json, []);
+        assert.deepEqual(responseCalls.end, [undefined]);
+        assert.deepEqual(nextCalls, []);
+    });
+
+    test('mantém o contexto quando o handler é extraído', async () => {
+        const {
+            lessonService,
+            calls: serviceCalls,
+        } = createFakeLessonService();
+        const { response, calls: responseCalls } =
+            createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+        const controller = new LessonController({ lessonService });
+        const deleteLesson = controller.delete;
+
+        await deleteLesson(
+            { params: { id: 'aula-extraída' } },
+            response,
+            next,
+        );
+
+        assert.deepEqual(serviceCalls.deleteLesson, [
+            'aula-extraída',
+        ]);
+        assert.deepEqual(responseCalls.status, [204]);
+        assert.deepEqual(responseCalls.end, [undefined]);
+        assert.deepEqual(nextCalls, []);
+    });
+
+    test('mantém 204 quando a aula já não existe', async () => {
+        const { lessonService } = createFakeLessonService({
+            deletedLesson: null,
+        });
+        const { response, calls: responseCalls } =
+            createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+        const controller = new LessonController({ lessonService });
+
+        await controller.delete(
+            { params: { id: 'aula-ausente' } },
+            response,
+            next,
+        );
+
+        assert.deepEqual(responseCalls.status, [204]);
+        assert.deepEqual(responseCalls.json, []);
+        assert.deepEqual(responseCalls.end, [undefined]);
+        assert.deepEqual(nextCalls, []);
+    });
+
+    test('encaminha falha do serviço sem responder', async () => {
+        const expectedError = new Error(
+            'Falha controlada na exclusão.',
+        );
+        const { lessonService } = createFakeLessonService({
+            deleteError: expectedError,
+        });
+        const { response, calls: responseCalls } =
+            createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+        const controller = new LessonController({ lessonService });
+
+        await controller.delete(
+            { params: { id: 'aula-123' } },
+            response,
+            next,
+        );
+
+        assert.deepEqual(responseCalls.status, []);
+        assert.deepEqual(responseCalls.json, []);
+        assert.deepEqual(responseCalls.end, []);
+        assert.equal(nextCalls.length, 1);
+        assert.strictEqual(nextCalls[0], expectedError);
+    });
+
+    test('encaminha uma aula inválida sem responder', async () => {
+        const { lessonService } = createFakeLessonService({
+            deletedLesson: createLesson({
+                lessonPlanUrl: undefined,
+            }),
+        });
+        const { response, calls: responseCalls } =
+            createFakeResponse();
+        const { next, calls: nextCalls } = createNextRecorder();
+        const controller = new LessonController({ lessonService });
+
+        await controller.delete(
+            { params: { id: 'aula-123' } },
+            response,
+            next,
+        );
+
+        assert.deepEqual(responseCalls.status, []);
+        assert.deepEqual(responseCalls.end, []);
+        assert.equal(nextCalls.length, 1);
+        assert.equal(nextCalls[0] instanceof TypeError, true);
+        assert.equal(
+            nextCalls[0].message,
+            LESSON_CONTROLLER_ERRORS.INVALID_LESSON_RESPONSE,
+        );
+    });
+
+    test('encaminha uma falha produzida ao finalizar a resposta', async () => {
+        const expectedError = new Error(
+            'Falha controlada ao finalizar a exclusão.',
+        );
+        const { lessonService } = createFakeLessonService();
+        const { response, calls: responseCalls } =
+            createFakeResponse({ endError: expectedError });
+        const { next, calls: nextCalls } = createNextRecorder();
+        const controller = new LessonController({ lessonService });
+
+        await controller.delete(
+            { params: { id: 'aula-123' } },
+            response,
+            next,
+        );
+
+        assert.deepEqual(responseCalls.status, [204]);
+        assert.deepEqual(responseCalls.end, [undefined]);
         assert.equal(nextCalls.length, 1);
         assert.strictEqual(nextCalls[0], expectedError);
     });

@@ -35,7 +35,7 @@ const VALID_LESSON_DATA = Object.freeze({
 });
 
 /**
- * Identificador MongoDB válido utilizado nos testes de edição.
+ * Identificador MongoDB válido utilizado nos testes de edição e exclusão.
  */
 const VALID_LESSON_ID = '507f1f77bcf86cd799439011';
 
@@ -76,9 +76,11 @@ function createLessonDocument(overrides = {}) {
  * @param {object} options Comportamento configurável do modelo.
  * @param {object} options.createdLesson Documento devolvido por create().
  * @param {object|null} options.updatedLesson Resultado da edição.
+ * @param {object|null} options.deletedLesson Resultado da exclusão.
  * @param {Array|unknown} options.lessons Resultado devolvido por sort().
  * @param {Error|null} options.createError Falha opcional da criação.
  * @param {Error|null} options.updateError Falha opcional da edição.
+ * @param {Error|null} options.deleteError Falha opcional da exclusão.
  * @param {Error|null} options.findError Falha síncrona opcional de find().
  * @param {Error|null} options.sortError Falha assíncrona opcional de sort().
  * @returns {{ LessonModel: object, calls: object }} Modelo e chamadas.
@@ -88,15 +90,20 @@ function createFakeLessonModel({
     updatedLesson = createLessonDocument({
         _id: VALID_LESSON_ID,
     }),
+    deletedLesson = createLessonDocument({
+        _id: VALID_LESSON_ID,
+    }),
     lessons = [createLessonDocument()],
     createError = null,
     updateError = null,
+    deleteError = null,
     findError = null,
     sortError = null,
 } = {}) {
     const calls = {
         create: [],
         findByIdAndUpdate: [],
+        findByIdAndDelete: [],
         find: [],
         sort: [],
     };
@@ -124,6 +131,16 @@ function createFakeLessonModel({
             }
 
             return updatedLesson;
+        },
+
+        async findByIdAndDelete(lessonId) {
+            calls.findByIdAndDelete.push(lessonId);
+
+            if (deleteError) {
+                throw deleteError;
+            }
+
+            return deletedLesson;
         },
 
         find(filter) {
@@ -176,7 +193,7 @@ function assertOperationalInputError(
 }
 
 describe('configuração do LessonService', () => {
-    test('expõe contratos estáveis para criação, edição e consulta', () => {
+    test('expõe contratos estáveis para criação, edição, exclusão e consulta', () => {
         assert.deepEqual(LESSON_SERVICE_CODES, {
             INVALID_LESSON_DATA: 'INVALID_LESSON_DATA',
             INVALID_LESSON_FILTERS: 'INVALID_LESSON_FILTERS',
@@ -237,6 +254,7 @@ describe('configuração do LessonService', () => {
 
         assert.equal(typeof service.createLesson, 'function');
         assert.equal(typeof service.updateLesson, 'function');
+        assert.equal(typeof service.deleteLesson, 'function');
         assert.equal(typeof service.listLessons, 'function');
     });
 
@@ -253,6 +271,12 @@ describe('configuração do LessonService', () => {
                 create() {},
                 find() {},
                 findByIdAndUpdate: 'não é função',
+            },
+            {
+                create() {},
+                find() {},
+                findByIdAndUpdate() {},
+                findByIdAndDelete: 'não é função',
             },
         ];
 
@@ -974,6 +998,137 @@ describe('edição de aulas', () => {
                 VALID_LESSON_ID,
                 VALID_LESSON_DATA,
             ),
+            {
+                name: 'TypeError',
+                message:
+                    LESSON_SERVICE_MESSAGES.INVALID_LESSON_DOCUMENT,
+            },
+        );
+    });
+});
+
+describe('exclusão de aulas', () => {
+    test('exclui atomicamente e retorna a aula pública', async () => {
+        const deletedDocument = createLessonDocument({
+            _id: VALID_LESSON_ID,
+        });
+        const {
+            LessonModel,
+            calls,
+        } = createFakeLessonModel({
+            deletedLesson: deletedDocument,
+        });
+        const service = new LessonService({ LessonModel });
+
+        const lesson = await service.deleteLesson(
+            VALID_LESSON_ID,
+        );
+
+        assert.deepEqual(calls.findByIdAndDelete, [
+            VALID_LESSON_ID,
+        ]);
+        assert.deepEqual(lesson, {
+            id: VALID_LESSON_ID,
+            ...VALID_LESSON_DATA,
+        });
+        assert.equal(Object.isFrozen(lesson), true);
+        assert.notStrictEqual(lesson, deletedDocument);
+    });
+
+    test('devolve null quando a aula já não existe', async () => {
+        const {
+            LessonModel,
+            calls,
+        } = createFakeLessonModel({
+            deletedLesson: null,
+        });
+        const service = new LessonService({ LessonModel });
+
+        const lesson = await service.deleteLesson(
+            VALID_LESSON_ID,
+        );
+
+        assert.equal(lesson, null);
+        assert.deepEqual(calls.findByIdAndDelete, [
+            VALID_LESSON_ID,
+        ]);
+    });
+
+    test('não acessa o modelo quando o identificador é inválido', async () => {
+        const { LessonModel, calls } = createFakeLessonModel();
+        const service = new LessonService({ LessonModel });
+
+        await assert.rejects(
+            service.deleteLesson('identificador-inválido'),
+            (error) => assertOperationalInputError(
+                error,
+                LESSON_SERVICE_CODES.INVALID_LESSON_ID,
+                LESSON_SERVICE_MESSAGES.INVALID_LESSON_ID,
+            ),
+        );
+
+        assert.deepEqual(calls.findByIdAndDelete, []);
+    });
+
+    test('converte uma falha de conversão em erro seguro', async () => {
+        const technicalMessage = 'Cast to ObjectId failed';
+        const castError = new Error(technicalMessage);
+
+        castError.name = 'CastError';
+
+        const { LessonModel } = createFakeLessonModel({
+            deleteError: castError,
+        });
+        const service = new LessonService({ LessonModel });
+
+        await assert.rejects(
+            service.deleteLesson(VALID_LESSON_ID),
+            (error) => {
+                assertOperationalInputError(
+                    error,
+                    LESSON_SERVICE_CODES.INVALID_LESSON_ID,
+                    LESSON_SERVICE_MESSAGES.INVALID_LESSON_ID,
+                );
+                assert.equal(
+                    error.message.includes(technicalMessage),
+                    false,
+                );
+
+                return true;
+            },
+        );
+    });
+
+    test('propaga uma falha real ocorrida durante a exclusão', async () => {
+        const expectedError = new Error(
+            'Falha controlada ao excluir a aula.',
+        );
+        const { LessonModel } = createFakeLessonModel({
+            deleteError: expectedError,
+        });
+        const service = new LessonService({ LessonModel });
+
+        await assert.rejects(
+            service.deleteLesson(VALID_LESSON_ID),
+            (error) => {
+                assert.strictEqual(error, expectedError);
+
+                return true;
+            },
+        );
+    });
+
+    test('rejeita um documento inconsistente devolvido pela exclusão', async () => {
+        const { LessonModel } = createFakeLessonModel({
+            deletedLesson: createLessonDocument({
+                _id: VALID_LESSON_ID,
+                needsReview: undefined,
+            }),
+        });
+        const service = new LessonService({ LessonModel });
+
+        await assert.rejects(
+            service.deleteLesson(VALID_LESSON_ID),
             {
                 name: 'TypeError',
                 message:

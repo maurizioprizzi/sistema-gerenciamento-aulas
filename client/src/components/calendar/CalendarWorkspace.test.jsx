@@ -36,18 +36,20 @@ afterEach(() => {
 });
 
 /**
- * Cria o contrato mínimo da consulta, criação e edição de aulas.
+ * Cria o contrato de consulta, criação, edição e exclusão de aulas.
  *
  * @param {object} overrides Operações substituídas pelo cenário.
  * @returns {{ listLessons: ReturnType<typeof vi.fn>,
  * createLesson: ReturnType<typeof vi.fn>,
- * updateLesson: ReturnType<typeof vi.fn> }} Serviço controlado.
+ * updateLesson: ReturnType<typeof vi.fn>,
+ * deleteLesson: ReturnType<typeof vi.fn> }} Serviço controlado.
  */
 function createLessonService(overrides = {}) {
     return {
         listLessons: vi.fn().mockResolvedValue([]),
         createLesson: vi.fn(),
         updateLesson: vi.fn(),
+        deleteLesson: vi.fn(),
         ...overrides,
     };
 }
@@ -199,6 +201,17 @@ describe('configuração da área do calendário', () => {
             { listLessons() {} },
             { createLesson() {} },
             { listLessons() {}, createLesson: true },
+            {
+                listLessons() {},
+                createLesson() {},
+                updateLesson() {},
+            },
+            {
+                listLessons() {},
+                createLesson() {},
+                updateLesson() {},
+                deleteLesson: true,
+            },
         ];
 
         for (const lessonService of invalidServices) {

@@ -45,7 +45,7 @@ const ADMINISTRATIVE_AUTHENTICATION = Object.freeze({
 });
 
 /**
- * Identificador válido utilizado nas operações de edição.
+ * Identificador válido utilizado nas operações de edição e exclusão.
  */
 const EDITABLE_LESSON_ID = '64f000000000000000000001';
 
@@ -118,8 +118,10 @@ function createLessonDocument(overrides = {}) {
  * @param {object[]} [options.lessons] Resultado da consulta.
  * @param {object} [options.createdLesson] Resultado da criação.
  * @param {object | null} [options.updatedLesson] Resultado da edição.
+ * @param {object | null} [options.deletedLesson] Resultado da exclusão.
  * @param {Error | null} [options.createError] Falha da criação.
  * @param {Error | null} [options.updateError] Falha da edição.
+ * @param {Error | null} [options.deleteError] Falha da exclusão.
  * @param {Error | null} [options.sortError] Falha da consulta ordenada.
  * @returns {{ LessonModel: object, calls: object }} Modelo e chamadas.
  */
@@ -129,13 +131,18 @@ function createFakeLessonModel({
     updatedLesson = createLessonDocument({
         _id: EDITABLE_LESSON_ID,
     }),
+    deletedLesson = createLessonDocument({
+        _id: EDITABLE_LESSON_ID,
+    }),
     createError = null,
     updateError = null,
+    deleteError = null,
     sortError = null,
 } = {}) {
     const calls = {
         create: [],
         findByIdAndUpdate: [],
+        findByIdAndDelete: [],
         find: [],
         sort: [],
     };
@@ -167,6 +174,16 @@ function createFakeLessonModel({
             }
 
             return updatedLesson;
+        },
+
+        async findByIdAndDelete(lessonId) {
+            calls.findByIdAndDelete.push(lessonId);
+
+            if (deleteError) {
+                throw deleteError;
+            }
+
+            return deletedLesson;
         },
 
         find(filter) {
@@ -362,6 +379,44 @@ describe('integração HTTP administrativa das aulas', () => {
             });
 
             assert.equal(calls.findByIdAndUpdate.length, 0);
+        },
+    );
+
+    test(
+        'recusa exclusão sem autenticação antes de acessar o modelo',
+        async () => {
+            const { LessonModel, calls } =
+                createFakeLessonModel();
+            const app = createLessonTestApp({
+                LessonModel,
+                authentication: undefined,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    baseUrl
+                        + '/api/lessons/'
+                        + EDITABLE_LESSON_ID,
+                    {
+                        method: 'DELETE',
+                    },
+                );
+                const body = await response.json();
+
+                assert.equal(response.status, 401);
+                assert.deepEqual(body, {
+                    error: {
+                        code:
+                            ADMINISTRATIVE_AUTHORIZATION_CODES
+                                .AUTHENTICATION_REQUIRED,
+                        message:
+                            ADMINISTRATIVE_AUTHORIZATION_ERRORS
+                                .AUTHENTICATION_REQUIRED,
+                    },
+                });
+            });
+
+            assert.equal(calls.findByIdAndDelete.length, 0);
         },
     );
 
@@ -738,6 +793,167 @@ describe('integração HTTP administrativa das aulas', () => {
             });
 
             assert.equal(calls.findByIdAndUpdate.length, 1);
+        },
+    );
+
+    test(
+        'exclui uma aula autorizada e responde 204 sem corpo',
+        async () => {
+            const deletedLesson = createLessonDocument({
+                _id: EDITABLE_LESSON_ID,
+            });
+            const { LessonModel, calls } =
+                createFakeLessonModel({ deletedLesson });
+            const app = createLessonTestApp({
+                LessonModel,
+                authentication: ADMINISTRATIVE_AUTHENTICATION,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    baseUrl
+                        + '/api/lessons/'
+                        + EDITABLE_LESSON_ID,
+                    {
+                        method: 'DELETE',
+                    },
+                );
+                const body = await response.text();
+
+                assert.equal(response.status, 204);
+                assert.equal(body, '');
+            });
+
+            assert.deepEqual(calls.findByIdAndDelete, [
+                EDITABLE_LESSON_ID,
+            ]);
+        },
+    );
+
+    test(
+        'mantém 204 quando a aula excluída já não existe',
+        async () => {
+            const { LessonModel, calls } =
+                createFakeLessonModel({
+                    deletedLesson: null,
+                });
+            const app = createLessonTestApp({
+                LessonModel,
+                authentication: ADMINISTRATIVE_AUTHENTICATION,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    baseUrl
+                        + '/api/lessons/'
+                        + EDITABLE_LESSON_ID,
+                    {
+                        method: 'DELETE',
+                    },
+                );
+                const body = await response.text();
+
+                assert.equal(response.status, 204);
+                assert.equal(body, '');
+            });
+
+            assert.deepEqual(calls.findByIdAndDelete, [
+                EDITABLE_LESSON_ID,
+            ]);
+        },
+    );
+
+    test(
+        'rejeita identificador inválido antes de excluir no modelo',
+        async () => {
+            const { LessonModel, calls } =
+                createFakeLessonModel();
+            const app = createLessonTestApp({
+                LessonModel,
+                authentication: ADMINISTRATIVE_AUTHENTICATION,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    baseUrl + '/api/lessons/id-invalido',
+                    {
+                        method: 'DELETE',
+                    },
+                );
+                const body = await response.json();
+
+                assert.equal(response.status, 400);
+                assert.deepEqual(body, {
+                    error: {
+                        code:
+                            LESSON_SERVICE_CODES.INVALID_LESSON_ID,
+                        message:
+                            LESSON_SERVICE_MESSAGES.INVALID_LESSON_ID,
+                    },
+                });
+            });
+
+            assert.equal(calls.findByIdAndDelete.length, 0);
+        },
+    );
+
+    test(
+        'oculta uma falha inesperada da exclusão e a registra',
+        async () => {
+            const databaseError = new Error(
+                'Falha interna ao excluir em mongodb://segredo',
+            );
+            const { LessonModel, calls } =
+                createFakeLessonModel({
+                    deleteError: databaseError,
+                });
+            const logEntries = [];
+            const logger = {
+                error(...argumentsReceived) {
+                    logEntries.push(argumentsReceived);
+                },
+            };
+            const app = createLessonTestApp({
+                LessonModel,
+                authentication: ADMINISTRATIVE_AUTHENTICATION,
+                logger,
+            });
+
+            await listenTemporarily(app, async (baseUrl) => {
+                const response = await fetch(
+                    baseUrl
+                        + '/api/lessons/'
+                        + EDITABLE_LESSON_ID,
+                    {
+                        method: 'DELETE',
+                    },
+                );
+                const body = await response.json();
+
+                assert.equal(response.status, 500);
+                assert.deepEqual(body, {
+                    error: {
+                        code: 'INTERNAL_ERROR',
+                        message:
+                            'Não foi possível concluir a operação.',
+                    },
+                });
+                assert.equal(
+                    JSON.stringify(body).includes(
+                        databaseError.message,
+                    ),
+                    false,
+                );
+            });
+
+            assert.equal(calls.findByIdAndDelete.length, 1);
+            assert.equal(logEntries.length, 1);
+            assert.equal(
+                JSON.stringify(logEntries).includes(
+                    databaseError.message,
+                ),
+                true,
+            );
         },
     );
 

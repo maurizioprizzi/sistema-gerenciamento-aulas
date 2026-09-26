@@ -256,7 +256,7 @@ class LessonApiError extends Error {
 }
 
 /**
- * Encapsula consulta, criação e edição de aulas pela API administrativa.
+ * Encapsula consulta, criação, edição e exclusão pela API administrativa.
  */
 class LessonApi {
     /** @type {Function} */
@@ -278,6 +278,7 @@ class LessonApi {
         this.listLessons = this.listLessons.bind(this);
         this.createLesson = this.createLesson.bind(this);
         this.updateLesson = this.updateLesson.bind(this);
+        this.deleteLesson = this.deleteLesson.bind(this);
 
         Object.freeze(this);
     }
@@ -642,10 +643,11 @@ class LessonApi {
      *
      * @param {object} request Configuração interna.
      * @param {string} request.path Caminho relativo.
-     * @param {'GET' | 'POST' | 'PUT'} request.method Método HTTP.
+     * @param {'GET' | 'POST' | 'PUT' | 'DELETE'} request.method
+     * Método HTTP.
      * @param {number} request.expectedStatus Estado esperado.
      * @param {object} [request.body] Corpo opcional.
-     * @returns {Promise<unknown>} Corpo JSON interpretado.
+     * @returns {Promise<unknown|null>} Corpo JSON ou null para 204.
      */
     async #request({ path, method, expectedStatus, body }) {
         const headers = {
@@ -715,6 +717,10 @@ class LessonApi {
             throw LessonApi.createInvalidResponseError(
                 response.status,
             );
+        }
+
+        if (expectedStatus === 204) {
+            return null;
         }
 
         if (typeof response.json !== 'function') {
@@ -799,6 +805,26 @@ class LessonApi {
         });
 
         return LessonApi.createPublicCreatedLesson(payload);
+    }
+
+    /**
+     * Exclui uma aula pelo identificador público.
+     *
+     * A API responde 204 sem corpo. A operação não envia conteúdo e não
+     * devolve representação, evitando que dados removidos permaneçam na
+     * camada visual como se ainda fossem um estado atual.
+     *
+     * @param {string} lessonId Identificador público da aula.
+     * @returns {Promise<void>}
+     */
+    async deleteLesson(lessonId) {
+        const preparedId = LessonApi.createLessonId(lessonId);
+
+        await this.#request({
+            path: LESSON_API_PATHS.LESSONS + '/' + preparedId,
+            method: 'DELETE',
+            expectedStatus: 204,
+        });
     }
 }
 

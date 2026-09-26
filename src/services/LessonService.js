@@ -167,7 +167,7 @@ function createInvalidLessonIdError() {
 }
 
 /**
- * Coordena as regras de criação, edição e consulta das aulas.
+ * Coordena as regras de criação, edição, exclusão e consulta das aulas.
  *
  * O serviço desconhece HTTP, sessões e detalhes visuais. O modelo é recebido
  * por injeção para permitir testes inteiramente isolados do MongoDB.
@@ -223,7 +223,8 @@ class LessonService {
             LessonModel
             && typeof LessonModel.create === 'function'
             && typeof LessonModel.find === 'function'
-            && typeof LessonModel.findByIdAndUpdate === 'function';
+            && typeof LessonModel.findByIdAndUpdate === 'function'
+            && typeof LessonModel.findByIdAndDelete === 'function';
 
         if (!isValid) {
             throw new TypeError(
@@ -606,6 +607,48 @@ class LessonService {
 
         return LessonService.createLessonRepresentation(
             updatedLesson,
+        );
+    }
+
+    /**
+     * Exclui atomicamente uma aula pelo identificador.
+     *
+     * A validação ocorre antes do acesso ao modelo. A ausência do documento
+     * é representada por 'null', tornando a operação idempotente para as
+     * camadas HTTP e visual sem ocultar identificadores malformados.
+     *
+     * O documento removido atravessa a mesma seleção defensiva aplicada à
+     * criação e à edição. Assim, propriedades internas do MongoDB não saem
+     * da fronteira do serviço.
+     *
+     * @param {unknown} lessonId Identificador da aula.
+     * @returns {Promise<Readonly<object>|null>} Aula excluída ou ausência.
+     */
+    async deleteLesson(lessonId) {
+        const preparedId =
+            LessonService.prepareLessonId(lessonId);
+
+        let deletedLesson;
+
+        try {
+            deletedLesson =
+                await this.#LessonModel.findByIdAndDelete(
+                    preparedId,
+                );
+        } catch (error) {
+            if (LessonService.isModelCastError(error)) {
+                throw createInvalidLessonIdError();
+            }
+
+            throw error;
+        }
+
+        if (deletedLesson === null) {
+            return null;
+        }
+
+        return LessonService.createLessonRepresentation(
+            deletedLesson,
         );
     }
 

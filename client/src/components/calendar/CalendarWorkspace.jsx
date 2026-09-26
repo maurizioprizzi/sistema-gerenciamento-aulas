@@ -113,7 +113,9 @@ function CalendarWorkspace({
         && typeof lessonService === 'object'
         && !Array.isArray(lessonService)
         && typeof lessonService.listLessons === 'function'
-        && typeof lessonService.createLesson === 'function';
+        && typeof lessonService.createLesson === 'function'
+        && typeof lessonService.updateLesson === 'function'
+        && typeof lessonService.deleteLesson === 'function';
 
     if (!isValidLessonService) {
         throw new TypeError(

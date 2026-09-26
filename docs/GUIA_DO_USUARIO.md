@@ -2,7 +2,7 @@
 
 ## Professor Dionísio Pereira — Senac Ceilândia
 
-> Guia atualizado em 24 de setembro de 2026.
+> Guia atualizado em 25 de setembro de 2026.
 >
 > Este documento foi escrito para explicar o uso da aplicação sem exigir
 > conhecimento de programação.
@@ -226,10 +226,25 @@ Se não quiser salvar as mudanças, clique ou toque em **Cancelar edição**. O
 formulário voltará para **Cadastrar registro** e o registro continuará com os
 dados anteriores.
 
-> A versão atual permite editar, mas ainda não permite excluir aulas, atividades
-> ou avaliações. Se um registro precisar ser removido, solicite suporte.
+## 8. Excluir uma aula, atividade ou avaliação
 
-## 8. Consultar aulas cadastradas
+1. Clique ou toque em **Gerenciar aulas**.
+2. Localize o cartão do registro que deseja remover.
+3. Confira com atenção a data, o curso e a unidade curricular.
+4. Clique ou toque em **Excluir**.
+5. Leia o aviso apresentado no próprio cartão.
+6. Se tiver certeza, clique ou toque em **Confirmar exclusão**.
+7. Aguarde o registro desaparecer da lista.
+
+Durante a operação, o botão mostrará **Excluindo...**. Não clique novamente.
+
+Se desistir antes da confirmação, clique ou toque em **Cancelar**. O aviso será
+fechado e o registro permanecerá sem alterações.
+
+> Atenção: depois de clicar em **Confirmar exclusão**, a remoção é permanente e
+> não pode ser desfeita pela aplicação. Em caso de dúvida, escolha **Cancelar**.
+
+## 9. Consultar aulas cadastradas
 
 Na área **Gerenciar aulas**, abaixo do cadastro, estão os filtros de consulta.
 
@@ -253,20 +268,20 @@ Para voltar a mostrar todos os registros, clique em **Limpar filtros**.
 O número apresentado próximo ao título informa quantos registros foram
 encontrados.
 
-## 9. Entendendo os materiais
+## 10. Entendendo os materiais
 
 Na aplicação existem dois tipos de organização dos materiais.
 
-### 9.1 Material específico da aula
+### 10.1 Material específico da aula
 
 É o link informado diretamente no cadastro daquela aula, atividade ou
 avaliação.
 
-### 9.2 Material do mês
+### 10.2 Material do mês
 
 É um link geral que pode valer para os registros de um mês inteiro.
 
-### 9.3 Qual material tem prioridade
+### 10.3 Qual material tem prioridade
 
 O material específico tem prioridade.
 
@@ -283,7 +298,7 @@ misturará esse PA com o GD+AD mensal.
 
 Essa regra evita combinar materiais de origens diferentes sem confirmação.
 
-## 10. Consultar materiais por aula
+## 11. Consultar materiais por aula
 
 1. Clique ou toque em **Materiais**.
 2. Localize a área **Por aula (data específica)**.
@@ -297,7 +312,7 @@ Quando aparecer um traço (`—`), não existe link disponível para aquele camp
 
 Os links são abertos em outra aba do navegador.
 
-## 11. Cadastrar materiais para um mês inteiro
+## 12. Cadastrar materiais para um mês inteiro
 
 1. Na área **Materiais**, localize **Materiais por mês**.
 2. Clique em **Adicionar link mensal**.
@@ -320,7 +335,7 @@ mês será removido.
 Antes de substituir um mês, confira os dois campos, mesmo quando desejar
 alterar somente um dos links.
 
-## 12. Excluir materiais mensais
+## 13. Excluir materiais mensais
 
 1. Na tabela **Materiais por mês**, localize o período desejado.
 2. Confira o mês e os links apresentados.
@@ -331,7 +346,7 @@ alterar somente um dos links.
 A exclusão remove apenas o conjunto de links daquele mês. Ela não exclui as
 aulas cadastradas e não remove links específicos que já pertencem às aulas.
 
-## 13. Usar o calendário visual
+## 14. Usar o calendário visual
 
 1. Clique ou toque em **Calendário visual**.
 2. Aguarde a grade do mês atual aparecer.
@@ -345,7 +360,7 @@ Na parte superior estão os botões:
 
 O campo **Curso** permite mostrar todos os cursos ou somente um curso.
 
-### 13.1 Cores e destaques
+### 14.1 Cores e destaques
 
 Cada curso possui sua própria cor. A legenda abaixo da grade mostra a
 correspondência.
@@ -353,7 +368,7 @@ correspondência.
 O dia atual possui um destaque próprio. Um registro marcado para revisão
 recebe uma borda adicional e é identificado pela estrela da legenda.
 
-### 13.2 Ver os detalhes de um registro
+### 14.2 Ver os detalhes de um registro
 
 1. Clique ou toque no registro dentro do dia.
 2. Confira data, curso, unidade curricular, tipo, número e revisão.
@@ -361,7 +376,7 @@ recebe uma borda adicional e é identificado pela estrela da legenda.
 4. Para fechar os detalhes, clique no botão **Fechar detalhes da aula**,
    representado pelo símbolo `×`.
 
-### 13.3 Uso no celular
+### 14.3 Uso no celular
 
 No celular, a grade mantém as sete colunas da semana. Deslize a grade para os
 lados quando todas as colunas não couberem na tela.
@@ -369,7 +384,7 @@ lados quando todas as colunas não couberem na tela.
 A rolagem acontece dentro do calendário. Os demais elementos da página
 permanecem no lugar.
 
-## 14. O que fazer quando aparecer um erro
+## 15. O que fazer quando aparecer um erro
 
 Quando houver uma falha temporária, a tela poderá mostrar o botão
 **Tentar novamente**.
@@ -393,7 +408,7 @@ Ao pedir ajuda, informe:
 
 Não envie sua senha junto com o pedido de ajuda.
 
-## 15. Como sair com segurança
+## 16. Como sair com segurança
 
 1. Localize o botão **Sair** na parte superior da tela.
 2. Clique ou toque uma vez.
@@ -404,7 +419,7 @@ Durante o encerramento, o botão poderá mostrar **Saindo...**.
 Em computador compartilhado, confirme que a tela de entrada apareceu antes de
 fechar o navegador.
 
-## 16. Boas práticas de uso
+## 17. Boas práticas de uso
 
 - Confira os dados antes de cadastrar.
 - Evite clicar repetidamente enquanto aparecer uma mensagem de processamento.
@@ -412,10 +427,10 @@ fechar o navegador.
 - Não compartilhe sua senha.
 - Sempre saia da aplicação em aparelhos compartilhados.
 - Não cadastre informações reais antes da liberação oficial da aplicação.
-- Em caso de dúvida sobre a exclusão de um material ou a correção de uma aula,
-  peça orientação antes de confirmar.
+- Em caso de dúvida sobre a exclusão de uma aula ou de um material, escolha
+  **Cancelar** e peça orientação antes de confirmar.
 
-## 17. Resumo rápido
+## 18. Resumo rápido
 
 ### Para cadastrar um registro
 
@@ -426,6 +441,13 @@ fechar o navegador.
 
 **Gerenciar aulas** → localizar o cartão → **Editar** → corrigir →
 **Salvar alterações**.
+
+### Para excluir um registro
+
+**Gerenciar aulas** → localizar o cartão → **Excluir** → conferir →
+**Confirmar exclusão**.
+
+Se não tiver certeza, clique ou toque em **Cancelar**.
 
 ### Para localizar uma aula
 
@@ -444,7 +466,7 @@ fechar o navegador.
 
 Clique em **Sair** e aguarde a tela de entrada.
 
-## 18. Suporte
+## 19. Suporte
 
 O contato de suporte e o endereço definitivo da aplicação serão informados
 antes da liberação para uso real.

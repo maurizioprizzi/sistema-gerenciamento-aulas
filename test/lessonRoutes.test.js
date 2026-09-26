@@ -16,13 +16,14 @@ const {
 /**
  * Cria um controlador válido com handlers identificáveis.
  *
- * @returns {{ create: Function, update: Function, list: Function }}
- * Controlador controlado.
+ * @returns {{ create: Function, update: Function,
+ * delete: Function, list: Function }} Controlador controlado.
  */
 function createController() {
     return {
         create() {},
         update() {},
+        delete() {},
         list() {},
     };
 }
@@ -50,17 +51,20 @@ function administrativeAuthorizationMiddleware(
  * @param {Error|null} options.getError Falha produzida por get().
  * @param {Error|null} options.postError Falha produzida por post().
  * @param {Error|null} options.putError Falha produzida por put().
+ * @param {Error|null} options.deleteError Falha produzida por delete().
  * @returns {{ router: object, calls: object }} Roteador e chamadas.
  */
 function createFakeRouter({
     getError = null,
     postError = null,
     putError = null,
+    deleteError = null,
 } = {}) {
     const calls = {
         get: [],
         post: [],
         put: [],
+        delete: [],
         sequence: [],
     };
 
@@ -106,6 +110,20 @@ function createFakeRouter({
 
             return router;
         },
+
+        delete(...argumentsReceived) {
+            calls.delete.push(argumentsReceived);
+            calls.sequence.push({
+                method: 'delete',
+                arguments: argumentsReceived,
+            });
+
+            if (deleteError) {
+                throw deleteError;
+            }
+
+            return router;
+        },
     };
 
     return {
@@ -141,9 +159,10 @@ describe('configuração das rotas de aulas', () => {
         assert.equal(typeof router.get, 'function');
         assert.equal(typeof router.post, 'function');
         assert.equal(typeof router.put, 'function');
+        assert.equal(typeof router.delete, 'function');
     });
 
-    test('protege criação, edição e consulta antes dos controladores', () => {
+    test('protege criação, edição, exclusão e consulta antes dos controladores', () => {
         const controller = createController();
         const { router, calls } = createFakeRouter();
 
@@ -177,9 +196,16 @@ describe('configuração das rotas de aulas', () => {
                 controller.update,
             ],
         ]);
+        assert.deepEqual(calls.delete, [
+            [
+                LESSON_ROUTE_PATHS.ITEM,
+                administrativeAuthorizationMiddleware,
+                controller.delete,
+            ],
+        ]);
         assert.deepEqual(
             calls.sequence.map((entry) => entry.method),
-            ['get', 'post', 'put'],
+            ['get', 'post', 'put', 'delete'],
         );
     });
 
@@ -197,6 +223,12 @@ describe('configuração das rotas de aulas', () => {
             { create() {}, update: 'não é função', list() {} },
             { create() {}, list() {} },
             { create() {}, update() {}, list: 'não é função' },
+            {
+                create() {},
+                update() {},
+                delete: 'não é função',
+                list() {},
+            },
         ];
 
         for (const controller of invalidControllers) {
@@ -318,6 +350,12 @@ describe('configuração das rotas de aulas', () => {
             { get: 'não é função', post() {}, put() {} },
             { get() {}, post: 'não é função', put() {} },
             { get() {}, post() {}, put: 'não é função' },
+            {
+                get() {},
+                post() {},
+                put() {},
+                delete: 'não é função',
+            },
         ];
 
         for (const invalidRouter of invalidRouters) {
@@ -342,6 +380,7 @@ describe('configuração das rotas de aulas', () => {
             get: [],
             post: [],
             put: [],
+            delete: [],
         };
 
         function router() {}
@@ -354,6 +393,9 @@ describe('configuração das rotas de aulas', () => {
         };
         router.put = (...argumentsReceived) => {
             calls.put.push(argumentsReceived);
+        };
+        router.delete = (...argumentsReceived) => {
+            calls.delete.push(argumentsReceived);
         };
 
         const controller = createController();
@@ -369,6 +411,7 @@ describe('configuração das rotas de aulas', () => {
         assert.equal(calls.get.length, 1);
         assert.equal(calls.post.length, 1);
         assert.equal(calls.put.length, 1);
+        assert.equal(calls.delete.length, 1);
     });
 
     test('propaga uma falha real da fábrica', () => {
@@ -402,6 +445,9 @@ describe('configuração das rotas de aulas', () => {
         const putError = new Error(
             'Falha controlada ao registrar PUT.',
         );
+        const deleteError = new Error(
+            'Falha controlada ao registrar DELETE.',
+        );
 
         const scenarios = [
             {
@@ -415,6 +461,10 @@ describe('configuração das rotas de aulas', () => {
             {
                 router: createFakeRouter({ putError }).router,
                 expectedError: putError,
+            },
+            {
+                router: createFakeRouter({ deleteError }).router,
+                expectedError: deleteError,
             },
         ];
 

@@ -37,6 +37,19 @@ function createJsonResponse(status, body) {
 }
 
 /**
+ * Cria uma resposta sem conteúdo e registra qualquer leitura indevida de JSON.
+ *
+ * @returns {object} Resposta HTTP 204 simulada.
+ */
+function createNoContentResponse() {
+    return {
+        status: 204,
+        ok: true,
+        json: vi.fn(),
+    };
+}
+
+/**
  * Cria a representação pública completa de uma aula.
  *
  * Campos internos adicionais comprovam que o cliente seleciona novamente
@@ -156,6 +169,7 @@ describe('configuração da LessonApi', () => {
         expect(typeof lessonApi.listLessons).toBe('function');
         expect(typeof lessonApi.createLesson).toBe('function');
         expect(typeof lessonApi.updateLesson).toBe('function');
+        expect(typeof lessonApi.deleteLesson).toBe('function');
     });
 
     test('rejeita clientes HTTP inválidos', () => {
@@ -214,6 +228,19 @@ describe('configuração da LessonApi', () => {
 
         expect(lesson.id).toBe(lessonId);
         expect(fetchClient).toHaveBeenCalledOnce();
+    });
+
+    test('mantém o contexto quando a exclusão é extraída', async () => {
+        const lessonId = '64f000000000000000000001';
+        const response = createNoContentResponse();
+        const fetchClient = vi.fn().mockResolvedValue(response);
+        const api = new LessonApi({ fetchClient });
+        const deleteLesson = api.deleteLesson;
+
+        await expect(deleteLesson(lessonId)).resolves.toBeUndefined();
+
+        expect(fetchClient).toHaveBeenCalledOnce();
+        expect(response.json).not.toHaveBeenCalled();
     });
 });
 
@@ -895,6 +922,115 @@ describe('edição de aulas', () => {
         expect(error.message).not.toContain(
             'material-confidencial',
         );
+        expect(error.cause).toBe(cause);
+    });
+});
+
+describe('exclusão de aulas', () => {
+    const lessonId = '64f000000000000000000001';
+
+    test('envia DELETE sem corpo e aceita a resposta 204', async () => {
+        const response = createNoContentResponse();
+        const fetchClient = vi.fn().mockResolvedValue(response);
+        const api = new LessonApi({ fetchClient });
+
+        await expect(
+            api.deleteLesson(lessonId),
+        ).resolves.toBeUndefined();
+
+        expect(fetchClient).toHaveBeenCalledWith(
+            '/api/lessons/' + lessonId,
+            {
+                method: 'DELETE',
+                headers: {
+                    Accept: 'application/json',
+                },
+                credentials: 'same-origin',
+                cache: 'no-store',
+            },
+        );
+        expect(response.json).not.toHaveBeenCalled();
+    });
+
+    test('rejeita o identificador inválido antes da requisição', async () => {
+        const fetchClient = vi.fn();
+        const api = new LessonApi({ fetchClient });
+
+        await expect(
+            api.deleteLesson('identificador-inválido'),
+        ).rejects.toThrowError(
+            LESSON_API_MESSAGES.INVALID_LESSON_ID,
+        );
+
+        expect(fetchClient).not.toHaveBeenCalled();
+    });
+
+    test('preserva uma recusa pública conhecida do backend', async () => {
+        const fetchClient = vi.fn().mockResolvedValue(
+            createJsonResponse(400, {
+                error: {
+                    code: 'INVALID_LESSON_ID',
+                    message:
+                        'O identificador da aula é inválido.',
+                },
+            }),
+        );
+        const api = new LessonApi({ fetchClient });
+
+        await expect(
+            api.deleteLesson(lessonId),
+        ).rejects.toMatchObject({
+            statusCode: 400,
+            code: 'INVALID_LESSON_ID',
+            message: 'O identificador da aula é inválido.',
+        });
+    });
+
+    test('rejeita estado de sucesso diferente de 204', async () => {
+        const response = createJsonResponse(200, {});
+        const api = new LessonApi({
+            fetchClient: vi.fn().mockResolvedValue(response),
+        });
+
+        await expect(
+            api.deleteLesson(lessonId),
+        ).rejects.toMatchObject({
+            statusCode: 200,
+            code: LESSON_API_CODES.INVALID_RESPONSE,
+        });
+        expect(response.json).not.toHaveBeenCalled();
+    });
+
+    test('rejeita uma resposta HTTP sem estrutura válida', async () => {
+        const api = new LessonApi({
+            fetchClient: vi.fn().mockResolvedValue({}),
+        });
+
+        await expect(
+            api.deleteLesson(lessonId),
+        ).rejects.toMatchObject({
+            code: LESSON_API_CODES.INVALID_RESPONSE,
+            message: LESSON_API_MESSAGES.INVALID_RESPONSE,
+        });
+    });
+
+    test('converte uma falha de rede em erro público seguro', async () => {
+        const cause = new Error(
+            'Falha técnica controlada durante a exclusão.',
+        );
+        const api = new LessonApi({
+            fetchClient: vi.fn().mockRejectedValue(cause),
+        });
+
+        const error = await api.deleteLesson(lessonId)
+            .catch((receivedError) => receivedError);
+
+        expect(error).toBeInstanceOf(LessonApiError);
+        expect(error).toMatchObject({
+            code: LESSON_API_CODES.NETWORK_ERROR,
+            message: LESSON_API_MESSAGES.NETWORK_ERROR,
+        });
+        expect(error.message).not.toContain(lessonId);
         expect(error.cause).toBe(cause);
     });
 });

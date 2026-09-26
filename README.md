@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 24 de setembro de 2026.
+> Última atualização desta documentação: 25 de setembro de 2026.
 
 ## Estado atual
 
@@ -83,15 +83,16 @@ mês sem depender do armazenamento local do navegador.
 - modelo Mongoose para o usuário administrativo;
 - modelo Mongoose para aulas, atividades e avaliações do calendário;
 - modelo Mongoose para os materiais aplicáveis a um mês inteiro;
-- serviço isolado para criação, edição e consulta de aulas;
+- serviço isolado para criação, edição, exclusão e consulta de aulas;
 - seleção estrutural dos oito campos permitidos durante a criação e a edição;
-- validação estrita do identificador antes de editar uma aula;
+- validação estrita do identificador antes de editar ou excluir uma aula;
 - substituição completa, atômica e validada dos dados de uma aula;
+- exclusão atômica e idempotente de uma aula identificada;
 - resposta pública segura quando o registro solicitado para edição não existe;
 - filtros de aulas por curso, mês e data mínima;
 - ordenação determinística das aulas por data e identificador;
 - controlador HTTP com representações públicas defensivas;
-- rotas protegidas `GET /api/lessons`, `POST /api/lessons` e `PUT /api/lessons/:id`;
+- rotas protegidas `GET /api/lessons`, `POST /api/lessons`, `PUT /api/lessons/:id` e `DELETE /api/lessons/:id`;
 - composição da API de aulas no ciclo real do servidor;
 - serviço isolado para listagem, consulta, substituição e exclusão dos materiais mensais;
 - seleção explícita dos dois links aceitos nos materiais mensais;
@@ -157,7 +158,7 @@ mês sem depender do armazenamento local do navegador.
 - separação entre rotas da API, arquivos estáticos e caminhos visuais;
 - testes de componentes com Vitest, jsdom e Testing Library;
 - serviço isolado para consumir a API de autenticação no navegador;
-- serviço frontend isolado para consulta, criação e edição de aulas;
+- serviço frontend isolado para consulta, criação, edição e exclusão de aulas;
 - filtros de aulas serializados em ordem determinística;
 - seleção defensiva e imutável das aulas recebidas pelo navegador;
 - erros públicos seguros para rede, recusas e respostas inválidas da API de aulas;
@@ -171,8 +172,10 @@ mês sem depender do armazenamento local do navegador.
 - validação nativa dos campos obrigatórios antes da requisição;
 - preservação dos dados recusados e limpeza somente depois do sucesso;
 - seleção visual do registro, cancelamento local e gravação persistente da edição;
+- exclusão visual em duas etapas com confirmação explícita e cancelamento;
+- bloqueio das ações durante a exclusão e prevenção de conflito com a edição;
 - atualização da consulta com preservação dos filtros aplicados;
-- estados acessíveis de cadastro e edição pendentes, erro e confirmação;
+- estados acessíveis de cadastro, edição e exclusão pendentes, erro e confirmação;
 - serviço frontend isolado para listar, consultar, salvar e excluir materiais mensais;
 - formulário visual dos três campos mensais previstos no protótipo;
 - listagem e exclusão visual dos materiais mensais;
@@ -210,7 +213,6 @@ mês sem depender do armazenamento local do navegador.
 
 ### Ainda não implementado
 
-- exclusão segura de aulas pela API e pela interface;
 - acesso externo à aplicação;
 - implantação em ambiente de produção.
 
@@ -489,8 +491,8 @@ npm --prefix client test
 No marco atual, as duas suítes possuem em conjunto:
 
 ```text
-888 testes
-122 suítes
+919 testes
+124 suítes
 0 falhas
 0 testes ignorados
 ```
@@ -503,6 +505,8 @@ Os testes verificam, entre outros comportamentos:
 - modelo administrativo e índice único do e-mail;
 - contratos dos registros de aula, atividade e avaliação;
 - validação de cursos, tipos, datas civis e campos opcionais das aulas;
+- criação, edição e exclusão protegidas pela cadeia HTTP administrativa;
+- confirmação, cancelamento, repetição e responsividade da exclusão visual;
 - contrato mensal dos materiais e unicidade de cada período;
 - normalização e validação segura dos links de PA e GD+AD;
 - contrato estrutural da listagem, consulta, substituição e exclusão mensal;
@@ -1398,9 +1402,9 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. implementar a exclusão segura de aulas com confirmação explícita;
-2. realizar testes completos de integração e interface;
-3. validar o guia de uso com o professor e preparar o guia técnico;
+1. atualizar e validar o guia de uso com o professor;
+2. preparar o guia técnico de implantação, operação e recuperação;
+3. selecionar e configurar os serviços externos necessários;
 4. publicar e validar a aplicação em computador e celular.
 
 ## Fluxo de atualização pelo Git
