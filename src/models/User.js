@@ -13,9 +13,8 @@ const USER_MODEL_NAME = 'User';
 /**
  * Papéis reconhecidos pelo sistema.
  *
- * Neste primeiro momento existe somente o administrador, pois a aplicação
- * será utilizada pelo Prof. Dionísio. A estrutura permite acrescentar novos
- * papéis futuramente sem espalhar textos soltos pelo código.
+ * Cada instalação possui uma única conta administrativa. Outros papéis
+ * poderão ser acrescentados futuramente, se o escopo da aplicação mudar.
  */
 const USER_ROLES = Object.freeze({
     ADMIN: 'admin',
@@ -33,8 +32,8 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * Normaliza nomes antes de armazená-los.
  *
  * Além de remover espaços no início e no fim, a função transforma sequências
- * de espaços em apenas um. Assim, "Dionísio   Pereira" será armazenado como
- * "Dionísio Pereira".
+ * de espaços em apenas um. Assim, "Ana   Silva" será armazenado como
+ * "Ana Silva".
  *
  * @param {unknown} value Valor recebido pelo Mongoose.
  * @returns {unknown} Valor normalizado ou o valor original, quando não é texto.
@@ -51,8 +50,8 @@ function normalizeName(value) {
  * Normaliza endereços de e-mail.
  *
  * E-mails são convertidos para letras minúsculas e têm espaços externos
- * removidos. Isso evita que "Professor@Exemplo.com" e
- * "professor@exemplo.com" sejam tratados como contas diferentes.
+ * removidos. Isso evita que "Admin@Exemplo.com" e
+ * "admin@exemplo.com" sejam tratados como contas diferentes.
  *
  * @param {unknown} value Valor recebido pelo Mongoose.
  * @returns {unknown} E-mail normalizado ou o valor original.
@@ -120,7 +119,7 @@ function createUserSchema(mongooseClient = mongoose) {
             },
 
             /**
-             * Somente o hash produzido pela futura camada de autenticação será
+             * Somente o hash produzido pelo serviço de proteção de senhas será
              * armazenado. A senha original jamais deverá chegar a este campo.
              *
              * select: false impede que o hash seja retornado automaticamente
@@ -182,6 +181,34 @@ function createUserSchema(mongooseClient = mongoose) {
         {
             unique: true,
             name: 'users_email_unique',
+        },
+    );
+
+    /**
+     * Permite somente uma conta administrativa por banco da aplicação.
+     *
+     * Todos os administradores possuem role: 'admin'. O índice único nesse
+     * campo impede uma segunda conta mesmo quando o e-mail é diferente ou
+     * duas requisições tentam criar o administrador simultaneamente.
+     *
+     * O filtro parcial aplica a restrição somente ao papel administrativo.
+     * Ele não utiliza active: desativar a conta existente não libera um novo
+     * cadastro. A recuperação da conta deverá ser uma operação separada.
+     *
+     * Esta declaração só protege gravações depois que o índice existir no
+     * MongoDB. A preparação da instalação deverá confirmar sua criação antes
+     * de disponibilizar o primeiro cadastro, inclusive com autoIndex: false.
+     * Se já existirem vários administradores, a criação do índice falhará;
+     * nenhum documento será excluído ou substituído por este modelo.
+     */
+    userSchema.index(
+        { role: 1 },
+        {
+            unique: true,
+            name: 'users_single_admin_unique',
+            partialFilterExpression: {
+                role: USER_ROLES.ADMIN,
+            },
         },
     );
 

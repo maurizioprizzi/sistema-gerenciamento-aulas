@@ -47,8 +47,8 @@ function createIsolatedUserModel() {
  */
 function createValidUserData(overrides = {}) {
     return {
-        name: 'Dionísio Pereira',
-        email: 'dionisio@example.com',
+        name: 'Ana Silva',
+        email: 'ana@example.com',
         passwordHash: VALID_PASSWORD_HASH,
         ...overrides,
     };
@@ -81,8 +81,8 @@ async function captureValidationError(document) {
 describe('normalização dos dados de usuário', () => {
     test('normaliza espaços presentes no nome', () => {
         assert.equal(
-            normalizeName('  Dionísio    Pereira  '),
-            'Dionísio Pereira',
+            normalizeName('  Ana    Silva  '),
+            'Ana Silva',
         );
     });
 
@@ -94,8 +94,8 @@ describe('normalização dos dados de usuário', () => {
 
     test('normaliza espaços e letras maiúsculas do e-mail', () => {
         assert.equal(
-            normalizeEmail('  Dionisio.Pereira@EXAMPLE.COM  '),
-            'dionisio.pereira@example.com',
+            normalizeEmail('  Ana.Silva@EXAMPLE.COM  '),
+            'ana.silva@example.com',
         );
     });
 
@@ -129,6 +129,37 @@ describe('createUserSchema', () => {
         assert.ok(emailIndex);
         assert.equal(emailIndex[1].unique, true);
         assert.equal(emailIndex[1].name, 'users_email_unique');
+    });
+
+    /**
+     * A unicidade administrativa pertence ao banco, não à validação de um
+     * documento isolado. Aqui verificamos o contrato declarado pelo schema.
+     * A recusa de gravações simultâneas será validada com MongoDB real.
+     *
+     * O papel é a única chave: outro e-mail não cria uma segunda vaga. O
+     * filtro também não inclui active: desativar a conta mantém a restrição.
+     */
+    test('declara uma única conta administrativa independentemente do e-mail e da ativação', () => {
+        const mongooseClient = new mongoose.Mongoose();
+        const schema = createUserSchema(mongooseClient);
+
+        const administrativeIndexes = schema.indexes().filter(
+            ([, options]) => (
+                options.name === 'users_single_admin_unique'
+            ),
+        );
+
+        assert.equal(administrativeIndexes.length, 1);
+
+        const [fields, options] = administrativeIndexes[0];
+
+        assert.deepEqual(fields, { role: 1 });
+        assert.equal(options.unique, true);
+        assert.deepEqual(
+            options.partialFilterExpression,
+            { role: USER_ROLES.ADMIN },
+        );
+        assert.equal(mongooseClient.connection.readyState, 0);
     });
 
     test('oculta o hash da senha nas consultas comuns', () => {
@@ -192,8 +223,8 @@ describe('modelo User', () => {
 
         await assert.doesNotReject(user.validate());
 
-        assert.equal(user.name, 'Dionísio Pereira');
-        assert.equal(user.email, 'dionisio@example.com');
+        assert.equal(user.name, 'Ana Silva');
+        assert.equal(user.email, 'ana@example.com');
         assert.equal(user.role, USER_ROLES.ADMIN);
         assert.equal(user.active, true);
         assert.equal(user.lastLoginAt, null);
@@ -203,13 +234,13 @@ describe('modelo User', () => {
         const { UserModel } = createIsolatedUserModel();
         const user = new UserModel(
             createValidUserData({
-                name: '  Dionísio    Pereira  ',
-                email: '  DIONISIO@EXAMPLE.COM  ',
+                name: '  Ana    Silva  ',
+                email: '  ANA@EXAMPLE.COM  ',
             }),
         );
 
-        assert.equal(user.name, 'Dionísio Pereira');
-        assert.equal(user.email, 'dionisio@example.com');
+        assert.equal(user.name, 'Ana Silva');
+        assert.equal(user.email, 'ana@example.com');
 
         await assert.doesNotReject(user.validate());
     });
@@ -327,7 +358,7 @@ describe('modelo User', () => {
             false,
         );
         assert.equal(Object.hasOwn(publicUser, '__v'), false);
-        assert.equal(publicUser.email, 'dionisio@example.com');
+        assert.equal(publicUser.email, 'ana@example.com');
     });
 
     test('não inclui o hash da senha na representação de objeto', () => {

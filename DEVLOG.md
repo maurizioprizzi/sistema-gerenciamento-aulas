@@ -3373,3 +3373,94 @@ totalizando 923 testes em 125 conjuntos, sem falhas ou testes ignorados.
 4. simplificar a abertura e o encerramento da aplicação para o usuário;
 5. documentar e testar as cópias de segurança e a recuperação dos dados;
 6. acompanhar a primeira utilização e ajustar o guia com base nas dúvidas reais.
+
+## 9 de outubro de 2026 — Uma conta administrativa por instalação
+
+### Objetivo e decisão
+
+Preparar o sistema para que qualquer pessoa possa instalar sua própria cópia
+e definir nome, e-mail e senha no primeiro acesso. Cada instalação terá seu
+próprio banco e uma única conta administrativa. Não está prevista a operação
+de uma aplicação compartilhada para terceiros pelo mantenedor do projeto.
+
+Esta decisão atualiza o planejamento de entrega local descrito no marco
+anterior: o objetivo passa a ser o cadastro das próprias credenciais pela
+interface. Nesta etapa, porém, o fluxo existente de criação administrativa
+por variáveis de ambiente continua em uso. O cadastro inicial ainda não foi
+implementado.
+
+### Modelo de usuário
+
+O `src/models/User.js` passou a declarar o índice
+`users_single_admin_unique`, com chave `{ role: 1 }`, unicidade e filtro
+parcial `{ role: 'admin' }`. O índice único do e-mail foi preservado.
+
+Quando criado no MongoDB, o novo índice impede dois administradores mesmo
+com e-mails diferentes ou solicitações simultâneas. O filtro não depende de
+`active`: desativar a conta não libera um novo cadastro administrativo.
+Bancos separados permitem contas independentes em instalações distintas.
+
+Os exemplos e comentários do modelo foram generalizados. Nenhum campo
+obrigatório ou contrato de exportação foi alterado.
+
+### Teste do contrato do schema
+
+O `test/user.test.js` recebeu uma verificação do nome, da chave, da unicidade
+e do filtro parcial do índice. Os exemplos de dados também foram
+generalizados. Os 23 testes do arquivo passaram em quatro suítes.
+
+Esse teste verifica a declaração do schema sem conexão externa; a eficácia
+da restrição foi verificada separadamente no MongoDB real.
+
+### Verificação no MongoDB local
+
+Foi acrescentado `scripts/verifySingleAdminIndex.js`, que não carrega o `.env`
+e utiliza somente bancos temporários com nomes aleatórios no MongoDB local
+em `127.0.0.1:27017`.
+
+Os seis cenários passaram na máquina de desenvolvimento:
+
+- criação explícita do índice e confirmação de sua configuração no banco;
+- recusa de um segundo e-mail, preservando a conta original;
+- bloqueio de um novo administrador mesmo com a conta original desativada;
+- duas criações concorrentes, com apenas uma conta persistida;
+- contas independentes em dois bancos de instalações diferentes;
+- recusa da criação do índice em banco com dois administradores existentes,
+  sem excluir nenhuma das contas.
+
+Os três bancos temporários foram removidos ao final da execução.
+
+### Verificação consolidada e documentação
+
+- 621 testes do backend aprovados em 109 suítes;
+- zero falhas, testes cancelados ou ignorados no backend;
+- seis cenários adicionais aprovados no MongoDB real;
+- `git diff --check` sem problemas após as alterações de código e do README;
+- nenhuma dependência adicionada ou atualizada no projeto.
+
+O frontend não foi executado novamente nesta etapa. Seu último resultado
+registrado permanece em 303 testes aprovados em 16 arquivos. Somados ao
+backend atual, os resultados registrados correspondem a 924 testes em 125
+conjuntos. Os seis cenários do script são adicionais a esse total.
+
+O README passou a explicar a conta única por instalação, os limites da
+integração atual, o comando de verificação no MongoDB e a origem dos totais
+de testes.
+
+### Limites e próximo passo
+
+A declaração do índice não garante sua criação automática em produção:
+`server.js` utiliza `autoIndex: false` nesse ambiente. Ainda será necessário
+integrar a criação explícita e aguardar sua conclusão antes de disponibilizar
+o cadastro inicial. Bancos com mais de um administrador deverão ser
+identificados e tratados preservando os dados.
+
+O serviço atual de criação administrativa ainda consulta pelo e-mail
+configurado. Ele precisará reconhecer a conta existente independentemente
+desse e-mail, evitando tentar criar uma segunda conta quando a configuração
+mudar.
+
+Depois dessa preparação, implementar e testar o serviço, as rotas e a
+interface de primeiro acesso, incluindo a proteção do convite e o bloqueio
+do cadastro após a criação da conta. Nenhuma rota ou interface de cadastro
+foi ativada neste marco.

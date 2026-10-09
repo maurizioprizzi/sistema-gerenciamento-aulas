@@ -50,6 +50,17 @@ O administrador é preparado depois da conexão com o banco e antes da abertura
 da porta HTTP. O processo é idempotente: uma conta existente é preservada e
 não é duplicada nem tem sua senha substituída.
 
+Cada instalação deverá manter uma única conta administrativa em seu próprio
+banco de dados. O modelo declara um índice único parcial para o papel `admin`,
+independentemente do e-mail e da ativação da conta. Depois de criado no MongoDB,
+esse índice impede um segundo administrador, inclusive em cadastros simultâneos.
+Uma conta desativada também continua ocupando essa posição.
+
+A criação explícita desse índice na inicialização ainda precisa ser integrada,
+especialmente em produção, onde `autoIndex` está desativado. Se o banco já
+possuir dois administradores, a criação do índice falha sem excluir contas.
+Essa situação deverá ser identificada antes de disponibilizar o primeiro cadastro.
+
 As sessões autenticadas são armazenadas no MongoDB. O armazenamento reutiliza
 o mesmo cliente mantido pelo Mongoose, enquanto o navegador recebe somente um
 identificador opaco protegido por cookie.
@@ -492,11 +503,13 @@ npm test
 npm --prefix client test
 ```
 
-No último marco validado, em 26 de setembro de 2026, as duas suítes
-registraram em conjunto:
+Em 9 de outubro de 2026, o backend foi novamente validado: 621 testes
+aprovados em 109 suítes. A última execução registrada do frontend permanece
+com 303 testes aprovados em 16 arquivos; ela não foi repetida nesta etapa.
+Essas validações registradas somam:
 
 ```text
-923 testes
+924 testes
 125 suítes/conjuntos
 0 falhas
 0 testes ignorados
@@ -507,7 +520,8 @@ Os testes verificam, entre outros comportamentos:
 - fundação HTTP, erros e limites do corpo JSON;
 - ambiente, porta e ciclo de vida do servidor;
 - conexão, cliente nativo e encerramento do MongoDB;
-- modelo administrativo e índice único do e-mail;
+- modelo administrativo, índice único do e-mail e declaração do índice de
+  administrador único;
 - contratos dos registros de aula, atividade e avaliação;
 - validação de cursos, tipos, datas civis e campos opcionais das aulas;
 - criação, edição e exclusão protegidas pela cadeia HTTP administrativa;
@@ -618,6 +632,24 @@ Os testes verificam, entre outros comportamentos:
 
 Os testes automatizados utilizam dependências controladas sempre que possível
 e não exigem um MongoDB externo.
+
+A proteção de administrador único foi verificada separadamente no MongoDB
+local, com seis cenários aprovados: criação efetiva do índice; recusa de um
+segundo e-mail com preservação da conta original; bloqueio mesmo com a conta
+desativada; duas criações concorrentes com apenas uma conta persistida;
+independência entre dois bancos de instalações; e recusa da criação do índice
+em um banco com dois administradores, preservando ambos.
+
+Para repetir essa verificação, com o MongoDB local ativo em `127.0.0.1:27017`:
+
+```bash
+node scripts/verifySingleAdminIndex.js
+```
+
+O script não carrega o `.env`. Ele cria três bancos temporários com nomes
+aleatórios e os remove ao terminar, sem acessar o banco normal da aplicação.
+Os seis cenários são uma verificação adicional e não entram no total de testes
+das suítes acima.
 
 A API administrativa de aulas também foi validada com MongoDB local em um banco
 isolado. Uma criação autorizada retornou `201`, e a consulta combinando curso,
