@@ -1,14 +1,14 @@
-# Calendário do Prof. Dionísio
+# Sistema de Gerenciamento de Aulas
 
 Aplicação web para organizar aulas, unidades curriculares, atividades e
-materiais didáticos do Prof. Dionísio Pereira, do Senac Ceilândia.
+materiais didáticos, com calendário visual e acesso administrativo autenticado.
 
 O projeto está sendo reconstruído a partir de um protótipo HTML que armazenava
 os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 26 de setembro de 2026.
+> Última atualização desta documentação: 9 de outubro de 2026.
 
 ## Estado atual
 
@@ -214,7 +214,7 @@ mês sem depender do armazenamento local do navegador.
 - bloqueio do servidor HTTP quando a inicialização falha;
 - validações reais com MongoDB local;
 - testes HTTP, unitários e de integração controlada;
-- guia de uso passo a passo escrito para o professor, sem exigir conhecimento técnico;
+- guia de uso passo a passo escrito para usuários sem conhecimento técnico;
 - documentação das decisões de engenharia.
 
 ### Ainda não implementado
@@ -223,17 +223,17 @@ mês sem depender do armazenamento local do navegador.
 - acesso externo à aplicação;
 - implantação em ambiente de produção.
 
-A publicação do código em um repositório privado não significa que a aplicação
+A publicação do código em um repositório público não significa que a aplicação
 esteja implantada. O sistema ainda não deve ser utilizado em produção.
 
 ## Repositório
 
-O código-fonte está armazenado em um repositório privado:
+O código-fonte está disponível em um repositório público:
 
-[github.com/maurizioprizzi/calendario-dionisio](https://github.com/maurizioprizzi/calendario-dionisio)
+[github.com/maurizioprizzi/sistema-gerenciamento-aulas](https://github.com/maurizioprizzi/sistema-gerenciamento-aulas)
 
-Somente pessoas convidadas e autenticadas no GitHub conseguem visualizar o
-conteúdo.
+Qualquer pessoa pode consultar o código-fonte e a documentação. A publicação
+do repositório não disponibiliza uma instância da aplicação nem seus dados.
 
 ## Tecnologias
 
@@ -293,22 +293,18 @@ Para executar o estágio atual do projeto:
 - Node.js 20.20.0 ou superior;
 - npm 10 ou superior;
 - Git;
-- MongoDB;
-- acesso ao repositório privado, quando a instalação for feita pelo GitHub.
+- MongoDB.
+
+Os comandos deste README descrevem o ambiente Linux de desenvolvimento. O
+guia de instalação local para usuários finais ainda será preparado e validado.
 
 ## Obter o projeto
 
-Quem possuir acesso ao repositório poderá cloná-lo por SSH:
+Para obter uma cópia do repositório público, clone-o por HTTPS:
 
 ```bash
-git clone git@github.com:maurizioprizzi/calendario-dionisio.git
-cd calendario-dionisio
-```
-
-Na máquina utilizada para o desenvolvimento inicial, o projeto está em:
-
-```bash
-cd /home/maurizio/eclipse-workspace/dionisio
+git clone https://github.com/maurizioprizzi/sistema-gerenciamento-aulas.git
+cd sistema-gerenciamento-aulas
 ```
 
 ## Instalar as dependências
@@ -496,7 +492,8 @@ npm test
 npm --prefix client test
 ```
 
-No marco atual, as duas suítes possuem em conjunto:
+No último marco validado, em 26 de setembro de 2026, as duas suítes
+registraram em conjunto:
 
 ```text
 923 testes
@@ -700,7 +697,7 @@ executada novamente após alterações nas dependências e antes da implantaçã
 ## Estrutura atual
 
 ```text
-dionisio/
+sistema-gerenciamento-aulas/
 ├── client/
 │   ├── src/
 │   │   ├── app/
@@ -829,14 +826,14 @@ dionisio/
 
 ## Guia do usuário
 
-O passo a passo destinado ao professor está disponível em:
+O passo a passo de uso da aplicação está disponível em:
 
 [`docs/GUIA_DO_USUARIO.md`](docs/GUIA_DO_USUARIO.md)
 
 O documento explica a entrada, o cadastro e a consulta de aulas, a organização
 dos materiais, o painel geral, o calendário visual e a saída segura. O texto foi
 preparado para leitores sem conhecimento de programação e deverá ser validado com
-o professor antes da primeira utilização real.
+os usuários antes da primeira utilização real.
 
 ## Responsabilidades dos módulos
 
@@ -1410,10 +1407,13 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. atualizar e validar o guia de uso com o professor;
-2. preparar o guia técnico de implantação, operação e recuperação;
-3. selecionar e configurar os serviços externos necessários;
-4. publicar e validar a aplicação em computador e celular.
+1. revisar os nomes e textos da interface e da documentação para a nova identidade;
+2. atualizar e validar o guia de uso com usuários sem conhecimento técnico;
+3. preparar e testar a instalação e a operação local em Linux;
+4. documentar e validar as cópias de segurança e a recuperação dos dados.
+
+O foco imediato é a execução no próprio computador do usuário. A instalação
+simplificada e o guia correspondente ainda estão em preparação.
 
 ## Fluxo de atualização pelo Git
 
@@ -1447,4 +1447,4 @@ O diário registra objetivos, decisões, testes e próximos passos de cada marco
 
 ## Licença
 
-Projeto privado. Todos os direitos reservados.
+Todos os direitos reservados.
