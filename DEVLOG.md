@@ -1,10 +1,16 @@
 # Diário de Desenvolvimento
 
 Este documento registra os marcos, decisões de engenharia, verificações e
-próximos passos do Calendário do Prof. Dionísio.
+próximos passos do Sistema de Gerenciamento de Aulas.
 
 O README explica como utilizar o projeto. Este diário explica como e por que
 ele está sendo construído.
+
+> Revisão documental: 9 de outubro de 2026.
+> As referências pessoais e institucionais foram generalizadas nesta revisão.
+> As entradas anteriores preservam os acontecimentos e verificações de cada
+> marco. Seus próximos passos descrevem o planejamento da época; a orientação
+> atual está registrada na entrada mais recente.
 
 ---
 
@@ -300,7 +306,7 @@ realizadas de maneira controlada.
 ### Objetivo
 
 Criar uma representação segura e testável do usuário administrativo que
-acessará o sistema do Prof. Dionísio.
+acessará o sistema.
 
 ### Implementado
 
@@ -1563,7 +1569,7 @@ Iniciar a reconstrução da interface do protótipo original em uma base
 modular, responsiva, testável e preparada para consumir a API já existente.
 
 O escopo funcional permanece limitado ao que foi previsto no HTML entregue
-pelo Prof. Dionísio. Funcionalidades destinadas a um futuro produto comercial
+pelo usuário original. Funcionalidades destinadas a um futuro produto comercial
 não fazem parte deste marco.
 
 ### Workspace do frontend
@@ -1581,8 +1587,8 @@ iniciados por `/api` ao backend na porta 3000. A compilação é produzida em
 
 A aplicação React possui um ponto de montagem explícito, utiliza `StrictMode`
 e apresenta uma tela inicial responsiva para a futura entrada administrativa.
-A identidade visual informa o Senac Ceilândia, o calendário de aulas e o Prof.
-Dionísio Pereira.
+A identidade visual inicial apresentava o calendário de aulas e informações
+do usuário solicitante e da instituição de origem do protótipo.
 
 O símbolo genérico de calendário foi substituído por um elemento semântico
 `time`, que apresenta o mês e o dia reais no idioma português. A data é
@@ -1621,7 +1627,7 @@ integrá-lo às rotas de autenticação já disponíveis no backend.
 ### Objetivo
 
 Conectar a primeira interface React às rotas administrativas já existentes,
-sem ampliar o escopo funcional definido no HTML original do Prof. Dionísio.
+sem ampliar o escopo funcional definido no protótipo HTML original.
 
 ### Serviço de comunicação
 
@@ -1690,7 +1696,7 @@ servidor.
 - zero vulnerabilidades conhecidas nos dois workspaces;
 - compilação de produção concluída com 19 módulos;
 - login, restauração por atualização e logout confirmados no navegador;
-- contrato original do Prof. Dionísio preservado sem funcionalidades extras.
+- contrato funcional original preservado sem funcionalidades extras.
 
 ### Próximo marco
 
@@ -1703,7 +1709,7 @@ estrutura inicial da área autenticada conforme o HTML original.
 
 Disponibilizar a compilação React pelo próprio servidor Express, mantendo
 interface e API na mesma origem e preservando o escopo funcional definido
-no HTML original do Prof. Dionísio.
+no protótipo HTML original.
 
 ### Middleware dos arquivos do frontend
 
@@ -1783,20 +1789,20 @@ MongoDB.
 - HTML, CSS, JavaScript, fallback visual e API confirmados na porta 3000;
 - login, restauração da sessão e logout confirmados na mesma origem;
 - inicialização e encerramento seguros;
-- contrato original do Prof. Dionísio preservado sem funcionalidades extras.
+- contrato funcional original preservado sem funcionalidades extras.
 
 ### Próximo marco
 
 Reconstruir a estrutura inicial da área autenticada conforme o HTML original,
-sem acrescentar funcionalidades que não tenham sido solicitadas pelo Prof.
-Dionísio.
+sem acrescentar funcionalidades que não tenham sido solicitadas pelo
+usuário original.
 
 ## 15 de setembro de 2026 — Estrutura inicial da área autenticada
 
 ### Objetivo
 
 Substituir a confirmação temporária apresentada depois do login pela estrutura
-inicial da área autenticada prevista no HTML original do Prof. Dionísio, sem
+inicial da área autenticada prevista no protótipo HTML original, sem
 simular dados ou disponibilizar operações que ainda não foram implementadas.
 
 ### Navegação do calendário
@@ -1876,7 +1882,7 @@ por `SIGINT`, com fechamento seguro da conexão MongoDB.
 - integração de login, restauração e logout preservada;
 - navegação e layout responsivo confirmados no navegador;
 - duplicação de estilos removida e diff validado;
-- contrato original do Prof. Dionísio preservado sem funcionalidades extras.
+- contrato funcional original preservado sem funcionalidades extras.
 
 ### Próximo marco
 
@@ -1900,7 +1906,7 @@ links aplicáveis ao período inteiro.
 Atividade e avaliação foram mantidas como tipos do registro de aula, em vez de
 modelos separados. A UC também permanece um campo da aula. Dessa forma, a
 modelagem conserva a estrutura funcional existente sem criar entidades que o
-Prof. Dionísio não solicitou.
+usuário original não solicitou.
 
 ### Modelo de aula
 
@@ -2843,11 +2849,11 @@ Planejar a migração segura dos dados mantidos pelo protótipo, definindo forma
 validação, prevenção de duplicidades, execução controlada e possibilidade de
 reversão antes de importar qualquer registro no MongoDB.
 
-## 23 de setembro de 2026 — Guia de uso para o professor
+## 23 de setembro de 2026 — Guia de uso para o usuário
 
 ### Objetivo
 
-Preparar um manual completo para que o professor Dionísio consiga utilizar a
+Preparar um manual completo para que o usuário consiga utilizar a
 aplicação sem conhecimento de programação e sem depender de instruções
 técnicas durante as tarefas normais do calendário.
 
@@ -2876,7 +2882,7 @@ devem ser cadastrados antes da confirmação oficial.
 
 As instruções utilizam os mesmos nomes apresentados nos botões, campos e
 seções da interface. Termos internos do backend, comandos de terminal e
-detalhes de infraestrutura foram excluídos do fluxo destinado ao professor.
+detalhes de infraestrutura foram excluídos do fluxo destinado ao usuário.
 
 O guia reforça que a senha não deve ser compartilhada com alunos, grupos ou
 mensagens de e-mail e orienta o encerramento da sessão em computadores
@@ -2905,7 +2911,7 @@ O `README.md` passou a:
 - listar o guia entre as entregas concluídas;
 - incluir o arquivo na estrutura atual do projeto;
 - disponibilizar um link direto para o documento;
-- manter como próximo marco a validação do texto com o professor.
+- manter como próximo marco a validação do texto com o usuário.
 
 ### Verificações
 
@@ -2921,15 +2927,15 @@ falhas ou testes ignorados.
 
 ### Próximo marco
 
-Apresentar o guia ao professor Dionísio, recolher dúvidas reais de uso e ajustar
+Apresentar o guia ao usuário, recolher dúvidas reais de uso e ajustar
 o texto quando necessário. Em paralelo, preparar o guia técnico de implantação
 e decidir o fluxo seguro para correção de aulas cadastradas.
 
 ## 24 de setembro de 2026 — Edição persistente de aulas
 
-### Contexto confirmado com o professor
+### Contexto confirmado com o usuário
 
-O professor Dionísio informou que não existem aulas ou materiais que precisem
+O usuário solicitante informou que não existem aulas ou materiais que precisem
 ser recuperados do calendário antigo e que a utilização começará do zero. A
 migração do protótipo deixou, portanto, de ser uma etapa necessária. O próximo
 risco funcional relevante passou a ser a correção segura de um registro já
@@ -3041,7 +3047,7 @@ edição foi validada manualmente com uma aula existente:
 
 O `README.md` passou a registrar a edição no backend e no frontend, a rota
 protegida, os novos totais e a exclusão segura como próximo marco. A migração
-foi removida das pendências depois da confirmação de que o professor começará
+foi removida das pendências depois da confirmação de que o usuário começará
 sem dados antigos.
 
 O `docs/GUIA_DO_USUARIO.md` recebeu um passo a passo não técnico para editar,
@@ -3067,7 +3073,7 @@ disponível e deve ser solicitada ao suporte.
 
 Implementar a exclusão segura de aulas com confirmação explícita, proteção
 administrativa, resposta idempotente quando apropriado e cobertura completa do
-backend à interface. Depois disso, validar o guia com o professor e preparar a
+backend à interface. Depois disso, validar o guia com o usuário e preparar a
 implantação controlada.
 
 ## 25 de setembro de 2026 — Exclusão persistente de aulas
@@ -3215,7 +3221,7 @@ remoção confirmada é permanente e atualiza a numeração e o resumo rápido.
 
 ### Próximo marco
 
-Apresentar ao professor Dionísio o fluxo completo de cadastro, edição e
+Apresentar ao usuário o fluxo completo de cadastro, edição e
 exclusão, recolher dúvidas reais de uso e ajustar o guia quando necessário.
 Em paralelo, preparar o guia técnico e a implantação controlada para acesso
 externo em computador e celular.
@@ -3226,7 +3232,7 @@ externo em computador e celular.
 
 ### Objetivo
 
-Preparar a estrutura para que, futuramente, o Prof. Dionísio possa definir
+Preparar a estrutura para que, futuramente, o usuário possa definir
 suas próprias credenciais no primeiro acesso, mediante um convite protegido.
 Esta etapa não disponibiliza o cadastro inicial.
 
@@ -3251,8 +3257,119 @@ O roteador de primeiro acesso ainda não existe e não é fornecido por
 
 ### Próximos passos
 
-Confirmar com o professor a preferência pelo cadastro das próprias credenciais
+Confirmar com o usuário a preferência pelo cadastro das próprias credenciais
 e a responsabilidade pela escolha da hospedagem. Depois, implementar e testar
 o uso único do convite, a criação segura da conta, a interface de primeiro
 acesso e a integração com a inicialização do servidor. A hospedagem ainda não
 foi escolhida e a aplicação não foi publicada.
+
+---
+
+## 9 de outubro de 2026 — Identidade pública e preparação da entrega local
+
+### Objetivo
+
+Apresentar o projeto como Sistema de Gerenciamento de Aulas, disponibilizar
+o código em um repositório público e atualizar a documentação para a nova
+identidade. Preparar a próxima etapa de entrega para execução no computador
+do usuário.
+
+### Repositório e pasta local
+
+O repositório foi renomeado para `sistema-gerenciamento-aulas`. O endereço
+atual é:
+
+[github.com/maurizioprizzi/sistema-gerenciamento-aulas](https://github.com/maurizioprizzi/sistema-gerenciamento-aulas)
+
+O remoto `origin` foi atualizado para:
+
+```text
+git@github.com:maurizioprizzi/sistema-gerenciamento-aulas.git
+```
+
+A pasta local de desenvolvimento também foi renomeada:
+
+```text
+~/eclipse-workspace/sistema-gerenciamento-aulas
+```
+
+A conexão foi conferida com `git remote -v` e `git fetch origin`. A branch
+`main` permaneceu sincronizada com `origin/main`.
+
+### Visibilidade pública
+
+A visibilidade foi alterada pelo GitHub CLI e confirmada com
+`gh repo view`, que retornou `visibility: PUBLIC`.
+
+Antes da alteração, foi feita uma conferência específica do arquivo `.env`:
+
+- `git check-ignore .env` confirmou que o arquivo está ignorado;
+- `git ls-files -- .env` não encontrou o arquivo versionado;
+- `git log --all --oneline -- .env` não encontrou commits para esse caminho.
+
+Essa conferência se limitou ao caminho `.env` e não representa uma auditoria
+completa de segredos em todos os arquivos e commits.
+
+A publicação disponibiliza o código e o histórico do repositório. A aplicação
+não foi implantada em um serviço público.
+
+### README e revisão do diário
+
+O `README.md` foi atualizado para:
+
+- adotar o título Sistema de Gerenciamento de Aulas;
+- retirar referências pessoais e institucionais;
+- informar a visibilidade pública e o novo endereço do repositório;
+- utilizar clonagem por HTTPS, sem exigir acesso ao antigo repositório privado;
+- atualizar o nome da pasta na estrutura documentada;
+- identificar os totais de testes como resultados do marco de 26 de setembro;
+- orientar os próximos passos para instalação local em Linux e recuperação dos dados;
+- preservar a declaração de direitos autorais existente.
+
+A atualização do README foi registrada no commit
+`387d66f docs: atualiza identidade e endereço público do projeto` e enviada
+ao remoto. Depois do envio, `git status -sb` confirmou uma árvore de trabalho
+limpa e a sincronização de `main` com `origin/main`.
+
+Neste diário, as referências pessoais foram generalizadas sem alterar os
+resultados históricos dos testes. A revisão documental não alterou os nomes
+ou os textos presentes no código da aplicação e no guia do usuário.
+
+### Decisão de entrega local
+
+Foi confirmado no planejamento da entrega que o sistema pode funcionar
+somente no computador do usuário, sem hospedagem externa. O computador
+utiliza Linux; a distribuição e sua versão ainda precisam ser identificadas.
+
+Será mantido o fluxo administrativo existente: a primeira conta é preparada
+a partir da configuração local e o usuário recebe o e-mail e a senha para
+acessar a aplicação. Cada instalação deverá utilizar credenciais e segredo
+de sessão próprios, sem reutilizar a configuração de desenvolvimento.
+
+O cadastro por convite continua apenas como preparação técnica opcional. A
+implementação desse fluxo deixa de ser requisito para a primeira entrega
+local; nenhuma rota de cadastro inicial foi ativada.
+
+### Verificação e limites deste marco
+
+- renomeação do repositório remoto e da pasta local confirmada;
+- endereço remoto atualizado e acesso por SSH verificado;
+- visibilidade pública confirmada pelo GitHub CLI;
+- alteração do README validada por `git diff --check`;
+- commit do README enviado e sincronização com o remoto confirmada;
+- nenhuma dependência ou regra funcional alterada neste marco documental.
+
+As suítes não foram executadas novamente para esta revisão documental. O
+último resultado integral registrado permanece o de 26 de setembro de 2026:
+620 testes do backend em 109 suítes e 303 testes do frontend em 16 arquivos,
+totalizando 923 testes em 125 conjuntos, sem falhas ou testes ignorados.
+
+### Próximos passos
+
+1. identificar a distribuição, a versão do Linux e a arquitetura do computador
+   de destino, além das permissões disponíveis para instalar os componentes;
+2. revisar os nomes e textos da interface e do guia de uso para a nova identidade;
+3. preparar e validar o pacote e o procedimento de instalação local;
+4. simplificar a abertura e o encerramento da aplicação para o usuário;
+5. documentar e testar as cópias de segurança e a recuperação dos dados;
+6. acompanhar a primeira utilização e ajustar o guia com base nas dúvidas reais.
