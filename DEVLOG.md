@@ -3464,3 +3464,95 @@ Depois dessa preparação, implementar e testar o serviço, as rotas e a
 interface de primeiro acesso, incluindo a proteção do convite e o bloqueio
 do cadastro após a criação da conta. Nenhuma rota ou interface de cadastro
 foi ativada neste marco.
+
+## 9 de outubro de 2026 — Preparação explícita dos índices na inicialização
+
+### Objetivo
+
+Garantir que as restrições persistentes de usuário estejam prontas antes da
+preparação da conta administrativa e da abertura HTTP, inclusive em produção,
+onde a conexão utiliza `autoIndex: false`.
+
+### Serviço e composição do servidor
+
+Foi criado `src/services/AdministrativeIndexInitializer.js`, com o modelo
+User recebido por injeção de dependência. A construção não acessa o banco.
+O método assíncrono `initialize()`:
+
+- conta os usuários com papel administrativo, incluindo contas desativadas;
+- recusa contagens inválidas e mais de um administrador;
+- aguarda `createIndexes()` para preparar os índices declarados no modelo;
+- converte conflitos de unicidade em mensagem operacional sem dados privados;
+- preserva outras falhas para o tratamento existente do servidor.
+
+O serviço não remove documentos nem utiliza `syncIndexes()`. A contagem
+oferece um diagnóstico prévio; a proteção contra gravações concorrentes
+continua sendo responsabilidade do índice único no MongoDB.
+
+O `src/server.js` recebeu uma fábrica injetável para compor o serviço. Sua
+interface é validada e a execução é aguardada depois da conexão, antes da
+criação administrativa, das sessões e do HTTP. Uma falha nessa etapa impede
+a continuação e passa pelo tratamento que encerra a conexão com o banco.
+
+### Testes automatizados
+
+O novo `test/administrativeIndexInitializer.test.js` possui 13 testes em duas
+suítes. Eles verificam dependências, ausência de consultas na construção,
+ordem das operações, espera das promessas, contagens inválidas, múltiplos
+administradores, repetição e tratamento de falhas.
+
+O `test/server.test.js` recebeu oito novos cenários e passou a ter 36 testes
+em seis suítes. A cobertura verifica a preparação antes da conta em teste e
+produção, a espera pelos índices e o encerramento após falhas da fábrica ou
+do serviço, sem abrir portas HTTP nesses cenários.
+
+Os testes existentes do servidor receberam o serviço simulado. Na primeira
+execução integral foram identificados dois testes de integração que também
+precisavam dessa dependência: autenticação e cabeçalhos de segurança. Ambos
+foram adaptados para simular a preparação dos índices e conferir sua posição
+na ordem de inicialização. Depois das correções, a suíte completa passou.
+
+### Verificação no MongoDB real
+
+O `scripts/verifySingleAdminIndex.js` passou a utilizar o serviço real para
+preparar os índices nos bancos temporários e foi ampliado para oito cenários.
+Além dos cenários de unicidade, concorrência, independência entre instalações
+e preservação de contas existentes, foram confirmados:
+
+- recriação do índice e repetição da preparação com uma conta desativada,
+  preservando e-mail, hash e estado da conta;
+- recusa pelo serviço de um banco com dois administradores, com mensagem
+  operacional clara e preservação de ambas as contas.
+
+Os oito cenários passaram no MongoDB local da máquina de desenvolvimento,
+com `autoIndex: false`. Os três bancos temporários foram removidos ao final.
+O script não carregou o `.env` nem acessou o banco normal da aplicação.
+
+### Resultados e documentação
+
+- 642 testes do backend aprovados em 112 suítes;
+- zero falhas, testes cancelados ou ignorados;
+- oito cenários adicionais aprovados no MongoDB real;
+- formatação validada por `git diff --check` após código e README;
+- nenhuma dependência adicionada ou atualizada no projeto.
+
+O frontend não foi executado novamente nesta etapa. Seu último resultado
+registrado permanece em 303 testes aprovados em 16 arquivos. Os resultados
+registrados somam 945 testes em 128 conjuntos; os oito cenários do script são
+adicionais a esse total.
+
+O README foi atualizado para registrar a integração dos índices ao servidor,
+a recusa da inicialização diante de conflitos e os novos resultados.
+A ordem de composição foi verificada com dependências simuladas; o serviço
+e as restrições persistentes foram exercitados separadamente no MongoDB real.
+Não foi feita nesta etapa uma execução completa da aplicação no navegador.
+
+### Próximo passo
+
+Adaptar a criação administrativa existente para reconhecer a conta da
+instalação pelo papel, independentemente do e-mail configurado, sem substituir
+credenciais nem criar outra conta quando a configuração mudar.
+
+O primeiro cadastro pela interface, suas rotas e a proteção do convite ainda
+não foram implementados. As variáveis `ADMIN_NAME`, `ADMIN_EMAIL` e
+`ADMIN_PASSWORD` continuam sendo utilizadas pelo fluxo atual.

@@ -48,6 +48,9 @@ const {
     AdminBootstrapper,
 } = require('./services/AdminBootstrapper');
 const {
+    AdministrativeIndexInitializer,
+} = require('./services/AdministrativeIndexInitializer');
+const {
     AuthenticationService,
 } = require('./services/AuthenticationService');
 const {
@@ -80,6 +83,10 @@ const FRONTEND_BUILD_DIRECTORY = path.resolve(
  * Mensagens estáveis relacionadas ao ponto de composição.
  */
 const SERVER_ERROR_MESSAGES = Object.freeze({
+    INVALID_ADMINISTRATIVE_INDEX_FACTORY:
+        'A fábrica de preparação dos índices administrativos deve ser uma função.',
+    INVALID_ADMINISTRATIVE_INDEX_SERVICE:
+        'A fábrica de índices administrativos deve retornar um serviço com initialize().',
     INVALID_ADMIN_FACTORY:
         'A fábrica de inicialização administrativa deve ser uma função.',
     INVALID_ADMIN_SERVICE:
@@ -176,6 +183,18 @@ function closeServer(server) {
             resolve();
         });
     });
+}
+
+/**
+ * Compõe o serviço que prepara os índices persistentes de usuário.
+ *
+ * A construção não consulta o banco. initialize() será executado depois da
+ * conexão e aguardado antes da preparação da conta e da abertura HTTP.
+ *
+ * @returns {AdministrativeIndexInitializer} Serviço de preparação.
+ */
+function createAdministrativeIndexInitializer() {
+    return new AdministrativeIndexInitializer({ UserModel: User });
 }
 
 /**
@@ -300,12 +319,15 @@ function createAdministrativeMonthlyMaterialRouter() {
  * Carrega a configuração e inicia todos os componentes da aplicação.
  *
  * A ordem é intencional: ambiente, segurança, frontend, MongoDB,
- * administrador, armazenamento de sessões, middleware, autenticação,
+ * índices administrativos, administrador, armazenamento de sessões,
+ * middleware, autenticação,
  * aulas, materiais mensais, Express e servidor HTTP.
  *
  * @param {object} options Dependências de inicialização.
  * @param {object} [options.database=databaseConnection] Banco de dados.
  * @param {Function} [options.appFactory=createApp] Fábrica do Express.
+ * @param {Function} [options.administrativeIndexInitializerFactory]
+ * Fábrica da preparação explícita dos índices de usuário.
  * @param {Function} [options.adminBootstrapperFactory]
  * Fábrica da inicialização administrativa.
  * @param {Function} [options.sessionStoreFactory]
@@ -328,6 +350,8 @@ function createAdministrativeMonthlyMaterialRouter() {
 async function startServer({
     database = databaseConnection,
     appFactory = createApp,
+    administrativeIndexInitializerFactory =
+        createAdministrativeIndexInitializer,
     adminBootstrapperFactory = createAdminBootstrapper,
     sessionStoreFactory = createMongoSessionStore,
     sessionMiddlewareFactory = createSessionMiddleware,
@@ -351,6 +375,12 @@ async function startServer({
     /**
      * Falhas estruturais são detectadas antes de abrir recursos externos.
      */
+    if (typeof administrativeIndexInitializerFactory !== 'function') {
+        throw new TypeError(
+            SERVER_ERROR_MESSAGES.INVALID_ADMINISTRATIVE_INDEX_FACTORY,
+        );
+    }
+
     if (typeof adminBootstrapperFactory !== 'function') {
         throw new TypeError(SERVER_ERROR_MESSAGES.INVALID_ADMIN_FACTORY);
     }
@@ -437,6 +467,25 @@ async function startServer({
                 autoIndex: !environment.IS_PRODUCTION,
             },
         );
+
+        /**
+         * A aplicação não prepara contas nem abre HTTP antes de confirmar os
+         * índices. Isso também se aplica à produção, com autoIndex desativado.
+         * Qualquer falha segue para o catch, que encerra a conexão com o banco.
+         */
+        const administrativeIndexInitializer =
+            administrativeIndexInitializerFactory();
+
+        if (
+            !administrativeIndexInitializer
+            || typeof administrativeIndexInitializer.initialize !== 'function'
+        ) {
+            throw new TypeError(
+                SERVER_ERROR_MESSAGES.INVALID_ADMINISTRATIVE_INDEX_SERVICE,
+            );
+        }
+
+        await administrativeIndexInitializer.initialize();
 
         const adminBootstrapper = adminBootstrapperFactory({
             passwordHashRounds: environment.PASSWORD_HASH_ROUNDS,
@@ -609,6 +658,7 @@ module.exports = {
     FRONTEND_BUILD_DIRECTORY,
     SERVER_ERROR_MESSAGES,
     createAdminBootstrapper,
+    createAdministrativeIndexInitializer,
     createAdministrativeAuthenticationRouter,
     createAdministrativeLessonRouter,
     createAdministrativeMonthlyMaterialRouter,

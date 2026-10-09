@@ -7,6 +7,8 @@ const {
 } = require('node:test');
 
 const {
+    SERVER_ERROR_MESSAGES,
+    createAdministrativeIndexInitializer,
     createAdminBootstrapper,
     createAdministrativeLessonRouter,
     createAdministrativeMonthlyMaterialRouter,
@@ -123,6 +125,14 @@ function createTestFrontendAssetsMiddleware() {
     ) {
         next();
     };
+}
+
+/**
+ * Serviço neutro para os cenários existentes. Nenhum teste do servidor deve
+ * consultar o modelo real ou depender de MongoDB externo.
+ */
+function createTestAdministrativeIndexInitializer() {
+    return { async initialize() {} };
 }
 
 describe('resolvePort', () => {
@@ -283,6 +293,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeIndexInitializerFactory:
+                            createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
                             createTestFrontendAssetsMiddleware,
                         database,
@@ -348,6 +360,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeIndexInitializerFactory:
+                            createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
                             createTestFrontendAssetsMiddleware,
                         database,
@@ -401,6 +415,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeIndexInitializerFactory:
+                            createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
                             createTestFrontendAssetsMiddleware,
                         database,
@@ -473,6 +489,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeIndexInitializerFactory:
+                            createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
                             createTestFrontendAssetsMiddleware,
                         database,
@@ -548,6 +566,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeIndexInitializerFactory:
+                            createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
                             createTestFrontendAssetsMiddleware,
                         database,
@@ -594,6 +614,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeIndexInitializerFactory:
+                            createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
                             createTestFrontendAssetsMiddleware,
                         database,
@@ -636,6 +658,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeIndexInitializerFactory:
+                            createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
                             createTestFrontendAssetsMiddleware,
                         database,
@@ -750,6 +774,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeIndexInitializerFactory:
+                            createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
                             createTestFrontendAssetsMiddleware,
                         database,
@@ -803,6 +829,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeIndexInitializerFactory:
+                            createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
                             createTestFrontendAssetsMiddleware,
                         database,
@@ -907,6 +935,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeIndexInitializerFactory:
+                            createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
                             createTestFrontendAssetsMiddleware,
                         database,
@@ -1013,6 +1043,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeIndexInitializerFactory:
+                            createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
                             createTestFrontendAssetsMiddleware,
                         database,
@@ -1144,6 +1176,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeIndexInitializerFactory:
+                            createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
                             createTestFrontendAssetsMiddleware,
                         database,
@@ -1385,6 +1419,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeIndexInitializerFactory:
+                            createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
                             createTestFrontendAssetsMiddleware,
                         database,
@@ -1461,6 +1497,8 @@ describe('startServer', () => {
 
                     await assert.rejects(
                         startServer({
+                            administrativeIndexInitializerFactory:
+                                createTestAdministrativeIndexInitializer,
                             frontendAssetsMiddlewareFactory:
                                 createTestFrontendAssetsMiddleware,
                             database,
@@ -1498,4 +1536,154 @@ describe('startServer', () => {
             );
         },
     );
+});
+
+/**
+ * Estas verificações encerram o fluxo antes da composição HTTP. A fábrica
+ * administrativa lança uma falha controlada quando é alcançada, permitindo
+ * verificar a ordem sem abrir portas nem registrar handlers de sinais.
+ */
+describe('índices administrativos no ciclo do servidor', () => {
+    function createDependencies(calls, administrativeIndexInitializerFactory) {
+        return {
+            frontendAssetsMiddlewareFactory: createTestFrontendAssetsMiddleware,
+            administrativeIndexInitializerFactory,
+            database: {
+                async connect(_uri, options) {
+                    calls.push(['connect', options.autoIndex]);
+                },
+                async disconnect() {
+                    calls.push(['disconnect']);
+                },
+                getNativeClient() {
+                    assert.fail('Não deve preparar sessões neste cenário.');
+                },
+            },
+            appFactory() {
+                assert.fail('Não deve compor HTTP neste cenário.');
+            },
+            adminBootstrapperFactory() {
+                assert.fail('Não deve preparar administrador após falha de índice.');
+            },
+            logger: createFakeLogger().logger,
+        };
+    }
+
+    test('compõe o serviço real sem consultar o banco', () => {
+        const service = createAdministrativeIndexInitializer();
+        assert.equal(typeof service.initialize, 'function');
+    });
+
+    test('rejeita fábrica inválida antes de conectar', async () => {
+        await withTestEnvironment(async () => {
+            const calls = [];
+            await assert.rejects(startServer(createDependencies(calls, null)), {
+                message: SERVER_ERROR_MESSAGES.INVALID_ADMINISTRATIVE_INDEX_FACTORY,
+            });
+            assert.deepEqual(calls, []);
+        });
+    });
+
+    test('rejeita serviço inválido e encerra o banco', async () => {
+        await withTestEnvironment(async () => {
+            const calls = [];
+            await assert.rejects(startServer(createDependencies(calls, () => ({}))), {
+                message: SERVER_ERROR_MESSAGES.INVALID_ADMINISTRATIVE_INDEX_SERVICE,
+            });
+            assert.deepEqual(calls, [['connect', true], ['disconnect']]);
+        });
+    });
+
+    test('encerra o banco quando a fábrica de índices falha', async () => {
+        await withTestEnvironment(async () => {
+            const calls = [];
+            const expectedError = new Error('Falha controlada da fábrica.');
+            const dependencies = createDependencies(calls, () => {
+                throw expectedError;
+            });
+            await assert.rejects(startServer(dependencies), error => error === expectedError);
+            assert.deepEqual(calls, [['connect', true], ['disconnect']]);
+        });
+    });
+
+    test('falha dos índices impede administrador e HTTP e encerra o banco', async () => {
+        await withTestEnvironment(async () => {
+            const calls = [];
+            const expectedError = new Error('Mais de um administrador.');
+            const dependencies = createDependencies(calls, () => ({
+                async initialize() {
+                    calls.push(['indexes']);
+                    throw expectedError;
+                },
+            }));
+            await assert.rejects(startServer(dependencies), error => error === expectedError);
+            assert.deepEqual(calls, [['connect', true], ['indexes'], ['disconnect']]);
+        });
+    });
+
+    for (const nodeEnv of ['test', 'production']) {
+        test(`prepara índices antes da conta em ${nodeEnv}`, async () => {
+            await withTestEnvironment(async () => {
+                const calls = [];
+                const expectedError = new Error('Fim controlado da verificação.');
+                const dependencies = createDependencies(calls, () => ({
+                    async initialize() {
+                        calls.push(['indexes']);
+                    },
+                }));
+                dependencies.adminBootstrapperFactory = () => ({
+                    async ensureAdmin() {
+                        calls.push(['admin']);
+                        throw expectedError;
+                    },
+                });
+                await assert.rejects(startServer(dependencies), error => error === expectedError);
+                assert.deepEqual(calls, [
+                    ['connect', nodeEnv !== 'production'],
+                    ['indexes'], ['admin'], ['disconnect'],
+                ]);
+            }, {
+                NODE_ENV: nodeEnv,
+                APP_ORIGIN: nodeEnv === 'production'
+                    ? 'https://aulas.example.com' : TEST_ENVIRONMENT.APP_ORIGIN,
+            });
+        });
+    }
+
+    test('aguarda os índices antes de preparar a conta', async () => {
+        await withTestEnvironment(async () => {
+            const calls = [];
+            let release;
+            const indexes = new Promise(resolve => { release = resolve; });
+            const expectedError = new Error('Fim controlado da verificação.');
+            const dependencies = createDependencies(calls, () => ({
+                async initialize() {
+                    calls.push(['indexes-start']);
+                    await indexes;
+                    calls.push(['indexes-ready']);
+                },
+            }));
+            dependencies.adminBootstrapperFactory = () => ({
+                async ensureAdmin() {
+                    calls.push(['admin']);
+                    throw expectedError;
+                },
+            });
+            // Instala imediatamente o observador da rejeição esperada.
+            const pending = assert.rejects(
+                startServer(dependencies), error => error === expectedError,
+            );
+            try {
+                await new Promise(resolve => setImmediate(resolve));
+                assert.deepEqual(calls, [['connect', true], ['indexes-start']]);
+            } finally {
+                release();
+                await pending;
+            }
+            assert.deepEqual(calls, [
+                ['connect', true], ['indexes-start'], ['indexes-ready'],
+                ['admin'], ['disconnect'],
+            ]);
+        });
+    });
 });

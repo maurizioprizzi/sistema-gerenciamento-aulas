@@ -255,6 +255,15 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
 
                     await assert.rejects(
                         startServer({
+                            // O banco simulado exige preparação de índices simulada.
+                            administrativeIndexInitializerFactory() {
+                                order.push('indexes.factory');
+                                return {
+                                    async initialize() {
+                                        order.push('indexes.ready');
+                                    },
+                                };
+                            },
                             database,
                             appFactory,
                             adminBootstrapperFactory,
@@ -272,6 +281,8 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
                         'security.headers.factory',
                         'frontend.assets.factory',
                         'database.connect',
+                        'indexes.factory',
+                        'indexes.ready',
                         'admin.factory',
                         'admin.ensure',
                         'database.getNativeClient',

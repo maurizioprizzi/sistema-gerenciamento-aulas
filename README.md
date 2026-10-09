@@ -56,10 +56,14 @@ independentemente do e-mail e da ativação da conta. Depois de criado no MongoD
 esse índice impede um segundo administrador, inclusive em cadastros simultâneos.
 Uma conta desativada também continua ocupando essa posição.
 
-A criação explícita desse índice na inicialização ainda precisa ser integrada,
-especialmente em produção, onde `autoIndex` está desativado. Se o banco já
-possuir dois administradores, a criação do índice falha sem excluir contas.
-Essa situação deverá ser identificada antes de disponibilizar o primeiro cadastro.
+O servidor aguarda o serviço `AdministrativeIndexInitializer` depois de conectar
+ao MongoDB e antes de preparar a conta administrativa, as sessões e o HTTP.
+O serviço conta os administradores, incluindo contas desativadas, e cria
+explicitamente os índices de usuário, inclusive em produção, onde `autoIndex`
+está desativado. Mais de um administrador ou um conflito de unicidade impede
+a abertura HTTP, com mensagem operacional sem valores privados. A conexão é
+encerrada após a falha, e nenhuma conta é excluída. Outros erros do banco são
+encaminhados ao tratamento existente de inicialização.
 
 As sessões autenticadas são armazenadas no MongoDB. O armazenamento reutiliza
 o mesmo cliente mantido pelo Mongoose, enquanto o navegador recebe somente um
@@ -503,14 +507,14 @@ npm test
 npm --prefix client test
 ```
 
-Em 9 de outubro de 2026, o backend foi novamente validado: 621 testes
-aprovados em 109 suítes. A última execução registrada do frontend permanece
+Em 9 de outubro de 2026, o backend foi novamente validado: 642 testes
+aprovados em 112 suítes. A última execução registrada do frontend permanece
 com 303 testes aprovados em 16 arquivos; ela não foi repetida nesta etapa.
 Essas validações registradas somam:
 
 ```text
-924 testes
-125 suítes/conjuntos
+945 testes
+128 suítes/conjuntos
 0 falhas
 0 testes ignorados
 ```
@@ -519,6 +523,8 @@ Os testes verificam, entre outros comportamentos:
 
 - fundação HTTP, erros e limites do corpo JSON;
 - ambiente, porta e ciclo de vida do servidor;
+- preparação explícita dos índices antes da conta, espera pela conclusão e
+  encerramento do banco após falhas de preparação;
 - conexão, cliente nativo e encerramento do MongoDB;
 - modelo administrativo, índice único do e-mail e declaração do índice de
   administrador único;
@@ -633,12 +639,14 @@ Os testes verificam, entre outros comportamentos:
 Os testes automatizados utilizam dependências controladas sempre que possível
 e não exigem um MongoDB externo.
 
-A proteção de administrador único foi verificada separadamente no MongoDB
-local, com seis cenários aprovados: criação efetiva do índice; recusa de um
-segundo e-mail com preservação da conta original; bloqueio mesmo com a conta
-desativada; duas criações concorrentes com apenas uma conta persistida;
-independência entre dois bancos de instalações; e recusa da criação do índice
-em um banco com dois administradores, preservando ambos.
+A proteção de administrador único e o serviço de preparação foram verificados
+separadamente no MongoDB local, com oito cenários aprovados: criação efetiva
+do índice pelo serviço; recusa de um segundo e-mail com preservação da conta
+original; bloqueio mesmo com a conta desativada; recriação do índice e repetição
+da preparação sem alterar a conta inativa; duas criações concorrentes com
+apenas uma conta persistida; independência entre dois bancos de instalações;
+recusa da criação do índice em banco com dois administradores; e diagnóstico
+claro dessa situação pelo serviço, preservando ambas as contas.
 
 Para repetir essa verificação, com o MongoDB local ativo em `127.0.0.1:27017`:
 
@@ -648,7 +656,7 @@ node scripts/verifySingleAdminIndex.js
 
 O script não carrega o `.env`. Ele cria três bancos temporários com nomes
 aleatórios e os remove ao terminar, sem acessar o banco normal da aplicação.
-Os seis cenários são uma verificação adicional e não entram no total de testes
+Os oito cenários são uma verificação adicional e não entram no total de testes
 das suítes acima.
 
 A API administrativa de aulas também foi validada com MongoDB local em um banco

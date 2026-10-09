@@ -387,6 +387,15 @@ describe('integração da autenticação no ciclo de abertura', () => {
 
                 await assert.rejects(
                     startServer({
+                        // O banco é simulado; a preparação dos índices também.
+                        administrativeIndexInitializerFactory() {
+                            order.push('indexes.factory');
+                            return {
+                                async initialize() {
+                                    order.push('indexes.ready');
+                                },
+                            };
+                        },
                         database,
                         appFactory,
                         adminBootstrapperFactory,
@@ -402,6 +411,8 @@ describe('integração da autenticação no ciclo de abertura', () => {
                 assert.deepEqual(order, [
                     'frontend.factory',
                     'database.connect',
+                    'indexes.factory',
+                    'indexes.ready',
                     'admin.factory',
                     'admin.ensure',
                     'database.getNativeClient',

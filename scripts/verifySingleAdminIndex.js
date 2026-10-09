@@ -8,6 +8,10 @@ const {
     USER_ROLES,
     createUserModel,
 } = require('../src/models/User');
+const {
+    ADMINISTRATIVE_INDEX_ERRORS,
+    AdministrativeIndexInitializer,
+} = require('../src/services/AdministrativeIndexInitializer');
 
 /**
  * Verificação manual e reproduzível do índice administrativo no MongoDB real.
@@ -70,7 +74,7 @@ function assertAdministrativeConflict(error) {
  *
  * autoIndex: false é proposital: demonstramos que a restrição depende de
  * criação explícita dos índices, como será necessário na instalação real.
- * A futura inicialização precisará realizar essa preparação antes do cadastro.
+ * O serviço utilizado pelo servidor realiza essa preparação antes da conta.
  *
  * @returns {Promise<void>}
  */
@@ -121,7 +125,8 @@ async function main() {
         currentScenario = 'criação explícita do índice no MongoDB';
         const UserModel = await createTemporaryUserModel('principal');
 
-        await UserModel.createIndexes();
+        const initializer = new AdministrativeIndexInitializer({ UserModel });
+        await initializer.initialize();
 
         const indexes = await UserModel.collection.indexes();
         const administrativeIndex = indexes.find(
@@ -136,7 +141,7 @@ async function main() {
             { role: USER_ROLES.ADMIN },
         );
 
-        completeScenario('índice administrativo criado e confirmado no banco');
+        completeScenario('serviço cria o índice administrativo e configuração é confirmada no banco');
 
         currentScenario = 'recusa de um segundo administrador com outro e-mail';
         const originalUser = await UserModel.create(
@@ -185,6 +190,28 @@ async function main() {
 
         completeScenario('conta desativada continua impedindo novo administrador');
 
+        currentScenario = 'preparação repetida com uma conta desativada';
+        // Remove apenas o índice administrativo do banco temporário para
+        // confirmar que o serviço o recria, mesmo com uma conta inativa.
+        await UserModel.collection.dropIndex(SINGLE_ADMIN_INDEX_NAME);
+        await initializer.initialize();
+        await initializer.initialize();
+        const recreatedIndexes = await UserModel.collection.indexes();
+        assert.ok(recreatedIndexes.some(index => index.name === SINGLE_ADMIN_INDEX_NAME));
+        const inactiveUser = await UserModel.findById(originalUser._id)
+            .select('+passwordHash');
+        assert.ok(inactiveUser);
+        assert.equal(inactiveUser.active, false);
+        assert.equal(inactiveUser.email, originalUser.email);
+        assert.equal(inactiveUser.passwordHash, originalUser.passwordHash);
+        assert.equal(await UserModel.countDocuments({}), 1);
+        await assert.rejects(
+            UserModel.create(createAdministrativeData('apos-preparacao@example.com')),
+            assertAdministrativeConflict,
+        );
+        completeScenario('serviço recria índices e permite repetição sem alterar a conta inativa');
+
+
         currentScenario = 'duas criações administrativas concorrentes';
 
         // A remoção abaixo afeta somente a coleção do banco temporário.
@@ -216,7 +243,9 @@ async function main() {
         currentScenario = 'independência entre duas instalações';
         const AnotherInstallation = await createTemporaryUserModel('outra');
 
-        await AnotherInstallation.createIndexes();
+        await new AdministrativeIndexInitializer({
+            UserModel: AnotherInstallation,
+        }).initialize();
         await AnotherInstallation.create(
             createAdministrativeData(accepted[0].value.email),
         );
@@ -251,6 +280,18 @@ async function main() {
         ]);
 
         completeScenario('banco com dois administradores recusa o índice sem excluir contas');
+
+        currentScenario = 'diagnóstico do serviço para dois administradores existentes';
+        await assert.rejects(
+            new AdministrativeIndexInitializer({ UserModel: LegacyUserModel }).initialize(),
+            { message: ADMINISTRATIVE_INDEX_ERRORS.MULTIPLE_ADMINS },
+        );
+        assert.equal(await LegacyUserModel.countDocuments({}), 2);
+        const legacyAfterPreparation = (await LegacyUserModel.find({}).sort({ email: 1 }))
+            .map(user => user.email);
+        assert.deepEqual(legacyAfterPreparation, preservedEmails);
+        completeScenario('serviço recusa múltiplos administradores com mensagem clara e preserva contas');
+
     } catch (error) {
         console.error(`Falha no cenário: ${currentScenario}.`);
         throw error;
