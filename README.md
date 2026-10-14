@@ -50,8 +50,12 @@ manual da conta. Senha e convite não são armazenados nesse registro.
 A reserva é gravada antes da conta; a conclusão é registrada depois. O fluxo
 não exige transação entre coleções, permitindo MongoDB local standalone.
 Uma falha após a reserva mantém o cadastro bloqueado, preservando os dados.
-A recuperação controlada de tentativas interrompidas ainda precisa ser
-implementada antes de disponibilizar o fluxo completo.
+O serviço `InitialSetupRecoveryService` conclui uma reserva quando encontra
+a conta com o identificador e papel correspondentes, sem alterar credenciais
+ou reativar contas. Sem a conta correspondente, mantém a reserva e retorna
+`needs_review`. Um registro concluído permanece fechado mesmo sem usuário.
+A recuperação foi validada, mas ainda precisa ser integrada à inicialização;
+o procedimento de intervenção para reservas sem conta continua pendente.
 
 O ambiente valida opcionalmente o formato do convite e a aplicação possui um
 ponto de montagem inativo para a futura rota. O serviço ainda não está
@@ -523,15 +527,15 @@ npm test
 npm --prefix client test
 ```
 
-Em 14 de outubro de 2026, o backend foi validado com 714 testes aprovados
-em 122 suítes. O frontend também foi executado nessa data, com 303 testes
+Em 14 de outubro de 2026, o backend foi validado com 738 testes aprovados
+em 125 suítes. O frontend também foi executado nessa data, com 303 testes
 aprovados em 16 arquivos, antes da integração da reserva persistente ao serviço.
 Depois dessa integração, o backend foi executado novamente com sucesso;
 nenhum arquivo do frontend foi alterado. Os resultados registrados somam:
 
 ```text
-1017 testes
-138 suítes/conjuntos
+1041 testes
+141 suítes/conjuntos
 0 falhas
 0 testes ignorados
 ```
@@ -685,21 +689,24 @@ aleatórios e os remove ao terminar, sem acessar o banco normal da aplicação.
 Os 11 cenários são uma verificação adicional e não entram no total de testes
 das suítes acima.
 
-O primeiro cadastro foi exercitado separadamente no MongoDB local, com sete
+O primeiro cadastro e sua recuperação foram exercitados no MongoDB local, com 11
 cenários aprovados: convite inválido sem gravações; criação com bcrypt real e
 conclusão do registro; bloqueio após reinício, troca do convite e remoção do
 usuário; falha antes da conta preservando a reserva; falha de conclusão
 preservando conta e reserva; unicidade nativa de `_id` com `autoIndex: false`;
-e duas tentativas concorrentes persistindo uma única reserva e conta.
+duas tentativas concorrentes persistindo uma única reserva e conta; reserva
+sem conta mantida bloqueada; recuperação preservando a conta desativada;
+recuperação repetida ou com usuário removido sem liberar cadastro; e duas
+recuperações concorrentes concluindo uma vez a mesma identidade.
 
 ```bash
 node scripts/verifyInitialSetup.js
 ```
 
-Esse script não carrega o `.env`, utiliza quatro bancos temporários e os remove
+Esse script não carrega o `.env`, utiliza cinco bancos temporários e os remove
 ao terminar. O caminho normal verifica bcrypt real; os cenários de falha e
 concorrência usam dependências controladas para atingir etapas específicas,
-com as gravações e restrições exercitadas no MongoDB real. Os sete cenários
+com as gravações e restrições exercitadas no MongoDB real. Os 11 cenários
 são adicionais aos testes das suítes e aos 11 cenários de administrador único.
 
 A API administrativa de aulas também foi validada com MongoDB local em um banco
@@ -1161,6 +1168,15 @@ Define o registro de primeiro cadastro, com identificador fixo, identidade da
 conta reservada, estados `reserved` e `completed` e data de conclusão coerente.
 Não possui expiração nem campos de senha ou convite. A exclusividade da reserva
 utiliza o índice nativo de `_id`; as transições são responsabilidade do serviço.
+
+### `src/services/InitialSetupRecoveryService.js`
+
+Reconcilia a reserva com a conta administrativa de mesmo identificador e
+papel. Conclui apenas essa reserva e confirma atualizações concorrentes por
+nova consulta. Não cria ou remove contas, não altera credenciais nem libera
+o cadastro. Sem conta correspondente, informa necessidade de verificação.
+Dados inconsistentes e falhas de leitura ou escrita impedem a recuperação.
+Ainda não está integrado ao servidor ou a um comando operacional de recuperação.
 
 ### `src/services/InitialSetupService.js`
 

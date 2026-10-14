@@ -3777,3 +3777,90 @@ obrigatórios na configuração.
 4. criar a interface e validar o primeiro acesso completo no navegador;
 5. preparar e validar a instalação local, incluindo a opção Docker Compose,
    o guia de instalação, o guia de uso e backup/recuperação.
+
+## 14 de outubro de 2026 — Recuperação da reserva com conta persistida
+
+### Objetivo
+
+Concluir uma reserva interrompida quando a conta administrativa correspondente
+já foi gravada, preservando credenciais e mantendo fechado o primeiro cadastro.
+Uma reserva sem conta não deve ser removida nem liberar outra criação.
+
+### Serviço de recuperação
+
+Foi criado `src/services/InitialSetupRecoveryService.js`, independente de HTTP,
+com modelos e relógio recebidos por injeção. A construção não consulta o banco.
+O método `recover()` retorna somente um estado imutável, sem identificadores,
+credenciais ou dados da conta:
+
+- `no_record`: não há registro; o serviço não cria uma reserva;
+- `already_completed`: o cadastro já está concluído, mesmo sem usuário;
+- `needs_review`: há reserva, mas não foi encontrada a conta correspondente;
+- `completed`: a reserva foi concluída após confirmar id e papel da conta.
+
+O serviço valida id fixo, identidade administrativa, estado e data do registro.
+Consulta a conta pelo identificador reservado e papel `admin`, incluindo contas
+desativadas. Não altera nome, e-mail, hash ou ativação do usuário.
+
+A atualização utiliza filtro de id, identidade e estado reservado, além de
+valores coerentes de conclusão e data. Confirma reconhecimento, correspondência
+e modificação da escrita. Se outra instância concluiu primeiro, uma nova
+consulta precisa confirmar a mesma identidade e um estado concluído válido.
+Respostas inconsistentes e falhas do banco não são tratadas como sucesso.
+
+Não há operação de criação ou exclusão de conta, remoção de reserva ou
+reabertura do cadastro. A integração à inicialização continua pendente.
+
+### Testes automatizados
+
+O `test/initialSetupRecoveryService.test.js` possui 24 testes em três suítes,
+com modelos simulados. Os cenários cobrem dependências, ausência de consultas
+na construção, resultados sem dados privados, reserva sem conta, conta ativa
+ou desativada, identificadores equivalentes, estados inconsistentes, relógio,
+falhas de leitura e escrita e confirmação de atualização concorrente.
+
+O backend completo passou com 738 testes em 125 suítes, sem falhas, testes
+ignorados ou cancelados. O frontend não foi repetido neste passo; o último
+resultado desta mesma data permanece em 303 testes aprovados em 16 arquivos.
+Nenhum arquivo do frontend foi alterado. Os resultados registrados somam
+1041 testes em 141 conjuntos.
+
+### Verificação no MongoDB real
+
+O `scripts/verifyInitialSetup.js` foi ampliado de sete para 11 cenários,
+utilizando cinco bancos temporários. Os sete cenários anteriores passaram
+novamente, e foram confirmados quatro cenários de recuperação:
+
+- reserva sem conta retorna necessidade de verificação, sem alterações e
+  mantendo o primeiro cadastro bloqueado;
+- recuperação conclui a reserva e preserva integralmente a conta desativada;
+- recuperação repetida, ou registro concluído com usuário removido, mantém
+  a conclusão e não libera outro cadastro;
+- duas recuperações concorrentes produzem uma conclusão e uma confirmação
+  da mesma identidade, preservando conta e unicidade do registro.
+
+Também foi verificada, na instalação temporária da corrida de recuperação,
+a ausência inicial de registro, sem criação pelo serviço.
+
+Os 11 cenários passaram no MongoDB local com `autoIndex: false`. As barreiras
+controladas fazem as operações concorrentes chegarem às etapas desejadas;
+a persistência e os filtros de atualização são exercitados no banco real.
+Os cinco bancos temporários foram removidos ao final. O script não carregou
+o `.env` nem acessou o banco normal da aplicação.
+
+### Documentação, limites e próximo passo
+
+O README recebeu a descrição da recuperação, seus resultados e os totais
+atualizados. `git diff --check` passou após código e README. Nenhuma dependência
+foi adicionada ou atualizada neste passo.
+
+O serviço de recuperação ainda não é chamado pelo servidor e não existe
+comando operacional de recuperação. Reservas sem conta permanecem bloqueadas
+e exigem um procedimento controlado ainda a definir; a recuperação implementada
+atende ao caso em que a conta reservada já está persistida.
+
+O cadastro inicial também continua sem rota ou interface ativa. O próximo
+passo será preparar a integração HTTP com controlador, validações defensivas,
+proteção do convite e limitação de tentativas; depois, integrar recuperação,
+configuração e primeiro cadastro ao ciclo de inicialização, antes da abertura
+HTTP. A entrega local com Docker Compose, guias e backup permanece planejada.

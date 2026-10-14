@@ -12,6 +12,10 @@ const {
 const { AdministrativeIndexInitializer } = require('../src/services/AdministrativeIndexInitializer');
 const { PasswordHasher } = require('../src/services/PasswordHasher');
 const { InitialSetupService, INITIAL_SETUP_CODES: CODES } = require('../src/services/InitialSetupService');
+const {
+    InitialSetupRecoveryService,
+    INITIAL_SETUP_RECOVERY_STATUS: RECOVERY_STATUS,
+} = require('../src/services/InitialSetupRecoveryService');
 
 /**
  * Execute: node scripts/verifyInitialSetup.js
@@ -216,6 +220,118 @@ async function main() {
         assert.equal(finalState.status, STATUS.COMPLETED);
         assert.equal(finalState.administratorId.toString(), winner._id.toString());
         passed('dois cadastros concorrentes persistem uma reserva e uma conta');
+
+        currentScenario = 'recuperação de reserva sem conta';
+        const missingAccountRecovery = new InitialSetupRecoveryService({
+            UserModel: beforeUser.UserModel,
+            SetupStateModel: beforeUser.SetupStateModel,
+        });
+        assert.deepEqual(await missingAccountRecovery.recover(), {
+            status: RECOVERY_STATUS.NEEDS_REVIEW,
+        });
+        assert.deepEqual(await beforeUser.SetupStateModel.findById(STATE_ID).lean(), reserved);
+        assert.equal(await beforeUser.UserModel.countDocuments({}), 0);
+        await assertBlocked(new InitialSetupService(beforeUser.dependencies));
+        passed('reserva sem conta exige verificação e permanece bloqueada sem alterações');
+
+        currentScenario = 'recuperação com conta desativada';
+        await afterUser.UserModel.updateOne({ _id: savedUser._id }, { $set: { active: false } });
+        const accountBeforeRecovery = await afterUser.UserModel.findById(savedUser._id)
+            .select('+passwordHash').lean();
+        const existingAccountRecovery = new InitialSetupRecoveryService({
+            UserModel: afterUser.UserModel,
+            SetupStateModel: afterUser.SetupStateModel,
+        });
+        assert.deepEqual(await existingAccountRecovery.recover(), {
+            status: RECOVERY_STATUS.COMPLETED,
+        });
+        const recoveredState = await afterUser.SetupStateModel.findById(STATE_ID).lean();
+        assert.equal(recoveredState.status, STATUS.COMPLETED);
+        assert.ok(recoveredState.completedAt instanceof Date);
+        assert.equal(recoveredState.administratorId.toString(), savedUser._id.toString());
+        assert.deepEqual(await afterUser.UserModel.findById(savedUser._id)
+            .select('+passwordHash').lean(), accountBeforeRecovery);
+        await assertBlocked(new InitialSetupService(afterUser.dependencies));
+        passed('recuperação conclui reserva preservando integralmente a conta desativada');
+
+        currentScenario = 'recuperação repetida e registro concluído sem usuário';
+        assert.deepEqual(await existingAccountRecovery.recover(), {
+            status: RECOVERY_STATUS.ALREADY_COMPLETED,
+        });
+        assert.deepEqual(await afterUser.SetupStateModel.findById(STATE_ID).lean(), recoveredState);
+        assert.deepEqual(await new InitialSetupRecoveryService({
+            UserModel: normal.UserModel, SetupStateModel: normal.SetupStateModel,
+        }).recover(), { status: RECOVERY_STATUS.ALREADY_COMPLETED });
+        assert.equal(await normal.UserModel.countDocuments({}), 0);
+        assert.deepEqual(await normal.SetupStateModel.findById(STATE_ID).lean(), state);
+        await assertBlocked(new InitialSetupService(normal.dependencies));
+        passed('recuperação repetida ou sem usuário não altera conclusão nem libera cadastro');
+
+        currentScenario = 'duas recuperações concorrentes';
+        const recoveryRace = await installation('recuperacao_concorrente');
+        const recoveryDependencies = {
+            UserModel: recoveryRace.UserModel,
+            SetupStateModel: recoveryRace.SetupStateModel,
+        };
+        assert.deepEqual(await new InitialSetupRecoveryService(recoveryDependencies).recover(), {
+            status: RECOVERY_STATUS.NO_RECORD,
+        });
+        assert.equal(await recoveryRace.SetupStateModel.countDocuments({}), 0);
+        const recoveryAdministratorId = new mongoose.Types.ObjectId();
+        await recoveryRace.SetupStateModel.create({
+            _id: STATE_ID, administratorId: recoveryAdministratorId,
+            status: STATUS.RESERVED,
+        });
+        await recoveryRace.UserModel.create({
+            _id: recoveryAdministratorId, name: 'Conta de Recuperação',
+            email: 'recuperacao@example.com', passwordHash: FAKE_HASH,
+            role: 'admin', active: true,
+        });
+        const raceUserBefore = await recoveryRace.UserModel.findById(recoveryAdministratorId)
+            .select('+passwordHash').lean();
+        let recoveryArrivals = 0;
+        let releaseRecovery;
+        let rejectRecovery;
+        const recoveryBarrier = new Promise((resolve, reject) => {
+            releaseRecovery = resolve; rejectRecovery = reject;
+        });
+        const recoveryTimeout = setTimeout(() => {
+            rejectRecovery(new Error('Recuperações não atingiram a barreira.'));
+        }, 5000);
+        const controlledUserModel = {
+            async findOne(filter) {
+                const found = await recoveryRace.UserModel.findOne(filter);
+                recoveryArrivals += 1;
+                if (recoveryArrivals === 2) releaseRecovery();
+                await recoveryBarrier;
+                return found;
+            },
+        };
+        let recoveryResults;
+        try {
+            const raceDependencies = { ...recoveryDependencies, UserModel: controlledUserModel };
+            recoveryResults = await Promise.allSettled([
+                new InitialSetupRecoveryService(raceDependencies).recover(),
+                new InitialSetupRecoveryService(raceDependencies).recover(),
+            ]);
+        } finally {
+            clearTimeout(recoveryTimeout);
+        }
+        for (const recoveryResult of recoveryResults) {
+            if (recoveryResult.status === 'rejected') throw recoveryResult.reason;
+        }
+        assert.equal(recoveryArrivals, 2);
+        assert.deepEqual(recoveryResults.map(item => item.value.status).sort(),
+            [RECOVERY_STATUS.COMPLETED, RECOVERY_STATUS.ALREADY_COMPLETED].sort());
+        const raceState = await recoveryRace.SetupStateModel.findById(STATE_ID);
+        assert.equal(raceState.status, STATUS.COMPLETED);
+        assert.equal(raceState.administratorId.toString(), recoveryAdministratorId.toString());
+        assert.deepEqual(await recoveryRace.UserModel.findById(recoveryAdministratorId)
+            .select('+passwordHash').lean(), raceUserBefore);
+        assert.equal(await recoveryRace.SetupStateModel.countDocuments({}), 1);
+        assert.equal(await recoveryRace.UserModel.countDocuments({}), 1);
+        passed('duas recuperações concorrentes concluem uma vez e confirmam a mesma identidade');
+
     } catch (error) {
         console.error(`Falha no cenário: ${currentScenario}.`);
         throw error;
