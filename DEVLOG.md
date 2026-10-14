@@ -3864,3 +3864,122 @@ passo será preparar a integração HTTP com controlador, validações defensiva
 proteção do convite e limitação de tentativas; depois, integrar recuperação,
 configuração e primeiro cadastro ao ciclo de inicialização, antes da abertura
 HTTP. A entrega local com Docker Compose, guias e backup permanece planejada.
+
+## 14 de outubro de 2026 — Componentes HTTP protegidos do primeiro cadastro
+
+### Objetivo
+
+Preparar controlador, proteção de requisição, limitador e roteador do primeiro
+cadastro, mantendo o fluxo isolado da inicialização real até a integração da
+configuração, recuperação e criação administrativa.
+
+### Controlador
+
+Foi criado `src/controllers/InitialSetupController.js`, com serviço injetado,
+handlers vinculados e instância imutável. A consulta retorna somente
+`{ data: { available } }` com status 200; a criação retorna
+`{ data: { created: true } }` com status 201.
+
+O controlador encaminha apenas convite, nome, e-mail e senha do corpo. Não
+obtém convite pela URL, não retorna documentos ou credenciais e não autentica
+automaticamente. Respostas são marcadas com `Cache-Control: no-store`.
+Erros operacionais e inesperados seguem para o tratamento centralizado.
+
+Os resultados do serviço são validados antes de definir o status de sucesso.
+Os testes identificaram a necessidade desse ajuste, e a versão corrigida foi
+aplicada antes da aprovação dos 16 testes do controlador em três suítes.
+
+### Proteção de origem e JSON
+
+Foi criado `src/middlewares/initialSetupRequestGuard.js`, que valida a origem
+configurada e exige correspondência exata do cabeçalho Origin recebido.
+Ausência, origem opaca, valores múltiplos e origem diferente são recusados.
+Host e cabeçalhos de proxy não definem a origem autorizada.
+
+O middleware exige `application/json`, permitindo charset e recusando
+formulários, texto e outros subtipos JSON. Recusas usam erros operacionais
+403 ou 415, sem repetir os valores recebidos. Não habilita CORS nem substitui
+o convite: clientes fora do navegador podem definir o cabeçalho Origin.
+
+O `test/initialSetupRequestGuard.test.js` possui 17 testes em três suítes,
+incluindo HTTP com Express real e recusa antes do handler.
+
+### Limitador específico
+
+Foi criado `src/middlewares/initialSetupRateLimiter.js`, com padrão de cinco
+tentativas por endereço em 15 minutos. Sucessos e falhas são contabilizados;
+o contador é independente do login e não é aplicado ao GET de disponibilidade.
+
+A fábrica valida limites e dependências, usa o tratamento de IP/IPv6 da
+biblioteca e emite cabeçalhos modernos de limitação. Excesso de tentativas
+produz erro operacional `INITIAL_SETUP_RATE_LIMITED`, com status 429.
+Falha do armazenamento não permite que a requisição continue.
+
+O contador permanece em memória por instância e é reiniciado com o processo.
+A exclusividade do cadastro depende da reserva persistente. Antes de utilizar
+múltiplas instâncias, será necessário um contador compartilhado.
+
+O `test/initialSetupRateLimiter.test.js` possui 14 testes em duas suítes,
+incluindo HTTP com a biblioteca real, contagem de sucesso/recusa, isolamento
+de contadores e bloqueio do handler após falha do armazenamento.
+
+### Roteador
+
+Foi criado `src/routes/initialSetupRoutes.js`, com controlador e ambas as
+proteções obrigatórios, sem valores padrão permissivos. Os caminhos internos
+são `/status` e `/admin`, destinados ao prefixo `/api/setup` da aplicação.
+
+O POST executa limitador, proteção de origem/JSON e controlador, nessa ordem.
+Uma origem recusada também consome tentativa. Requisições bloqueadas não
+alcançam consultas persistentes ou bcrypt. O GET usa apenas o controlador
+para retornar disponibilidade sem sessão ou segredo. Não existe rota pública
+de recuperação.
+
+O `test/initialSetupRoutes.test.js` possui 16 testes em duas suítes. A composição
+foi verificada com roteador simulado e por HTTP com Express real, usando serviço
+simulado. Foram confirmados prefixo, envelopes mínimos, ausência de cookie,
+ordem das proteções, recusa operacional e consulta de estado mesmo após bloquear
+as tentativas de criação. Nenhuma conta real foi criada nesses testes.
+
+### Documentos remotos e guia planejado
+
+Foi confirmado que os campos existentes de materiais continuarão recebendo
+links por cópia e colagem. O professor organizará os arquivos no Google Drive
+e poderá usar Google Docs para documentos; para esse fluxo, terá uma conta
+Google independente das credenciais da instalação.
+
+A aplicação armazena links e não realiza upload, login Google ou OAuth.
+Permissões dos documentos são geridas no Drive; cadastrar um link não concede
+acesso. As validações existentes de URLs permanecem sem exclusividade de
+provedor. O guia deverá explicar organização, cópia de links e compartilhamento.
+Nenhum campo de materiais ou componente visual foi alterado neste marco.
+
+### Resultados e documentação
+
+- 801 testes do backend aprovados em 135 suítes;
+- zero falhas, testes ignorados ou cancelados;
+- 63 novos testes nos quatro arquivos deste marco;
+- formatação validada por `git diff --check` após código e README;
+- nenhuma dependência adicionada ou atualizada.
+
+O frontend não foi repetido neste bloco. O último resultado desta data permanece
+em 303 testes aprovados em 16 arquivos. Os resultados registrados somam
+1104 testes em 151 conjuntos. Os scripts de MongoDB não foram executados
+novamente para as alterações HTTP; os resultados anteriores de persistência
+e recuperação permanecem registrados nos marcos correspondentes.
+
+O README foi atualizado com os componentes HTTP, suas proteções, os resultados
+atuais, o uso de documentos remotos e os limites da integração.
+
+### Próximo passo e limites
+
+Os componentes estão preparados, mas `server.js` ainda não fornece o roteador
+à aplicação. Nenhuma rota de primeiro cadastro está ativa no servidor real.
+O fluxo atual continua exigindo `ADMIN_NAME`, `ADMIN_EMAIL` e `ADMIN_PASSWORD`.
+
+O próximo passo será adaptar a configuração para instalações sem credenciais
+predefinidas e integrar recuperação, primeiro cadastro e composição HTTP à
+inicialização. A integração deverá preservar instalações existentes e impedir
+criação administrativa automática quando houver registro de primeiro cadastro.
+Depois, criar e validar a interface, o procedimento de instalação local e
+os guias, incluindo Docker Compose e backup/recuperação.

@@ -10,6 +10,22 @@ por computadores e celulares.
 
 > Última atualização desta documentação: 14 de outubro de 2026.
 
+## Documentos e materiais remotos
+
+O fluxo de materiais utiliza os campos existentes para copiar e colar links.
+O professor organiza seus arquivos no Google Drive e pode criar documentos
+no Google Docs. Para esse fluxo, precisa de uma conta Google, independente
+do e-mail e da senha utilizados para acessar sua cópia da aplicação.
+
+A aplicação guarda os links; não envia arquivos ao Drive nem realiza login
+Google ou integração OAuth. As permissões de acesso aos documentos são
+administradas pelo professor no Google Drive. Cadastrar um link não concede
+permissão para abrir o arquivo. Os campos continuam aceitando links remotos
+conforme as validações existentes, sem exclusividade de provedor.
+
+O guia de instalação e uso deverá explicar organização, cópia de links e
+compartilhamento dos materiais. Essa orientação ainda será incorporada ao guia.
+
 ## Estado atual
 
 A fundação técnica do backend está concluída. O projeto já possui servidor
@@ -58,8 +74,20 @@ A recuperação foi validada, mas ainda precisa ser integrada à inicialização
 o procedimento de intervenção para reservas sem conta continua pendente.
 
 O ambiente valida opcionalmente o formato do convite e a aplicação possui um
-ponto de montagem inativo para a futura rota. O serviço ainda não está
-integrado ao servidor, e não existe rota ou interface de primeiro cadastro.
+ponto de montagem inativo para o roteador. O controlador e o roteador de
+primeiro cadastro estão preparados e testados: `GET /api/setup/status` consulta
+a disponibilidade e `POST /api/setup/admin` confirma a criação sem autenticar
+automaticamente ou devolver credenciais. Esses caminhos ainda não estão
+ativados no servidor real; o serviço e a recuperação continuam sem integração
+à inicialização, e a interface de primeiro acesso não foi implementada.
+
+A criação executa limitador específico, proteção de origem/JSON e controlador,
+nessa ordem. A origem deve corresponder ao `APP_ORIGIN` configurado; requisições
+sem `Origin` também são recusadas. Por padrão, são cinco tentativas por endereço
+em 15 minutos, incluindo sucessos e recusas. O contador é separado do login e
+fica em memória por instância. Reiniciar o processo reinicia esse contador;
+a reserva persistente continua protegendo a exclusividade do primeiro cadastro.
+
 O fluxo administrativo atual continua funcionando com as variáveis `ADMIN_*`.
 
 O administrador é preparado depois da conexão com o banco e antes da abertura
@@ -411,7 +439,7 @@ Nunca envie o conteúdo de `.env` por e-mail, mensagem ou commit.
 | `ADMIN_EMAIL` | Sim | — | E-mail do administrador inicial |
 | `ADMIN_PASSWORD` | Sim | — | Senha inicial do administrador |
 | `SESSION_HOURS` | Não | `8` | Duração máxima da sessão |
-| `APP_ORIGIN` | Sim | — | Origem autorizada da aplicação |
+| `APP_ORIGIN` | Sim | — | Origem HTTP/HTTPS prevista para a aplicação e usada na futura proteção do primeiro cadastro |
 | `TRUST_PROXY` | Não | `0` | Uso de proxy reverso |
 | `INITIAL_SETUP_TOKEN` | Não | — | Reservado para o futuro convite inicial; ainda não deve ser configurado |
 
@@ -527,15 +555,15 @@ npm test
 npm --prefix client test
 ```
 
-Em 14 de outubro de 2026, o backend foi validado com 738 testes aprovados
-em 125 suítes. O frontend também foi executado nessa data, com 303 testes
+Em 14 de outubro de 2026, o backend foi validado com 801 testes aprovados
+em 135 suítes. O frontend também foi executado nessa data, com 303 testes
 aprovados em 16 arquivos, antes da integração da reserva persistente ao serviço.
 Depois dessa integração, o backend foi executado novamente com sucesso;
 nenhum arquivo do frontend foi alterado. Os resultados registrados somam:
 
 ```text
-1041 testes
-141 suítes/conjuntos
+1104 testes
+151 suítes/conjuntos
 0 falhas
 0 testes ignorados
 ```
@@ -543,6 +571,9 @@ nenhum arquivo do frontend foi alterado. Os resultados registrados somam:
 Os testes verificam, entre outros comportamentos:
 
 - fundação HTTP, erros e limites do corpo JSON;
+- controlador e roteador de primeiro cadastro com respostas mínimas e
+  bloqueio antes do serviço; origem autorizada, JSON e limitação de tentativas
+  verificados também por HTTP com Express real e serviço simulado;
 - ambiente, porta e ciclo de vida do servidor;
 - preparação explícita dos índices antes da conta, espera pela conclusão e
   encerramento do banco após falhas de preparação;
@@ -1168,6 +1199,28 @@ Define o registro de primeiro cadastro, com identificador fixo, identidade da
 conta reservada, estados `reserved` e `completed` e data de conclusão coerente.
 Não possui expiração nem campos de senha ou convite. A exclusividade da reserva
 utiliza o índice nativo de `_id`; as transições são responsabilidade do serviço.
+
+### Componentes HTTP do primeiro cadastro
+
+`src/controllers/InitialSetupController.js` vincula handlers de consulta e
+criação, valida defensivamente o resultado do serviço antes de definir sucesso
+HTTP e seleciona apenas os campos públicos. Respostas usam `Cache-Control:
+no-store`; falhas seguem ao tratamento centralizado.
+
+`src/middlewares/initialSetupRequestGuard.js` compara o `Origin` recebido com
+a origem configurada e exige `application/json`, incluindo seu parâmetro de
+charset. Não habilita CORS e não substitui a validação do convite: clientes
+fora do navegador podem definir o cabeçalho Origin.
+
+`src/middlewares/initialSetupRateLimiter.js` possui contador específico da
+criação e recusa requisições excedentes com código `INITIAL_SETUP_RATE_LIMITED`
+e status 429. Falha do armazenamento não libera a requisição. Múltiplas
+instâncias exigirão um contador compartilhado antes de usar essa implantação.
+
+`src/routes/initialSetupRoutes.js` exige controlador e ambas as proteções,
+montando internamente `/status` e `/admin`. Não há rota pública de recuperação.
+O roteador só se torna disponível quando for fornecido à aplicação; o servidor
+real ainda não o fornece.
 
 ### `src/services/InitialSetupRecoveryService.js`
 
