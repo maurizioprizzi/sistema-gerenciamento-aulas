@@ -12,6 +12,10 @@ const {
     ADMINISTRATIVE_INDEX_ERRORS,
     AdministrativeIndexInitializer,
 } = require('../src/services/AdministrativeIndexInitializer');
+const {
+    AdminBootstrapper,
+    ADMIN_BOOTSTRAP_STATUS,
+} = require('../src/services/AdminBootstrapper');
 
 /**
  * Verificação manual e reproduzível do índice administrativo no MongoDB real.
@@ -291,6 +295,99 @@ async function main() {
             .map(user => user.email);
         assert.deepEqual(legacyAfterPreparation, preservedEmails);
         completeScenario('serviço recusa múltiplos administradores com mensagem clara e preserva contas');
+
+        currentScenario = 'preservação da conta ativa com nova configuração';
+        const beforeBootstrap = await UserModel.findOne({ role: USER_ROLES.ADMIN })
+            .select('+passwordHash').lean();
+        assert.ok(beforeBootstrap);
+        const changedConfiguration = {
+            name: 'Outro Nome de Teste',
+            email: 'configuracao-alterada@example.com',
+            password: 'outra-senha-ficticia-de-teste',
+        };
+        const preservingBootstrapper = new AdminBootstrapper({
+            UserModel,
+            passwordHasherService: {
+                async hash() {
+                    assert.fail('Não deve gerar hash para uma conta existente.');
+                },
+            },
+            logger: { info() {} },
+        });
+        const preservedActiveResult = await preservingBootstrapper.ensureAdmin(changedConfiguration);
+        assert.equal(preservedActiveResult.status, ADMIN_BOOTSTRAP_STATUS.ALREADY_EXISTS);
+        assert.deepEqual(
+            await UserModel.findOne({ role: USER_ROLES.ADMIN }).select('+passwordHash').lean(),
+            beforeBootstrap,
+        );
+        assert.equal(await UserModel.countDocuments({}), 1);
+        completeScenario('nova configuração preserva integralmente a conta ativa sem gerar hash');
+
+        currentScenario = 'preservação da conta desativada com nova configuração';
+        await UserModel.updateOne({ _id: beforeBootstrap._id }, { $set: { active: false } });
+        const beforeInactiveBootstrap = await UserModel.findById(beforeBootstrap._id)
+            .select('+passwordHash').lean();
+        const preservedInactiveResult = await preservingBootstrapper.ensureAdmin(changedConfiguration);
+        assert.equal(preservedInactiveResult.status, ADMIN_BOOTSTRAP_STATUS.ALREADY_EXISTS);
+        assert.deepEqual(
+            await UserModel.findById(beforeBootstrap._id).select('+passwordHash').lean(),
+            beforeInactiveBootstrap,
+        );
+        assert.equal(await UserModel.countDocuments({}), 1);
+        completeScenario('nova configuração preserva a conta desativada sem reativar ou substituir dados');
+
+        currentScenario = 'duas inicializações administrativas com e-mails diferentes';
+        // Somente a coleção temporária é esvaziada para exercitar a corrida.
+        await UserModel.deleteMany({});
+        let hashArrivals = 0;
+        let releaseHashes;
+        let rejectHashes;
+        const bothReachedHash = new Promise((resolve, reject) => {
+            releaseHashes = resolve;
+            rejectHashes = reject;
+        });
+        const barrierTimeout = setTimeout(() => {
+            rejectHashes(new Error('As duas inicializações não chegaram ao hashing no prazo.'));
+        }, 5000);
+        const concurrentBootstrapper = new AdminBootstrapper({
+            UserModel,
+            passwordHasherService: {
+                async hash() {
+                    // Duas consultas vazias devem terminar antes das gravações.
+                    hashArrivals += 1;
+                    if (hashArrivals === 2) releaseHashes();
+                    await bothReachedHash;
+                    return TEST_PASSWORD_HASH;
+                },
+            },
+            logger: { info() {} },
+        });
+        let bootstrapResults;
+        try {
+            bootstrapResults = await Promise.allSettled([
+                concurrentBootstrapper.ensureAdmin({
+                    name: 'Primeira Instância', email: 'instancia1@example.com',
+                    password: 'senha-ficticia-instancia1',
+                }),
+                concurrentBootstrapper.ensureAdmin({
+                    name: 'Segunda Instância', email: 'instancia2@example.com',
+                    password: 'senha-ficticia-instancia2',
+                }),
+            ]);
+        } finally {
+            clearTimeout(barrierTimeout);
+        }
+        assert.equal(hashArrivals, 2);
+        for (const result of bootstrapResults) {
+            if (result.status === 'rejected') throw result.reason;
+        }
+        assert.deepEqual(
+            bootstrapResults.map(result => result.value.status).sort(),
+            [ADMIN_BOOTSTRAP_STATUS.ALREADY_EXISTS, ADMIN_BOOTSTRAP_STATUS.CREATED].sort(),
+        );
+        assert.equal(await UserModel.countDocuments({ role: USER_ROLES.ADMIN }), 1);
+        completeScenario('inicializações concorrentes criam uma conta e reconhecem a vencedora');
+
 
     } catch (error) {
         console.error(`Falha no cenário: ${currentScenario}.`);

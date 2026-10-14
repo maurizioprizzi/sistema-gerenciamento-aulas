@@ -47,8 +47,12 @@ rota. O cadastro inicial, sua interface e sua integração ao servidor ainda nã
 foram implementados. O fluxo administrativo atual continua funcionando.
 
 O administrador é preparado depois da conexão com o banco e antes da abertura
-da porta HTTP. O processo é idempotente: uma conta existente é preservada e
-não é duplicada nem tem sua senha substituída.
+da porta HTTP. O processo consulta a conta pelo papel `admin`, sem depender
+do e-mail configurado e sem filtrar sua ativação. Uma conta existente é
+preservada: alterar `ADMIN_NAME`, `ADMIN_EMAIL` ou `ADMIN_PASSWORD` não modifica
+seus dados, não gera outro hash e não cria um novo administrador. Uma conta
+desativada permanece desativada. As variáveis continuam obrigatórias no fluxo
+atual e são utilizadas para criar a conta somente quando ainda não há admin.
 
 Cada instalação deverá manter uma única conta administrativa em seu próprio
 banco de dados. O modelo declara um índice único parcial para o papel `admin`,
@@ -507,14 +511,14 @@ npm test
 npm --prefix client test
 ```
 
-Em 9 de outubro de 2026, o backend foi novamente validado: 642 testes
-aprovados em 112 suítes. A última execução registrada do frontend permanece
+Em 9 de outubro de 2026, o backend foi novamente validado: 650 testes
+aprovados em 113 suítes. A última execução registrada do frontend permanece
 com 303 testes aprovados em 16 arquivos; ela não foi repetida nesta etapa.
 Essas validações registradas somam:
 
 ```text
-945 testes
-128 suítes/conjuntos
+953 testes
+129 suítes/conjuntos
 0 falhas
 0 testes ignorados
 ```
@@ -640,13 +644,20 @@ Os testes automatizados utilizam dependências controladas sempre que possível
 e não exigem um MongoDB externo.
 
 A proteção de administrador único e o serviço de preparação foram verificados
-separadamente no MongoDB local, com oito cenários aprovados: criação efetiva
+separadamente no MongoDB local, com 11 cenários aprovados: criação efetiva
 do índice pelo serviço; recusa de um segundo e-mail com preservação da conta
 original; bloqueio mesmo com a conta desativada; recriação do índice e repetição
 da preparação sem alterar a conta inativa; duas criações concorrentes com
 apenas uma conta persistida; independência entre dois bancos de instalações;
 recusa da criação do índice em banco com dois administradores; e diagnóstico
-claro dessa situação pelo serviço, preservando ambas as contas.
+claro dessa situação pelo serviço, preservando ambas as contas; preservação
+integral da conta ativa após mudar a configuração; preservação da conta
+desativada sem reativação; e duas inicializações administrativas com e-mails
+diferentes, criando uma única conta e reconhecendo a vencedora.
+
+Nos três cenários de `AdminBootstrapper`, o hashing é simulado com dados
+fictícios. A consulta, a persistência e os conflitos são exercitados no MongoDB
+real; esses cenários não verificam autenticação ou hashing criptográfico.
 
 Para repetir essa verificação, com o MongoDB local ativo em `127.0.0.1:27017`:
 
@@ -656,7 +667,7 @@ node scripts/verifySingleAdminIndex.js
 
 O script não carrega o `.env`. Ele cria três bancos temporários com nomes
 aleatórios e os remove ao terminar, sem acessar o banco normal da aplicação.
-Os oito cenários são uma verificação adicional e não entram no total de testes
+Os 11 cenários são uma verificação adicional e não entram no total de testes
 das suítes acima.
 
 A API administrativa de aulas também foi validada com MongoDB local em um banco
@@ -1114,8 +1125,11 @@ administrativa. O app aplica o prefixo `/api/monthly-materials`.
 
 ### `src/services/AdminBootstrapper.js`
 
-Garante a existência da conta administrativa sem substituir uma conta já
-cadastrada e trata conflitos de criação simultânea.
+Garante a existência da conta administrativa consultando pelo papel `admin`.
+Preserva contas ativas ou desativadas, mesmo quando o e-mail configurado muda,
+e só gera hash quando precisa criar a primeira conta. Em conflito de e-mail
+ou papel durante a criação, consulta novamente o administrador; reconhece a
+conta criada por outra instância ou propaga o erro quando ela não é encontrada.
 
 ### `src/services/AuthenticationService.js`
 

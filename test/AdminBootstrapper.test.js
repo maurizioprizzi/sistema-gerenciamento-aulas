@@ -17,8 +17,8 @@ const { USER_ROLES } = require('../src/models/User');
  * Nenhuma credencial real deve ser utilizada em testes automatizados.
  */
 const VALID_ADMIN_CONFIGURATION = Object.freeze({
-    name: 'Dionísio Pereira',
-    email: 'DIONISIO@EXAMPLE.COM',
+    name: 'Administrador de Teste',
+    email: 'ADMIN@EXAMPLE.COM',
     password: 'senha-ficticia-de-teste',
 });
 
@@ -416,7 +416,7 @@ describe('inicialização da conta administrativa', () => {
             context.userModelCalls.findOne,
             [
                 {
-                    email: 'dionisio@example.com',
+                    role: USER_ROLES.ADMIN,
                 },
             ],
         );
@@ -502,7 +502,7 @@ describe('inicialização da conta administrativa', () => {
             [
                 {
                     name: VALID_ADMIN_CONFIGURATION.name,
-                    email: 'dionisio@example.com',
+                    email: 'admin@example.com',
                     passwordHash,
                     role: USER_ROLES.ADMIN,
                     active: true,
@@ -732,7 +732,7 @@ describe('conflitos de unicidade durante a inicialização', () => {
             {
                 code: 11000,
                 keyValue: {
-                    email: 'dionisio@example.com',
+                    email: 'admin@example.com',
                 },
             },
         );
@@ -800,11 +800,151 @@ describe('conflitos de unicidade durante a inicialização', () => {
 
         /**
          * Não deve realizar a segunda consulta, pois o conflito não pertence
-         * ao índice de e-mail.
+         * aos índices de e-mail ou papel administrativo.
          */
         assert.equal(
             context.userModelCalls.findOne.length,
             1,
         );
+    });
+});
+
+/**
+ * Cada instalação preserva sua conta mesmo quando a configuração muda.
+ * Os objetos congelados também tornam uma mutação indevida observável.
+ */
+describe('preservação do administrador por instalação', () => {
+    for (const active of [true, false]) {
+        test(`preserva conta ${active ? 'ativa' : 'desativada'} com outro e-mail`, async () => {
+            const existingUser = Object.freeze({
+                id: 'administrador-original',
+                name: 'Nome Original',
+                email: 'original@example.com',
+                passwordHash: 'hash-original-preservado',
+                role: USER_ROLES.ADMIN,
+                active,
+            });
+            const context = createTestContext({
+                userModelOptions: { findResults: [existingUser] },
+            });
+            const configuration = Object.freeze({
+                name: 'Nome Novo',
+                email: 'novo@example.com',
+                password: 'outra-senha-ficticia',
+            });
+
+            const result = await context.service.ensureAdmin(configuration);
+            assert.deepEqual(context.userModelCalls.findOne, [{ role: USER_ROLES.ADMIN }]);
+            assert.deepEqual(context.passwordHasherCalls.hash, []);
+            assert.deepEqual(context.userModelCalls.create, []);
+            assert.deepEqual(result, {
+                status: ADMIN_BOOTSTRAP_STATUS.ALREADY_EXISTS,
+                created: false,
+            });
+            assert.equal(existingUser.email, 'original@example.com');
+            assert.equal(existingUser.passwordHash, 'hash-original-preservado');
+            assert.equal(existingUser.active, active);
+            assert.equal(existingUser.name, 'Nome Original');
+            assert.equal(Object.isFrozen(result), true);
+            const logs = JSON.stringify(context.logMessages);
+            for (const value of [existingUser.email, existingUser.passwordHash, configuration.password]) {
+                assert.equal(logs.includes(value), false);
+            }
+        });
+    }
+
+    test('reconhece conflito administrativo pelo keyPattern', () => {
+        assert.equal(AdminBootstrapper.isDuplicateAdminError({
+            code: 11000, keyPattern: { role: 1 },
+        }), true);
+    });
+
+    test('reconhece conflito administrativo pelo keyValue', () => {
+        assert.equal(AdminBootstrapper.isDuplicateAdminError({
+            code: 11000, keyValue: { role: USER_ROLES.ADMIN },
+        }), true);
+    });
+
+    test('não confunde outros erros ou valores de papel com conflito administrativo', () => {
+        for (const error of [
+            null, undefined, new Error('Falha comum.'),
+            { code: 13, keyPattern: { role: 1 } },
+            { code: 11000, keyPattern: { email: 1 } },
+            { code: 11000, keyValue: { role: 'outro-papel' } },
+            { code: 11000 },
+        ]) {
+            assert.equal(AdminBootstrapper.isDuplicateAdminError(error), false);
+        }
+    });
+
+    test('aceita administrador concorrente com e-mail diferente', async () => {
+        const existingUser = Object.freeze({
+            email: 'concorrente@example.com', role: USER_ROLES.ADMIN, active: false,
+        });
+        const context = createTestContext({
+            userModelOptions: {
+                findResults: [null, existingUser],
+                createError: Object.assign(new Error('Conflito de papel.'), {
+                    code: 11000, keyPattern: { role: 1 },
+                }),
+            },
+        });
+
+        const result = await context.service.ensureAdmin(VALID_ADMIN_CONFIGURATION);
+        assert.deepEqual(context.userModelCalls.findOne, [
+            { role: USER_ROLES.ADMIN }, { role: USER_ROLES.ADMIN },
+        ]);
+        assert.equal(context.userModelCalls.create.length, 1);
+        assert.equal(result.status, ADMIN_BOOTSTRAP_STATUS.ALREADY_EXISTS);
+        assert.equal(result.created, false);
+        assert.equal(existingUser.email, 'concorrente@example.com');
+        assert.equal(existingUser.active, false);
+    });
+
+    test('propaga conflito de papel se não encontrar administrador após a criação', async () => {
+        const expectedError = Object.assign(new Error('Conflito sem administrador.'), {
+            code: 11000, keyValue: { role: USER_ROLES.ADMIN },
+        });
+        const context = createTestContext({
+            userModelOptions: {
+                findResults: [null, null], createError: expectedError,
+            },
+        });
+        await assert.rejects(
+            context.service.ensureAdmin(VALID_ADMIN_CONFIGURATION),
+            error => error === expectedError,
+        );
+        assert.deepEqual(context.userModelCalls.findOne, [
+            { role: USER_ROLES.ADMIN }, { role: USER_ROLES.ADMIN },
+        ]);
+    });
+
+    test('propaga falha da segunda consulta após conflito administrativo', async () => {
+        const expectedError = new Error('Consulta de recuperação indisponível.');
+        let queries = 0;
+        const { passwordHasherService } = createFakePasswordHasher();
+        const { logger } = createFakeLogger();
+        const service = new AdminBootstrapper({
+            UserModel: {
+                async findOne(filter) {
+                    assert.deepEqual(filter, { role: USER_ROLES.ADMIN });
+                    queries += 1;
+                    if (queries === 2) throw expectedError;
+                    return null;
+                },
+                async create() {
+                    throw Object.assign(new Error('Conflito de papel.'), {
+                        code: 11000, keyPattern: { role: 1 },
+                    });
+                },
+            },
+            passwordHasherService,
+            logger,
+        });
+        await assert.rejects(
+            service.ensureAdmin(VALID_ADMIN_CONFIGURATION),
+            error => error === expectedError,
+        );
+        assert.equal(queries, 2);
     });
 });

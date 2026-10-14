@@ -42,7 +42,8 @@ const ADMIN_BOOTSTRAP_STATUS = Object.freeze({
  *
  * Esta classe não substitui dados de uma conta existente. As variáveis
  * ADMIN_NAME, ADMIN_EMAIL e ADMIN_PASSWORD são utilizadas somente quando
- * ainda não existe uma conta com o e-mail administrativo configurado.
+ * ainda não existe uma conta com papel administrativo, mesmo desativada.
+ * Alterar os dados da configuração não modifica a conta existente.
  */
 class AdminBootstrapper {
     /**
@@ -229,6 +230,27 @@ class AdminBootstrapper {
     }
 
     /**
+     * Reconhece conflito no índice de papel administrativo.
+     *
+     * Não basta receber 11000: outros índices podem produzir esse código.
+     * A recuperação sempre consultará novamente o papel administrativo antes
+     * de considerar que outra instância concluiu a criação.
+     *
+     * @param {unknown} error Erro retornado pelo MongoDB.
+     * @returns {boolean} Verdadeiro para conflito no papel admin.
+     */
+    static isDuplicateAdminError(error) {
+        if (!error || error.code !== 11000) {
+            return false;
+        }
+
+        return Boolean(
+            error.keyPattern?.role === 1
+            || error.keyValue?.role === USER_ROLES.ADMIN,
+        );
+    }
+
+    /**
      * Retorna um resultado imutável sem expor o documento do usuário.
      *
      * O documento recém-criado contém o hash em memória, mesmo que sua
@@ -251,9 +273,9 @@ class AdminBootstrapper {
      *
      * Fluxo:
      *
-     * 1. normaliza o e-mail;
-     * 2. consulta uma conta existente;
-     * 3. gera o hash somente quando necessário;
+     * 1. valida a configuração e consulta o papel administrativo;
+     * 2. preserva qualquer administrador existente, inclusive desativado;
+     * 3. normaliza o e-mail e gera o hash somente quando necessário;
      * 4. cria a conta administrativa;
      * 5. trata uma possível corrida de unicidade.
      *
@@ -272,10 +294,10 @@ class AdminBootstrapper {
             password,
         } = configuration;
 
-        const normalizedEmail = normalizeEmail(email);
-
+        // A identidade da instalação não depende do e-mail no .env.
+        // Não filtramos active: uma conta desativada não libera nova criação.
         const existingUser = await this.#UserModel.findOne({
-            email: normalizedEmail,
+            role: USER_ROLES.ADMIN,
         });
 
         if (existingUser) {
@@ -288,6 +310,7 @@ class AdminBootstrapper {
             );
         }
 
+        const normalizedEmail = normalizeEmail(email);
         const passwordHash =
             await this.#passwordHasher.hash(password);
 
@@ -302,12 +325,17 @@ class AdminBootstrapper {
         } catch (error) {
             /**
              * Em uma inicialização concorrente, outra instância pode ter
-             * criado a mesma conta depois da primeira consulta.
+             * criado um administrador depois da primeira consulta, inclusive
+             * com outro e-mail. Um conflito de e-mail com um usuário de outro
+             * papel não é tratado como administrador existente.
              */
-            if (AdminBootstrapper.isDuplicateEmailError(error)) {
+            if (
+                AdminBootstrapper.isDuplicateEmailError(error)
+                || AdminBootstrapper.isDuplicateAdminError(error)
+            ) {
                 const concurrentlyCreatedUser =
                     await this.#UserModel.findOne({
-                        email: normalizedEmail,
+                        role: USER_ROLES.ADMIN,
                     });
 
                 if (concurrentlyCreatedUser) {

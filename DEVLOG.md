@@ -3556,3 +3556,94 @@ credenciais nem criar outra conta quando a configuração mudar.
 O primeiro cadastro pela interface, suas rotas e a proteção do convite ainda
 não foram implementados. As variáveis `ADMIN_NAME`, `ADMIN_EMAIL` e
 `ADMIN_PASSWORD` continuam sendo utilizadas pelo fluxo atual.
+
+## 9 de outubro de 2026 — Preservação da conta administrativa da instalação
+
+### Objetivo
+
+Evitar que mudanças nas credenciais configuradas para a inicialização levem
+à tentativa de criar um segundo administrador. A conta existente pertence à
+instalação e deve ser preservada independentemente do e-mail no `.env`.
+
+### Serviço administrativo
+
+O `src/services/AdminBootstrapper.js` passou a consultar pelo papel `admin`,
+sem filtro de e-mail ou ativação. Quando encontra a conta, retorna o resultado
+imutável `already_exists`, sem gerar hash, criar outra conta ou alterar os
+dados existentes. Uma conta desativada não é reativada pela inicialização.
+
+Nome, e-mail e senha configurados continuam sendo validados no fluxo atual.
+O e-mail é normalizado e o hash é gerado somente quando não há administrador
+e a criação da primeira conta é necessária.
+
+Foi acrescentado o reconhecimento de conflito de unicidade no papel
+administrativo, preservando o tratamento de conflito no e-mail. Nessas
+situações, o serviço consulta novamente pelo papel para reconhecer a conta
+criada simultaneamente por outra instância, inclusive com outro e-mail.
+Se a consulta não encontra um administrador, o conflito é propagado.
+Conflitos de outros índices não são tratados como criação administrativa.
+
+### Testes automatizados
+
+O `test/AdminBootstrapper.test.js` foi atualizado para a consulta por papel,
+com exemplos generalizados. O arquivo passou a ter 43 testes em cinco suítes.
+Os oito novos cenários verificam:
+
+- preservação da conta ativa com e-mail diferente da configuração;
+- preservação da conta desativada nas mesmas condições;
+- reconhecimento do conflito administrativo pelo `keyPattern`;
+- reconhecimento do conflito administrativo pelo `keyValue`;
+- recusa de outros erros e valores como conflito administrativo;
+- reconhecimento do administrador concorrente com outro e-mail;
+- propagação do conflito quando não há administrador na segunda consulta;
+- propagação de falha na consulta de recuperação.
+
+As verificações de preservação também confirmam a ausência de criação e de
+hashing e a ausência de valores privados nos registros operacionais.
+
+### Verificação no MongoDB real
+
+O `scripts/verifySingleAdminIndex.js` foi ampliado de oito para 11 cenários.
+Os três novos cenários exercitaram o serviço administrativo com persistência
+real em bancos temporários:
+
+- mudança da configuração preserva integralmente a conta ativa sem gerar hash;
+- mudança da configuração preserva a conta desativada sem reativar ou
+  substituir seus dados;
+- duas inicializações com e-mails diferentes chegam à criação concorrentemente,
+  persistem uma única conta e retornam um resultado `created` e outro
+  `already_exists`.
+
+O hashing desses cenários foi simulado com dados fictícios. A consulta,
+a persistência e os conflitos de unicidade foram exercitados no MongoDB real;
+a verificação não substitui os testes de hashing ou autenticação.
+Os 11 cenários passaram e os três bancos temporários foram removidos ao final.
+O script não carregou o `.env` nem acessou o banco normal da aplicação.
+
+### Resultados e documentação
+
+- 650 testes do backend aprovados em 113 suítes;
+- zero falhas, testes cancelados ou ignorados;
+- 11 cenários adicionais aprovados no MongoDB real;
+- `git diff --check` sem problemas após código e README;
+- nenhuma dependência adicionada ou atualizada no projeto.
+
+O frontend não foi executado novamente nesta etapa. Seu último resultado
+registrado permanece em 303 testes aprovados em 16 arquivos. Somados ao
+backend atual, os resultados registrados correspondem a 953 testes em 129
+conjuntos. Os 11 cenários do script são adicionais a esse total.
+
+O README passou a explicar a consulta por papel, a preservação das contas,
+os limites do hashing simulado na verificação manual e os novos resultados.
+
+### Próximo passo e limites
+
+Preparar o serviço de primeiro cadastro protegido por convite, com validação
+de nome, e-mail e senha e bloqueio quando já existe administrador. Depois,
+integrar rotas e interface e adaptar a configuração e a inicialização para
+permitir uma instalação sem credenciais administrativas previamente definidas.
+
+Nesta etapa, `ADMIN_NAME`, `ADMIN_EMAIL` e `ADMIN_PASSWORD` continuam
+obrigatórias. Nenhuma rota ou interface de cadastro foi ativada, nem foi
+implementado um procedimento de recuperação de acesso. Alterar essas
+variáveis não redefine a senha de uma conta existente.
