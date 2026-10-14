@@ -3647,3 +3647,133 @@ Nesta etapa, `ADMIN_NAME`, `ADMIN_EMAIL` e `ADMIN_PASSWORD` continuam
 obrigatórias. Nenhuma rota ou interface de cadastro foi ativada, nem foi
 implementado um procedimento de recuperação de acesso. Alterar essas
 variáveis não redefine a senha de uma conta existente.
+
+## 14 de outubro de 2026 — Primeiro cadastro com reserva persistente
+
+### Objetivo e entrega planejada
+
+Preparar o primeiro cadastro para que qualquer pessoa possa clonar o
+repositório e utilizar sua própria instalação, escolhendo nome, e-mail e
+senha. Cada cópia terá seu banco e uma conta administrativa; isso inclui o
+usuário originalmente previsto para a aplicação.
+
+O planejamento de entrega inclui um guia de instalação acessível a quem não
+é programador, um guia de uso e procedimentos de backup e recuperação.
+Docker Compose foi considerado como opção para simplificar a instalação da
+aplicação e do MongoDB. Nenhum arquivo Docker foi implementado neste marco;
+a compatibilidade e o procedimento ainda precisarão ser validados.
+
+### Serviço de primeiro cadastro
+
+Foi criado `src/services/InitialSetupService.js`, independente de HTTP e
+sessões, com modelos e serviço de hashing recebidos por injeção.
+O serviço:
+
+- fica fechado quando não existe convite configurado;
+- valida convite com 64 caracteres hexadecimais e compara digests de tamanho
+  fixo usando `timingSafeEqual`, aceitando representações hex equivalentes;
+- normaliza nome e e-mail, preservando integralmente a senha;
+- exige nome com 2 a 120 caracteres e e-mail válido com até 254 caracteres;
+- exige senha com pelo menos 12 caracteres, diferente de somente espaços,
+  e com até 72 bytes UTF-8, respeitando o limite do bcrypt;
+- recusa administrador existente, inclusive desativado;
+- seleciona explicitamente os campos enviados ao modelo e não aceita do
+  cliente o papel administrativo, estado de ativação ou hash;
+- retorna apenas confirmação imutável de criação, sem documento ou segredos;
+- converte conflitos de unicidade em recusa operacional sem dados do MongoDB.
+
+A criação não autentica automaticamente. Login e sessão continuam separados.
+
+### Modelo e reserva persistente
+
+Foi criado `src/models/InitialSetupState.js`, com fábrica para instâncias
+isoladas do Mongoose. O registro possui:
+
+- `_id` fixo para o primeiro cadastro da instalação;
+- identificador imutável da conta administrativa reservada;
+- estado `reserved` ou `completed`;
+- data de conclusão e datas automáticas de criação e atualização.
+
+O schema exige coerência entre estado e data ao validar documentos, recusa
+campos extras e não possui campos de senha, hash, convite ou e-mail.
+Não há TTL ou expiração. O índice nativo de `_id` protege a exclusividade da
+reserva sem depender da criação automática de índices.
+
+O serviço foi integrado a esse modelo. Depois de validar a entrada e gerar
+o hash, reserva o identificador da conta antes de criá-la. Após criar a conta,
+atualiza o estado com filtro de id, identidade reservada e estado anterior,
+confirmando a resposta de escrita antes de devolver sucesso.
+
+Qualquer registro existente bloqueia novo cadastro. Reiniciar o processo,
+trocar o convite configurado ou remover manualmente o usuário não elimina
+esse bloqueio. Nenhuma reserva é removida automaticamente em caso de falha.
+
+O fluxo não exige transações entre coleções e admite MongoDB local standalone.
+Em consequência, uma interrupção entre as gravações pode deixar uma reserva
+sem conta ou uma conta com reserva ainda pendente. A recuperação controlada
+dessas situações ainda precisa ser implementada antes de ativar o fluxo.
+As transições irreversíveis dependem do serviço, não apenas do schema.
+
+### Testes automatizados
+
+O `test/initialSetupService.test.js` passou a ter 43 testes em seis suítes,
+cobrindo configuração, disponibilidade, convite, validação, criação, reserva,
+confirmação, falhas, reinício e concorrência com modelos simulados.
+
+O `test/initialSetupState.test.js` possui 21 testes em três suítes, cobrindo
+schema, fábrica isolada, id fixo, estados, datas e recusa de campos indevidos,
+sem conectar ao banco.
+
+O backend completo passou com 714 testes em 122 suítes, sem falhas, testes
+ignorados ou cancelados. O frontend foi executado nesta data e passou com
+303 testes em 16 arquivos antes da integração da reserva ao serviço.
+Depois dessa integração, o backend foi executado novamente; nenhum arquivo
+do frontend foi alterado. Os resultados registrados somam 1017 testes em
+138 conjuntos.
+
+### Verificação no MongoDB real
+
+Foi criado `scripts/verifyInitialSetup.js`. Ele não carrega o `.env` nem lê
+a URI da aplicação: conecta ao MongoDB local e cria quatro bancos temporários
+com nomes aleatórios exclusivos da execução.
+
+A primeira tentativa encontrou o MongoDB inativo e não executou os cenários.
+Depois de iniciar o serviço e confirmar o ping `{ ok: 1 }`, os sete cenários
+passaram:
+
+- convite inválido sem reserva nem conta;
+- cadastro com bcrypt real, normalização dos dados e conclusão persistente;
+- bloqueio após reinício do serviço, mudança do convite e remoção do usuário;
+- falha antes da conta preservando a reserva e impedindo nova tentativa;
+- falha de conclusão preservando conta e reserva, sem falso sucesso;
+- índice nativo de `_id` recusando segunda reserva com `autoIndex: false`;
+- duas tentativas concorrentes persistindo uma reserva e uma conta.
+
+O caminho normal verifica hashing e comparação bcrypt reais, com custo 10
+para a verificação. Os cenários de falha e concorrência usam dependências
+controladas para atingir etapas específicas, mantendo persistência e
+restrições no MongoDB real. Os quatro bancos temporários foram removidos ao
+final. Os sete cenários são adicionais aos testes automatizados e aos 11
+cenários anteriores de administrador único.
+
+### Documentação e limites
+
+O README recebeu a descrição do serviço, do estado persistente, do comando
+de verificação e dos resultados atuais. `git diff --check` passou após as
+alterações de código e README. Nenhuma dependência foi adicionada ou atualizada.
+
+O novo serviço ainda não está ligado ao servidor. Não há rota ou interface
+de primeiro cadastro disponível. O fluxo existente com `ADMIN_NAME`,
+`ADMIN_EMAIL` e `ADMIN_PASSWORD` permanece em uso e os campos continuam
+obrigatórios na configuração.
+
+### Próximos passos
+
+1. implementar e testar a recuperação controlada de reservas interrompidas,
+   preservando contas e sem reabrir automaticamente o cadastro;
+2. preparar controlador, rotas protegidas e limitação de tentativas;
+3. integrar o serviço ao servidor e permitir configuração sem credenciais
+   administrativas previamente definidas;
+4. criar a interface e validar o primeiro acesso completo no navegador;
+5. preparar e validar a instalação local, incluindo a opção Docker Compose,
+   o guia de instalação, o guia de uso e backup/recuperação.

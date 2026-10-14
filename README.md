@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 9 de outubro de 2026.
+> Última atualização desta documentação: 14 de outubro de 2026.
 
 ## Estado atual
 
@@ -40,11 +40,23 @@ quatro seções originais.
 A compilação de produção é validada e servida pelo próprio Express sob a mesma
 origem da API.
 
-Foi iniciada a preparação técnica para um possível primeiro cadastro
-administrativo por convite. O ambiente valida opcionalmente o formato desse
-convite, e a aplicação possui um ponto de montagem ainda inativo para a futura
-rota. O cadastro inicial, sua interface e sua integração ao servidor ainda não
-foram implementados. O fluxo administrativo atual continua funcionando.
+Está em preparação o primeiro cadastro administrativo por convite, para que
+cada pessoa defina suas credenciais na própria instalação. O serviço
+`InitialSetupService` valida o convite e os dados e utiliza `InitialSetupState`
+para reservar e registrar a conclusão do cadastro. A reserva possui id fixo,
+sem expiração, e bloqueia novas tentativas mesmo após reinício ou remoção
+manual da conta. Senha e convite não são armazenados nesse registro.
+
+A reserva é gravada antes da conta; a conclusão é registrada depois. O fluxo
+não exige transação entre coleções, permitindo MongoDB local standalone.
+Uma falha após a reserva mantém o cadastro bloqueado, preservando os dados.
+A recuperação controlada de tentativas interrompidas ainda precisa ser
+implementada antes de disponibilizar o fluxo completo.
+
+O ambiente valida opcionalmente o formato do convite e a aplicação possui um
+ponto de montagem inativo para a futura rota. O serviço ainda não está
+integrado ao servidor, e não existe rota ou interface de primeiro cadastro.
+O fluxo administrativo atual continua funcionando com as variáveis `ADMIN_*`.
 
 O administrador é preparado depois da conexão com o banco e antes da abertura
 da porta HTTP. O processo consulta a conta pelo papel `admin`, sem depender
@@ -511,14 +523,15 @@ npm test
 npm --prefix client test
 ```
 
-Em 9 de outubro de 2026, o backend foi novamente validado: 650 testes
-aprovados em 113 suítes. A última execução registrada do frontend permanece
-com 303 testes aprovados em 16 arquivos; ela não foi repetida nesta etapa.
-Essas validações registradas somam:
+Em 14 de outubro de 2026, o backend foi validado com 714 testes aprovados
+em 122 suítes. O frontend também foi executado nessa data, com 303 testes
+aprovados em 16 arquivos, antes da integração da reserva persistente ao serviço.
+Depois dessa integração, o backend foi executado novamente com sucesso;
+nenhum arquivo do frontend foi alterado. Os resultados registrados somam:
 
 ```text
-953 testes
-129 suítes/conjuntos
+1017 testes
+138 suítes/conjuntos
 0 falhas
 0 testes ignorados
 ```
@@ -530,6 +543,8 @@ Os testes verificam, entre outros comportamentos:
 - preparação explícita dos índices antes da conta, espera pela conclusão e
   encerramento do banco após falhas de preparação;
 - conexão, cliente nativo e encerramento do MongoDB;
+- convite e validação do primeiro cadastro, reserva persistente, bloqueio após
+  falhas e reinício e exclusividade entre tentativas concorrentes simuladas;
 - modelo administrativo, índice único do e-mail e declaração do índice de
   administrador único;
 - contratos dos registros de aula, atividade e avaliação;
@@ -669,6 +684,23 @@ O script não carrega o `.env`. Ele cria três bancos temporários com nomes
 aleatórios e os remove ao terminar, sem acessar o banco normal da aplicação.
 Os 11 cenários são uma verificação adicional e não entram no total de testes
 das suítes acima.
+
+O primeiro cadastro foi exercitado separadamente no MongoDB local, com sete
+cenários aprovados: convite inválido sem gravações; criação com bcrypt real e
+conclusão do registro; bloqueio após reinício, troca do convite e remoção do
+usuário; falha antes da conta preservando a reserva; falha de conclusão
+preservando conta e reserva; unicidade nativa de `_id` com `autoIndex: false`;
+e duas tentativas concorrentes persistindo uma única reserva e conta.
+
+```bash
+node scripts/verifyInitialSetup.js
+```
+
+Esse script não carrega o `.env`, utiliza quatro bancos temporários e os remove
+ao terminar. O caminho normal verifica bcrypt real; os cenários de falha e
+concorrência usam dependências controladas para atingir etapas específicas,
+com as gravações e restrições exercitadas no MongoDB real. Os sete cenários
+são adicionais aos testes das suítes e aos 11 cenários de administrador único.
 
 A API administrativa de aulas também foi validada com MongoDB local em um banco
 isolado. Uma criação autorizada retornou `201`, e a consulta combinando curso,
@@ -1122,6 +1154,21 @@ administrativa antes dos dois handlers. O app aplica o prefixo
 
 Registra `GET /:month` e `PUT /:month`, sempre depois da autorização
 administrativa. O app aplica o prefixo `/api/monthly-materials`.
+
+### `src/models/InitialSetupState.js`
+
+Define o registro de primeiro cadastro, com identificador fixo, identidade da
+conta reservada, estados `reserved` e `completed` e data de conclusão coerente.
+Não possui expiração nem campos de senha ou convite. A exclusividade da reserva
+utiliza o índice nativo de `_id`; as transições são responsabilidade do serviço.
+
+### `src/services/InitialSetupService.js`
+
+Valida convite, nome, e-mail e senha; consulta o estado persistente e o
+administrador existente; gera hash; reserva o primeiro cadastro; cria a conta
+com o identificador reservado; e confirma a conclusão. Não autentica
+automaticamente, não remove reservas em falhas e ainda não está ligado a uma
+rota. Sem convite configurado ou com registro existente, o cadastro fica fechado.
 
 ### `src/services/AdminBootstrapper.js`
 
