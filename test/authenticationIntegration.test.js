@@ -5,6 +5,7 @@ const http = require('node:http');
 const {
     describe,
     test,
+    mock,
 } = require('node:test');
 
 const {
@@ -43,6 +44,7 @@ const TEST_ENVIRONMENT = Object.freeze({
     SESSION_HOURS: '1',
     APP_ORIGIN: 'http://localhost:3000',
     TRUST_PROXY: '0',
+    INITIAL_SETUP_TOKEN: undefined,
 });
 
 async function withTestEnvironment(callback) {
@@ -50,12 +52,15 @@ async function withTestEnvironment(callback) {
 
     for (const [key, value] of Object.entries(TEST_ENVIRONMENT)) {
         originals[key] = process.env[key];
-        process.env[key] = value;
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
     }
 
+    const dotenvMock = mock.method(require('dotenv'), 'config', () => ({ parsed: {} }));
     try {
         await callback();
     } finally {
+        dotenvMock.mock.restore();
         for (const key of Object.keys(TEST_ENVIRONMENT)) {
             if (originals[key] === undefined) {
                 delete process.env[key];
@@ -302,6 +307,7 @@ describe('integração da autenticação no ciclo de abertura', () => {
                     response,
                     next,
                 ) => next();
+                const initialSetupRouter = (_request, _response, next) => next();
                 const frontendAssetsMiddleware = (
                     request,
                     response,
@@ -328,6 +334,28 @@ describe('integração da autenticação no ciclo de abertura', () => {
                             order.push('admin.ensure');
                         },
                     };
+                }
+
+                function administrativeStartupServiceFactory({ adminBootstrapper }) {
+                    order.push('startup.factory');
+                    return {
+                        async initialize({ adminCredentials, initialSetupToken }) {
+                            order.push('startup.initialize');
+                            assert.equal(initialSetupToken, undefined);
+                            await adminBootstrapper.ensureAdmin(adminCredentials);
+                            return { status: 'created_admin' };
+                        },
+                    };
+                }
+
+                function initialSetupRouterFactory(options) {
+                    order.push('setup.router.factory');
+                    assert.deepEqual(options, {
+                        passwordHashRounds: 12,
+                        initialSetupToken: undefined,
+                        appOrigin: TEST_ENVIRONMENT.APP_ORIGIN,
+                    });
+                    return initialSetupRouter;
                 }
 
                 function sessionStoreFactory() {
@@ -364,6 +392,7 @@ describe('integração da autenticação no ciclo de abertura', () => {
 
                 function appFactory(options) {
                     order.push('app.factory');
+                    assert.strictEqual(options.initialSetupRouter, initialSetupRouter);
                     assert.strictEqual(
                         options.sessionMiddleware,
                         sessionMiddleware,
@@ -399,6 +428,8 @@ describe('integração da autenticação no ciclo de abertura', () => {
                         database,
                         appFactory,
                         adminBootstrapperFactory,
+                        administrativeStartupServiceFactory,
+                        initialSetupRouterFactory,
                         sessionStoreFactory,
                         sessionMiddlewareFactory,
                         authenticationRouterFactory,
@@ -414,11 +445,14 @@ describe('integração da autenticação no ciclo de abertura', () => {
                     'indexes.factory',
                     'indexes.ready',
                     'admin.factory',
+                    'startup.factory',
+                    'startup.initialize',
                     'admin.ensure',
                     'database.getNativeClient',
                     'session.store.factory',
                     'session.middleware.factory',
                     'authentication.router.factory',
+                    'setup.router.factory',
                     'app.factory',
                     'database.disconnect',
                 ]);

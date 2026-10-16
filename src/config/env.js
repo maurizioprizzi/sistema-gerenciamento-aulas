@@ -17,10 +17,9 @@ const DEFAULT_PASSWORD_HASH_ROUNDS = 12;
 const BCRYPT_MAX_PASSWORD_BYTES = 72;
 
 /**
- * O futuro convite inicial será gerado com 32 bytes aleatórios e representado
- * por 64 caracteres hexadecimais.
- *
- * Neste marco, a configuração é opcional e ainda não é utilizada por uma rota.
+ * O convite inicial utiliza 32 bytes aleatórios representados por 64
+ * caracteres hexadecimais. Nunca existe um convite padrão no código.
+ * Sua configuração não ativa rotas: a composição pertence ao servidor.
  */
 const INITIAL_SETUP_TOKEN_PATTERN = /^[a-fA-F0-9]{64}$/;
 
@@ -76,21 +75,29 @@ const environmentSchema = z.object({
         .default(DEFAULT_PASSWORD_HASH_ROUNDS),
 
     /**
-     * Estes campos continuam obrigatórios no fluxo administrativo atual.
-     * Só serão revistos quando o novo fluxo de primeiro acesso estiver
-     * implementado e testado.
+     * Credenciais para o fluxo de criação administrativa predefinida.
+     * São opcionais como grupo: nenhuma ou todas as três devem existir.
+     * Um texto vazio não equivale a ausência e continua sendo inválido.
+     * A senha é preservada, sem trim ou normalização.
+     *
+     * A ausência permite preparar o cadastro por convite ou manter somente
+     * login em uma instalação já configurada. A configuração não consulta
+     * o banco: o servidor deverá verificar o estado persistente antes de
+     * decidir se pode criar uma conta ou disponibilizar o primeiro cadastro.
      */
     ADMIN_NAME: z
         .string()
         .trim()
         .min(2, 'ADMIN_NAME deve possuir pelo menos 2 caracteres.')
-        .max(100, 'ADMIN_NAME deve possuir no máximo 100 caracteres.'),
+        .max(100, 'ADMIN_NAME deve possuir no máximo 100 caracteres.')
+        .optional(),
 
     ADMIN_EMAIL: z
         .string()
         .trim()
         .email('ADMIN_EMAIL deve conter um e-mail válido.')
-        .transform((email) => email.toLowerCase()),
+        .transform((email) => email.toLowerCase())
+        .optional(),
 
     ADMIN_PASSWORD: z
         .string()
@@ -108,13 +115,15 @@ const environmentSchema = z.object({
                 BCRYPT_MAX_PASSWORD_BYTES
             ),
             'ADMIN_PASSWORD deve possuir no máximo 72 bytes em UTF-8.',
-        ),
+        )
+        .optional(),
 
     /**
-     * Reservado para o convite de primeiro acesso.
-     *
-     * Nenhum valor é definido no código. O campo pode ficar ausente enquanto
-     * as demais partes do fluxo ainda não foram construídas.
+     * Convite opcional de primeiro acesso. Sua ausência fecha o cadastro no
+     * serviço; sua presença não substitui a reserva persistente ou a conta.
+     * Nenhum valor é definido no código. Durante a integração incremental,
+     * o campo pode coexistir com as credenciais antigas. O servidor deverá
+     * compor explicitamente o fluxo e preservar contas e reservas existentes.
      */
     INITIAL_SETUP_TOKEN: z
         .string()
@@ -146,6 +155,23 @@ const environmentSchema = z.object({
     TRUST_PROXY: z
         .enum(['0', '1'])
         .default('0'),
+}).superRefine((environment, context) => {
+    const administrativeFields = ['ADMIN_NAME', 'ADMIN_EMAIL', 'ADMIN_PASSWORD'];
+    const providedFields = administrativeFields.filter(
+        (field) => environment[field] !== undefined,
+    );
+
+    if (providedFields.length > 0 && providedFields.length < administrativeFields.length) {
+        for (const field of administrativeFields) {
+            if (environment[field] === undefined) {
+                context.addIssue({
+                    code: 'custom',
+                    path: [field],
+                    message: 'Informe ADMIN_NAME, ADMIN_EMAIL e ADMIN_PASSWORD juntos ou remova os três campos.',
+                });
+            }
+        }
+    }
 });
 
 /**
@@ -180,6 +206,12 @@ function loadEnvironment(source = process.env) {
         ...environment,
         TRUST_PROXY: environment.TRUST_PROXY === '1',
         IS_PRODUCTION: environment.NODE_ENV === 'production',
+        // Indica somente a presença do grupo completo, não autoriza criação.
+        // Esse valor é derivado e não pode ser substituído pela origem dos dados.
+        HAS_ADMIN_BOOTSTRAP_CREDENTIALS:
+            environment.ADMIN_NAME !== undefined
+            && environment.ADMIN_EMAIL !== undefined
+            && environment.ADMIN_PASSWORD !== undefined,
         SESSION_MAX_AGE_MS:
             environment.SESSION_HOURS * 60 * 60 * 1000,
     });

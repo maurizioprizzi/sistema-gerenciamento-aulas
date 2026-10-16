@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
     describe,
     test,
+    mock,
 } = require('node:test');
 
 const {
@@ -27,6 +28,7 @@ const TEST_ENVIRONMENT = Object.freeze({
     SESSION_HOURS: '1',
     APP_ORIGIN: 'http://localhost:3000',
     TRUST_PROXY: '0',
+    INITIAL_SETUP_TOKEN: undefined,
 });
 
 async function withTestEnvironment(callback, overrides = {}) {
@@ -38,12 +40,15 @@ async function withTestEnvironment(callback, overrides = {}) {
 
     for (const [key, value] of Object.entries(source)) {
         originals[key] = process.env[key];
-        process.env[key] = value;
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
     }
 
+    const dotenvMock = mock.method(require('dotenv'), 'config', () => ({ parsed: {} }));
     try {
         await callback();
     } finally {
+        dotenvMock.mock.restore();
         for (const key of Object.keys(source)) {
             if (originals[key] === undefined) {
                 delete process.env[key];
@@ -127,6 +132,7 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
                     );
                     const order = [];
                     const nativeClient = { db() {} };
+                    const initialSetupRouter = (_request, _response, next) => next();
                     const securityHeadersMiddleware = (
                         request,
                         response,
@@ -202,6 +208,28 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
                         };
                     }
 
+                    function administrativeStartupServiceFactory({ adminBootstrapper }) {
+                        order.push('startup.factory');
+                        return {
+                            async initialize({ adminCredentials, initialSetupToken }) {
+                                order.push('startup.initialize');
+                                assert.equal(initialSetupToken, undefined);
+                                await adminBootstrapper.ensureAdmin(adminCredentials);
+                                return { status: 'created_admin' };
+                            },
+                        };
+                    }
+
+                    function initialSetupRouterFactory(options) {
+                        order.push('setup.router.factory');
+                        assert.deepEqual(options, {
+                            passwordHashRounds: 12,
+                            initialSetupToken: undefined,
+                            appOrigin: 'https://calendario.example.com',
+                        });
+                        return initialSetupRouter;
+                    }
+
                     function sessionStoreFactory(options) {
                         order.push('session.store.factory');
                         assert.strictEqual(
@@ -228,6 +256,7 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
 
                     function appFactory(options) {
                         order.push('app.factory');
+                        assert.strictEqual(options.initialSetupRouter, initialSetupRouter);
                         assert.strictEqual(
                             options.securityHeadersMiddleware,
                             securityHeadersMiddleware,
@@ -267,6 +296,8 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
                             database,
                             appFactory,
                             adminBootstrapperFactory,
+                            administrativeStartupServiceFactory,
+                            initialSetupRouterFactory,
                             sessionStoreFactory,
                             sessionMiddlewareFactory,
                             authenticationRouterFactory,
@@ -284,12 +315,15 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
                         'indexes.factory',
                         'indexes.ready',
                         'admin.factory',
+                        'startup.factory',
+                        'startup.initialize',
                         'admin.ensure',
                         'database.getNativeClient',
                         'session.store.factory',
                         'session.store.on:error',
                         'session.middleware.factory',
                         'authentication.router.factory',
+                        'setup.router.factory',
                         'app.factory',
                         'database.disconnect',
                     ]);

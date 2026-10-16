@@ -8,7 +8,7 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 14 de outubro de 2026.
+> Última atualização desta documentação: 16 de outubro de 2026.
 
 ## Documentos e materiais remotos
 
@@ -70,16 +70,16 @@ O serviço `InitialSetupRecoveryService` conclui uma reserva quando encontra
 a conta com o identificador e papel correspondentes, sem alterar credenciais
 ou reativar contas. Sem a conta correspondente, mantém a reserva e retorna
 `needs_review`. Um registro concluído permanece fechado mesmo sem usuário.
-A recuperação foi validada, mas ainda precisa ser integrada à inicialização;
-o procedimento de intervenção para reservas sem conta continua pendente.
+A recuperação é aguardada na inicialização antes da decisão administrativa.
+Reserva sem conta ou cadastro concluído sem administrador interrompem a
+inicialização, preservando os registros. O procedimento operacional de
+intervenção para esses casos continua pendente.
 
-O ambiente valida opcionalmente o formato do convite e a aplicação possui um
-ponto de montagem inativo para o roteador. O controlador e o roteador de
-primeiro cadastro estão preparados e testados: `GET /api/setup/status` consulta
-a disponibilidade e `POST /api/setup/admin` confirma a criação sem autenticar
-automaticamente ou devolver credenciais. Esses caminhos ainda não estão
-ativados no servidor real; o serviço e a recuperação continuam sem integração
-à inicialização, e a interface de primeiro acesso não foi implementada.
+O servidor compõe o roteador protegido: `GET /api/setup/status` consulta a
+disponibilidade e `POST /api/setup/admin` confirma a criação sem autenticar
+automaticamente ou devolver credenciais. A API está integrada à inicialização
+e foi validada por HTTP com MongoDB real. A interface de primeiro acesso no
+navegador ainda não foi implementada.
 
 A criação executa limitador específico, proteção de origem/JSON e controlador,
 nessa ordem. A origem deve corresponder ao `APP_ORIGIN` configurado; requisições
@@ -95,8 +95,11 @@ da porta HTTP. O processo consulta a conta pelo papel `admin`, sem depender
 do e-mail configurado e sem filtrar sua ativação. Uma conta existente é
 preservada: alterar `ADMIN_NAME`, `ADMIN_EMAIL` ou `ADMIN_PASSWORD` não modifica
 seus dados, não gera outro hash e não cria um novo administrador. Uma conta
-desativada permanece desativada. As variáveis continuam obrigatórias no fluxo
-atual e são utilizadas para criar a conta somente quando ainda não há admin.
+desativada permanece desativada. O grupo `ADMIN_*` é opcional, mas deve estar
+completo e válido quando informado. Sem conta e sem registro de primeiro
+cadastro, o convite tem prioridade; sem convite, o grupo completo permite a
+criação predefinida. Sem ambos, uma instalação vazia recusa a inicialização.
+Uma instalação com conta existente pode iniciar sem `ADMIN_*` e sem convite.
 
 Cada instalação deverá manter uma única conta administrativa em seu próprio
 banco de dados. O modelo declara um índice único parcial para o papel `admin`,
@@ -282,7 +285,8 @@ mês sem depender do armazenamento local do navegador.
 
 ### Ainda não implementado
 
-- primeiro cadastro administrativo protegido por convite de uso único;
+- formulário de primeiro cadastro no navegador e integração visual desse fluxo;
+- procedimento operacional para reservas sem conta e recuperação de acesso;
 - acesso externo à aplicação;
 - implantação em ambiente de produção.
 
@@ -409,14 +413,35 @@ node -e "console.log(require('node:crypto').randomBytes(48).toString('hex'))"
 
 Utilize o resultado em `SESSION_SECRET`.
 
-Também configure:
+Configure `MONGODB_URI` com o endereço do banco e `APP_ORIGIN` com a origem
+exata de acesso, por exemplo `http://localhost:3000`, sem caminho, credenciais,
+consulta ou fragmento.
 
-- `ADMIN_NAME` com o nome do administrador;
-- `ADMIN_EMAIL` com o e-mail administrativo;
-- `ADMIN_PASSWORD` com uma senha exclusiva e forte;
-- `MONGODB_URI` com o endereço do banco de dados.
+Escolha o fluxo administrativo para uma instalação nova:
 
-A senha administrativa deve:
+- **Cadastro por convite:** remova os três campos `ADMIN_NAME`, `ADMIN_EMAIL` e
+  `ADMIN_PASSWORD` e configure `INITIAL_SETUP_TOKEN` com 64 caracteres
+  hexadecimais aleatórios. A API permite escolher as credenciais, mas o
+  formulário no navegador ainda será implementado.
+- **Conta predefinida:** informe os três campos `ADMIN_*` completos e válidos,
+  sem convite, para criar a conta durante a inicialização.
+
+Se convite e grupo completo coexistirem em uma instalação vazia, o convite
+tem prioridade e nenhuma conta é criada automaticamente. Campos `ADMIN_*`
+vazios não equivalem a campos ausentes: remova-os para não utilizar o grupo.
+Instalações com conta existente podem dispensar ambos; o estado do banco
+continua sendo verificado antes da abertura HTTP.
+
+Para gerar o convite, quando optar por esse fluxo:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+Não coloque o convite em URLs ou no código. Sua remoção da configuração fecha
+o cadastro no serviço; a reserva persistente impede reutilização após a criação.
+
+Ao optar pela conta predefinida, a senha administrativa deve:
 
 - possuir pelo menos 12 caracteres;
 - possuir no máximo 72 bytes em UTF-8;
@@ -435,13 +460,13 @@ Nunca envie o conteúdo de `.env` por e-mail, mensagem ou commit.
 | `MONGODB_URI` | Sim | — | Endereço do MongoDB |
 | `SESSION_SECRET` | Sim | — | Proteção das sessões |
 | `PASSWORD_HASH_ROUNDS` | Não | `12` | Custo computacional do bcrypt |
-| `ADMIN_NAME` | Sim | — | Nome do administrador inicial |
-| `ADMIN_EMAIL` | Sim | — | E-mail do administrador inicial |
-| `ADMIN_PASSWORD` | Sim | — | Senha inicial do administrador |
+| `ADMIN_NAME` | Como grupo | — | Nome da conta predefinida |
+| `ADMIN_EMAIL` | Como grupo | — | E-mail da conta predefinida |
+| `ADMIN_PASSWORD` | Como grupo | — | Senha da conta predefinida |
 | `SESSION_HOURS` | Não | `8` | Duração máxima da sessão |
-| `APP_ORIGIN` | Sim | — | Origem HTTP/HTTPS prevista para a aplicação e usada na futura proteção do primeiro cadastro |
+| `APP_ORIGIN` | Sim | — | Origem HTTP/HTTPS autorizada para o primeiro cadastro |
 | `TRUST_PROXY` | Não | `0` | Uso de proxy reverso |
-| `INITIAL_SETUP_TOKEN` | Não | — | Reservado para o futuro convite inicial; ainda não deve ser configurado |
+| `INITIAL_SETUP_TOKEN` | Não | — | Convite de primeiro cadastro; sem valor padrão |
 
 `PASSWORD_HASH_ROUNDS` aceita somente números inteiros entre 10 e 15. O valor
 recomendado para o projeto é 12.
@@ -555,15 +580,14 @@ npm test
 npm --prefix client test
 ```
 
-Em 14 de outubro de 2026, o backend foi validado com 801 testes aprovados
-em 135 suítes. O frontend também foi executado nessa data, com 303 testes
-aprovados em 16 arquivos, antes da integração da reserva persistente ao serviço.
-Depois dessa integração, o backend foi executado novamente com sucesso;
-nenhum arquivo do frontend foi alterado. Os resultados registrados somam:
+Em 16 de outubro de 2026, o backend foi validado com 858 testes aprovados
+em 141 suítes. O último resultado do frontend, de 14 de outubro, permanece
+em 303 testes aprovados em 16 arquivos. O frontend não foi repetido nesta
+etapa, e nenhum arquivo seu foi alterado. Os resultados registrados somam:
 
 ```text
-1104 testes
-151 suítes/conjuntos
+1161 testes
+157 suítes/conjuntos
 0 falhas
 0 testes ignorados
 ```
@@ -739,6 +763,24 @@ ao terminar. O caminho normal verifica bcrypt real; os cenários de falha e
 concorrência usam dependências controladas para atingir etapas específicas,
 com as gravações e restrições exercitadas no MongoDB real. Os 11 cenários
 são adicionais aos testes das suítes e aos 11 cenários de administrador único.
+
+A integração completa da API de primeiro cadastro foi verificada também com
+`startServer`, configuração, sessões e MongoDB reais, em oito cenários:
+instalação sem `ADMIN_*`; recusa de origem/tipo de conteúdo sem gravações;
+convite inválido; criação com bcrypt e registro concluído; recusa de repetição;
+limitação na sexta tentativa com GET ainda disponível; login, sessão e logout
+da conta criada; e nova inicialização sem convite ou credenciais, preservando
+conta e registro.
+
+```bash
+node scripts/verifyInitialSetupHttp.js
+```
+
+O script cria um banco temporário local e o remove ao terminar. Não carrega
+o `.env` do projeto: usa configuração fictícia em diretório temporário vazio.
+Somente o middleware do frontend é substituído, pois essa verificação não
+avalia a interface visual nem exige sua compilação. Os oito cenários são
+adicionais às suítes automatizadas e aos outros scripts de verificação.
 
 A API administrativa de aulas também foi validada com MongoDB local em um banco
 isolado. Uma criação autorizada retornou `201`, e a consulta combinando curso,
@@ -1219,8 +1261,8 @@ instâncias exigirão um contador compartilhado antes de usar essa implantação
 
 `src/routes/initialSetupRoutes.js` exige controlador e ambas as proteções,
 montando internamente `/status` e `/admin`. Não há rota pública de recuperação.
-O roteador só se torna disponível quando for fornecido à aplicação; o servidor
-real ainda não o fornece.
+O servidor fornece o roteador à aplicação sob `/api/setup`, inclusive quando
+o serviço está fechado por ausência de convite ou pelo estado persistente.
 
 ### `src/services/InitialSetupRecoveryService.js`
 
@@ -1229,15 +1271,25 @@ papel. Conclui apenas essa reserva e confirma atualizações concorrentes por
 nova consulta. Não cria ou remove contas, não altera credenciais nem libera
 o cadastro. Sem conta correspondente, informa necessidade de verificação.
 Dados inconsistentes e falhas de leitura ou escrita impedem a recuperação.
-Ainda não está integrado ao servidor ou a um comando operacional de recuperação.
+É chamado na inicialização; não existe comando operacional para resolver
+reservas sem conta ou restaurar acesso.
 
 ### `src/services/InitialSetupService.js`
 
 Valida convite, nome, e-mail e senha; consulta o estado persistente e o
 administrador existente; gera hash; reserva o primeiro cadastro; cria a conta
 com o identificador reservado; e confirma a conclusão. Não autentica
-automaticamente, não remove reservas em falhas e ainda não está ligado a uma
-rota. Sem convite configurado ou com registro existente, o cadastro fica fechado.
+automaticamente e não remove reservas em falhas. Está ligado às rotas protegidas
+do primeiro cadastro. Sem convite configurado ou com registro existente, o
+cadastro fica fechado.
+
+### `src/services/AdministrativeStartupService.js`
+
+Aguarda a recuperação e consulta o administrador antes de decidir pelo fluxo.
+Preserva a conta existente, prioriza o convite em uma instalação vazia e usa
+credenciais predefinidas somente sem convite, conta ou registro de cadastro.
+Reservas sem conta e registros concluídos sem administrador interrompem a
+preparação, sem reabrir cadastro ou executar criação automática.
 
 ### `src/services/AdminBootstrapper.js`
 

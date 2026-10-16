@@ -3983,3 +3983,130 @@ inicialização. A integração deverá preservar instalações existentes e imp
 criação administrativa automática quando houver registro de primeiro cadastro.
 Depois, criar e validar a interface, o procedimento de instalação local e
 os guias, incluindo Docker Compose e backup/recuperação.
+
+## 16 de outubro de 2026 — Primeiro cadastro integrado à inicialização e à API
+
+### Objetivo
+
+Permitir que uma instalação nova inicie sem credenciais administrativas
+predefinidas, aguarde o cadastro por convite e preserve o acesso das instalações
+existentes. Integrar recuperação, decisão administrativa e roteador protegido
+antes da abertura HTTP.
+
+### Configuração administrativa opcional
+
+O `src/config/env.js` passou a aceitar a ausência conjunta de `ADMIN_NAME`,
+`ADMIN_EMAIL` e `ADMIN_PASSWORD`. Se algum campo for informado, os três precisam
+estar presentes e válidos. Textos vazios não são convertidos em ausência;
+as regras anteriores de normalização e limite da senha foram preservadas.
+
+O indicador derivado `HAS_ADMIN_BOOTSTRAP_CREDENTIALS` informa a presença do
+grupo completo e não pode ser substituído pelos dados de entrada. Ele não
+autoriza criação por si só: o estado do banco permanece decisivo.
+A configuração permite a coexistência de convite e grupo completo durante
+a integração; na instalação vazia, a decisão administrativa prioriza o convite.
+
+Foi criado `test/administrativeBootstrapEnv.test.js`, com 17 testes em duas
+suítes. Junto aos testes existentes de ambiente e convite, os 48 testes de
+configuração passaram. Foram verificadas as seis combinações incompletas,
+ausência, convite sem credenciais, preservação dos valores e confidencialidade.
+
+### Decisão administrativa
+
+Foi criado `src/services/AdministrativeStartupService.js`, com modelos,
+recuperação e bootstrap recebidos por injeção. O serviço não conhece HTTP ou
+`process.env`. Depois da preparação dos índices pelo servidor, ele:
+
+- aguarda a recuperação do primeiro cadastro;
+- interrompe a preparação quando uma reserva não tem conta correspondente;
+- preserva qualquer administrador existente, inclusive desativado;
+- interrompe quando o cadastro foi concluído e não há administrador;
+- sem conta e sem registro, aguarda o cadastro quando existe convite;
+- sem convite, utiliza o grupo completo para a criação predefinida;
+- sem conta, registro, convite ou credenciais, exige configurar o acesso.
+
+O serviço retorna somente a decisão imutável, sem credenciais. Não remove
+reservas nem recria uma conta quando há registro de primeiro cadastro.
+Seu arquivo de testes possui 28 testes em três suítes, cobrindo decisões,
+resultados inválidos, falhas e espera das operações assíncronas.
+
+### Composição no servidor
+
+O `src/server.js` recebeu fábricas injetáveis para a decisão administrativa
+e para o roteador protegido de primeiro cadastro. O bootstrap configurado
+é entregue ao serviço de decisão; não é mais chamado diretamente pelo servidor.
+
+A preparação segue a ordem: conexão, índices, recuperação e decisão
+administrativa, sessões, composição HTTP e abertura da porta. Falhas seguem
+para o tratamento que encerra o banco e impede a abertura HTTP.
+
+O roteador real passou a ser fornecido ao app sob `/api/setup`:
+
+- `GET /api/setup/status` informa somente a disponibilidade;
+- `POST /api/setup/admin` executa limitador, proteção de origem/JSON e criação.
+
+O serviço de primeiro cadastro permanece fechado sem convite ou com estado
+persistente existente. A interface de primeiro acesso ainda não foi criada.
+
+O `test/server.test.js` foi ampliado de 36 para 48 testes em sete suítes,
+cobrindo novas fábricas, decisões, configurações sem `ADMIN_*`, passagem do
+roteador ao app, falhas e espera antes das sessões. Os testes de integração
+da autenticação e dos cabeçalhos de segurança também foram adaptados.
+As dependências são simuladas, e dotenv não reintroduz a configuração local
+nos cenários que deliberadamente removem credenciais do ambiente de teste.
+
+### Verificação HTTP com MongoDB real
+
+Foi criado `scripts/verifyInitialSetupHttp.js`. O script exercita `startServer`,
+configuração, índices, decisão administrativa, primeiro cadastro, bcrypt,
+login, sessões e MongoDB reais. Apenas o middleware do frontend é substituído
+para dispensar compilação e isolar a API; nenhuma interface visual é validada.
+
+Ele usa um banco temporário local, valores fictícios e uma porta disponível
+em loopback. Muda temporariamente para um diretório vazio para que a carga
+normal de dotenv não leia o `.env` do projeto. Restaura ambiente e diretório,
+encerra o servidor e remove seu banco temporário ao terminar.
+
+A primeira tentativa não encontrou o MongoDB ativo. Depois da ativação do
+serviço e confirmação do ping, os oito cenários passaram:
+
+- servidor inicia sem `ADMIN_*` e informa cadastro disponível;
+- origem não autorizada e conteúdo não JSON são recusados sem gravações;
+- convite inválido não cria reserva;
+- POST cria conta com bcrypt real e conclui o registro sem emitir sessão;
+- repetição do cadastro é recusada, mantendo uma única conta;
+- sexta tentativa recebe 429 e o GET de disponibilidade continua acessível;
+- a conta criada permite login, consulta de sessão e logout;
+- nova inicialização sem convite ou credenciais reconhece a conta e preserva
+  os dados e o registro concluído.
+
+O banco temporário foi removido ao final da execução. Os oito cenários são
+adicionais às suítes automatizadas e aos scripts anteriores.
+
+### Resultados e documentação
+
+- 858 testes do backend aprovados em 141 suítes;
+- zero falhas, testes ignorados ou cancelados;
+- oito cenários HTTP aprovados com MongoDB real;
+- formatação validada por `git diff --check` após código e README;
+- nenhuma dependência adicionada ou atualizada.
+
+O frontend não foi executado novamente neste marco. Seu último resultado, de
+14 de outubro, permanece em 303 testes aprovados em 16 arquivos. Nenhum arquivo
+do frontend foi alterado. Os resultados registrados somam 1161 testes em
+157 conjuntos.
+
+O README foi atualizado com as rotas integradas, as regras de configuração,
+a prioridade do convite, os componentes e o comando de verificação HTTP,
+sem apresentar o formulário do navegador como implementado.
+
+### Limites e próximo passo
+
+Criar o cliente HTTP e a interface de primeiro acesso, consultar disponibilidade,
+enviar convite e credenciais e encaminhar ao login depois do sucesso. Validar
+o fluxo completo no navegador, incluindo recusas e reinício.
+
+Reservas sem conta ou cadastros concluídos com conta removida interrompem
+a inicialização; um procedimento operacional de intervenção e recuperação de
+acesso ainda precisa ser definido. As instruções de instalação local, a opção
+Docker Compose, os guias de uso e o backup/restauração permanecem planejados.

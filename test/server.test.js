@@ -4,11 +4,14 @@ const assert = require('node:assert/strict');
 const {
     describe,
     test,
+    mock,
 } = require('node:test');
 
 const {
     SERVER_ERROR_MESSAGES,
     createAdministrativeIndexInitializer,
+    createAdministrativeStartupService,
+    createAdministrativeInitialSetupRouter,
     createAdminBootstrapper,
     createAdministrativeLessonRouter,
     createAdministrativeMonthlyMaterialRouter,
@@ -36,6 +39,7 @@ const TEST_ENVIRONMENT = Object.freeze({
     SESSION_HOURS: '1',
     APP_ORIGIN: 'http://localhost:3000',
     TRUST_PROXY: '0',
+    INITIAL_SETUP_TOKEN: undefined,
 });
 
 /**
@@ -60,12 +64,17 @@ async function withTestEnvironment(
 
     for (const key of Object.keys(temporaryEnvironment)) {
         originalValues[key] = process.env[key];
-        process.env[key] = temporaryEnvironment[key];
+        if (temporaryEnvironment[key] === undefined) delete process.env[key];
+        else process.env[key] = temporaryEnvironment[key];
     }
 
+    // A ausência de ADMIN_* é deliberada em alguns cenários. Não permitimos
+    // que dotenv reintroduza valores reais do arquivo local durante o teste.
+    const dotenvMock = mock.method(require('dotenv'), 'config', () => ({ parsed: {} }));
     try {
         await callback();
     } finally {
+        dotenvMock.mock.restore();
         for (const key of Object.keys(temporaryEnvironment)) {
             if (originalValues[key] === undefined) {
                 delete process.env[key];
@@ -133,6 +142,23 @@ function createTestFrontendAssetsMiddleware() {
  */
 function createTestAdministrativeIndexInitializer() {
     return { async initialize() {} };
+}
+
+/**
+ * Dependências neutras para os cenários anteriores: a decisão administrativa
+ * é simulada preservando as chamadas de bootstrap observadas nesses testes.
+ */
+function createTestAdministrativeStartupService({ adminBootstrapper }) {
+    return {
+        async initialize({ adminCredentials }) {
+            await adminBootstrapper.ensureAdmin(adminCredentials);
+            return { status: 'created_admin' };
+        },
+    };
+}
+
+function createTestInitialSetupRouter() {
+    return (_request, _response, next) => next();
 }
 
 describe('resolvePort', () => {
@@ -293,6 +319,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+                        initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
                             createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
@@ -360,6 +388,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+                        initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
                             createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
@@ -415,6 +445,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+                        initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
                             createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
@@ -489,6 +521,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+                        initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
                             createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
@@ -566,6 +600,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+                        initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
                             createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
@@ -614,6 +650,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+                        initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
                             createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
@@ -658,6 +696,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+                        initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
                             createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
@@ -774,6 +814,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+                        initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
                             createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
@@ -829,6 +871,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+                        initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
                             createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
@@ -935,6 +979,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+                        initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
                             createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
@@ -1043,6 +1089,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+                        initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
                             createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
@@ -1176,6 +1224,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+                        initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
                             createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
@@ -1419,6 +1469,8 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+                        initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
                             createTestAdministrativeIndexInitializer,
                         frontendAssetsMiddlewareFactory:
@@ -1497,6 +1549,8 @@ describe('startServer', () => {
 
                     await assert.rejects(
                         startServer({
+                            administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+                            initialSetupRouterFactory: createTestInitialSetupRouter,
                             administrativeIndexInitializerFactory:
                                 createTestAdministrativeIndexInitializer,
                             frontendAssetsMiddlewareFactory:
@@ -1546,6 +1600,8 @@ describe('startServer', () => {
 describe('índices administrativos no ciclo do servidor', () => {
     function createDependencies(calls, administrativeIndexInitializerFactory) {
         return {
+            administrativeStartupServiceFactory: createTestAdministrativeStartupService,
+            initialSetupRouterFactory: createTestInitialSetupRouter,
             frontendAssetsMiddlewareFactory: createTestFrontendAssetsMiddleware,
             administrativeIndexInitializerFactory,
             database: {
@@ -1684,6 +1740,195 @@ describe('índices administrativos no ciclo do servidor', () => {
                 ['connect', true], ['indexes-start'], ['indexes-ready'],
                 ['admin'], ['disconnect'],
             ]);
+        });
+    });
+});
+
+
+/**
+ * Exercita a nova composição até appFactory. O erro final controlado evita
+ * abertura de HTTP e registro de sinais, mantendo o teste isolado.
+ */
+describe('primeiro cadastro e decisão administrativa no servidor', () => {
+    function setup(overrides = {}) {
+        const calls = [];
+        const stop = new Error('Parada controlada antes de HTTP.');
+        const setupRouter = createTestInitialSetupRouter();
+        let startupOptions;
+        let routerOptions;
+        const adminBootstrapper = {
+            async ensureAdmin() { assert.fail('O servidor não chama bootstrap diretamente.'); },
+        };
+        const options = {
+            database: {
+                async connect() { calls.push('connect'); },
+                async disconnect() { calls.push('disconnect'); },
+                getNativeClient() { calls.push('native'); return { db() {} }; },
+            },
+            frontendAssetsMiddlewareFactory: createTestFrontendAssetsMiddleware,
+            administrativeIndexInitializerFactory: () => ({
+                async initialize() { calls.push('indexes'); },
+            }),
+            adminBootstrapperFactory: () => adminBootstrapper,
+            administrativeStartupServiceFactory({ adminBootstrapper: supplied }) {
+                assert.strictEqual(supplied, adminBootstrapper);
+                return { async initialize(config) {
+                    calls.push('startup'); startupOptions = config;
+                    return { status: 'existing_admin' };
+                } };
+            },
+            sessionStoreFactory: () => ({ on() {} }),
+            sessionMiddlewareFactory: () => (_req, _res, next) => next(),
+            authenticationRouterFactory: createTestInitialSetupRouter,
+            lessonRouterFactory: createTestInitialSetupRouter,
+            monthlyMaterialRouterFactory: createTestInitialSetupRouter,
+            initialSetupRouterFactory(config) {
+                calls.push('setup-router'); routerOptions = config; return setupRouter;
+            },
+            appFactory(config) {
+                calls.push('app'); assert.strictEqual(config.initialSetupRouter, setupRouter);
+                throw stop;
+            },
+            logger: createFakeLogger().logger,
+            ...overrides,
+        };
+        return { options, calls, stop, adminBootstrapper,
+            get startupOptions() { return startupOptions; },
+            get routerOptions() { return routerOptions; } };
+    }
+
+    test('compõe decisão e roteador reais sem consultas', () => {
+        assert.equal(typeof createAdministrativeStartupService({
+            adminBootstrapper: { async ensureAdmin() {} },
+        }).initialize, 'function');
+        assert.equal(typeof createAdministrativeInitialSetupRouter({
+            passwordHashRounds: 10, appOrigin: TEST_ENVIRONMENT.APP_ORIGIN,
+        }), 'function');
+    });
+
+    for (const [field, message] of [
+        ['administrativeStartupServiceFactory', SERVER_ERROR_MESSAGES.INVALID_ADMINISTRATIVE_STARTUP_FACTORY],
+        ['initialSetupRouterFactory', SERVER_ERROR_MESSAGES.INVALID_INITIAL_SETUP_ROUTER_FACTORY],
+    ]) {
+        test(`recusa ${field} inválida antes da conexão`, async () => {
+            await withTestEnvironment(async () => {
+                const ctx = setup({ [field]: null });
+                await assert.rejects(startServer(ctx.options), { message });
+                assert.deepEqual(ctx.calls, []);
+            });
+        });
+    }
+
+    test('recusa serviço administrativo inválido e desconecta', async () => {
+        await withTestEnvironment(async () => {
+            const ctx = setup({ administrativeStartupServiceFactory: () => ({}) });
+            await assert.rejects(startServer(ctx.options), {
+                message: SERVER_ERROR_MESSAGES.INVALID_ADMINISTRATIVE_STARTUP_SERVICE,
+            });
+            assert.deepEqual(ctx.calls, ['connect', 'indexes', 'disconnect']);
+        });
+    });
+
+    test('falha da decisão impede sessões, roteador e app', async () => {
+        await withTestEnvironment(async () => {
+            const expectedError = new Error('Reserva requer verificação.');
+            const ctx = setup({ administrativeStartupServiceFactory: () => ({
+                async initialize() { throw expectedError; },
+            }) });
+            await assert.rejects(startServer(ctx.options), error => error === expectedError);
+            assert.deepEqual(ctx.calls, ['connect', 'indexes', 'disconnect']);
+        });
+    });
+
+    test('recusa resultado desconhecido da decisão antes das sessões', async () => {
+        await withTestEnvironment(async () => {
+            const ctx = setup({ administrativeStartupServiceFactory: () => ({
+                async initialize() { return { status: 'desconhecido' }; },
+            }) });
+            await assert.rejects(startServer(ctx.options), {
+                message: SERVER_ERROR_MESSAGES.INVALID_ADMINISTRATIVE_STARTUP_RESULT,
+            });
+            assert.deepEqual(ctx.calls, ['connect', 'indexes', 'disconnect']);
+        });
+    });
+
+    test('entrega credenciais completas à decisão e roteador ao app', async () => {
+        await withTestEnvironment(async () => {
+            const ctx = setup();
+            await assert.rejects(startServer(ctx.options), error => error === ctx.stop);
+            assert.deepEqual(ctx.startupOptions, {
+                adminCredentials: { name: TEST_ENVIRONMENT.ADMIN_NAME,
+                    email: TEST_ENVIRONMENT.ADMIN_EMAIL, password: TEST_ENVIRONMENT.ADMIN_PASSWORD },
+                initialSetupToken: undefined,
+            });
+            assert.deepEqual(ctx.routerOptions, {
+                passwordHashRounds: 13, initialSetupToken: undefined,
+                appOrigin: TEST_ENVIRONMENT.APP_ORIGIN,
+            });
+            assert.deepEqual(ctx.calls, ['connect', 'indexes', 'startup', 'native',
+                'setup-router', 'app', 'disconnect']);
+        });
+    });
+
+    test('sem ADMIN_* encaminha convite e aguarda cadastro sem bootstrap direto', async () => {
+        const token = 'ab'.repeat(32);
+        await withTestEnvironment(async () => {
+            let configuration;
+            const ctx = setup({ administrativeStartupServiceFactory: () => ({
+                async initialize(config) { configuration = config; return { status: 'setup_required' }; },
+            }) });
+            await assert.rejects(startServer(ctx.options), error => error === ctx.stop);
+            assert.deepEqual(configuration, { adminCredentials: undefined, initialSetupToken: token });
+            assert.equal(ctx.routerOptions.initialSetupToken, token);
+        }, { ADMIN_NAME: undefined, ADMIN_EMAIL: undefined, ADMIN_PASSWORD: undefined,
+            INITIAL_SETUP_TOKEN: token });
+    });
+
+    test('permite conta existente sem credenciais e sem convite na configuração', async () => {
+        await withTestEnvironment(async () => {
+            const ctx = setup();
+            await assert.rejects(startServer(ctx.options), error => error === ctx.stop);
+            assert.deepEqual(ctx.startupOptions, { adminCredentials: undefined,
+                initialSetupToken: undefined });
+        }, { ADMIN_NAME: undefined, ADMIN_EMAIL: undefined, ADMIN_PASSWORD: undefined });
+    });
+
+    test('recusa roteador inválido e encerra conexão antes do app', async () => {
+        await withTestEnvironment(async () => {
+            const ctx = setup({ initialSetupRouterFactory: () => ({}) });
+            await assert.rejects(startServer(ctx.options), {
+                message: SERVER_ERROR_MESSAGES.INVALID_INITIAL_SETUP_ROUTER,
+            });
+            assert.equal(ctx.calls.includes('app'), false);
+            assert.equal(ctx.calls.at(-1), 'disconnect');
+        });
+    });
+
+    test('falha da fábrica de roteador impede app e encerra conexão', async () => {
+        await withTestEnvironment(async () => {
+            const expectedError = new Error('Composição indisponível.');
+            const ctx = setup({ initialSetupRouterFactory() { throw expectedError; } });
+            await assert.rejects(startServer(ctx.options), error => error === expectedError);
+            assert.equal(ctx.calls.includes('app'), false);
+            assert.equal(ctx.calls.at(-1), 'disconnect');
+        });
+    });
+
+    test('aguarda a decisão administrativa antes de preparar sessões', async () => {
+        await withTestEnvironment(async () => {
+            let release;
+            const decision = new Promise(resolve => { release = resolve; });
+            const ctx = setup({ administrativeStartupServiceFactory: () => ({
+                initialize: () => decision,
+            }) });
+            const pending = assert.rejects(startServer(ctx.options), error => error === ctx.stop);
+            try {
+                await new Promise(resolve => setImmediate(resolve));
+                assert.deepEqual(ctx.calls, ['connect', 'indexes']);
+            } finally {
+                release({ status: 'existing_admin' });
+                await pending;
+            }
         });
     });
 });

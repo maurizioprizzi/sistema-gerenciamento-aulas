@@ -5,6 +5,16 @@ const path = require('node:path');
 const dotenv = require('dotenv');
 
 const { createApp } = require('./app');
+const { InitialSetupController } = require('./controllers/InitialSetupController');
+const { createInitialSetupRequestGuard } = require('./middlewares/initialSetupRequestGuard');
+const { createInitialSetupRateLimiter } = require('./middlewares/initialSetupRateLimiter');
+const { createInitialSetupRouter } = require('./routes/initialSetupRoutes');
+const { InitialSetupService } = require('./services/InitialSetupService');
+const { InitialSetupRecoveryService } = require('./services/InitialSetupRecoveryService');
+const {
+    AdministrativeStartupService,
+    ADMINISTRATIVE_STARTUP_STATUS,
+} = require('./services/AdministrativeStartupService');
 const { databaseConnection } = require('./config/database');
 const { loadEnvironment } = require('./config/env');
 const {
@@ -83,6 +93,17 @@ const FRONTEND_BUILD_DIRECTORY = path.resolve(
  * Mensagens estáveis relacionadas ao ponto de composição.
  */
 const SERVER_ERROR_MESSAGES = Object.freeze({
+    INVALID_ADMINISTRATIVE_STARTUP_FACTORY:
+        'A fábrica de preparação administrativa deve ser uma função.',
+    INVALID_ADMINISTRATIVE_STARTUP_SERVICE:
+        'A fábrica de preparação administrativa deve retornar um serviço com initialize().',
+    INVALID_ADMINISTRATIVE_STARTUP_RESULT:
+        'A preparação administrativa retornou um resultado inválido.',
+    INVALID_INITIAL_SETUP_ROUTER_FACTORY:
+        'A fábrica do roteador de primeiro cadastro deve ser uma função.',
+    INVALID_INITIAL_SETUP_ROUTER:
+        'A fábrica de primeiro cadastro deve retornar um roteador válido.',
+
     INVALID_ADMINISTRATIVE_INDEX_FACTORY:
         'A fábrica de preparação dos índices administrativos deve ser uma função.',
     INVALID_ADMINISTRATIVE_INDEX_SERVICE:
@@ -220,6 +241,47 @@ function createAdminBootstrapper({
 }
 
 /**
+ * Compõe recuperação e decisão administrativa. Não consulta o banco durante
+ * a construção. O bootstrap configurado é usado somente quando necessário.
+ * @param {object} options Dependências previamente construídas.
+ * @param {object} options.adminBootstrapper Criação administrativa legada.
+ * @returns {AdministrativeStartupService} Serviço de decisão.
+ */
+function createAdministrativeStartupService({ adminBootstrapper }) {
+    return new AdministrativeStartupService({
+        UserModel: User,
+        recoveryService: new InitialSetupRecoveryService({ UserModel: User }),
+        adminBootstrapper,
+    });
+}
+
+/**
+ * Compõe o primeiro cadastro com dependências reais, sem executar consultas.
+ * Sem convite, o serviço continua fechado e o GET informa indisponibilidade.
+ * @param {object} options Configuração já validada.
+ * @param {number} options.passwordHashRounds Custo do bcrypt.
+ * @param {string} [options.initialSetupToken] Convite da instalação.
+ * @param {string} options.appOrigin Origem pública autorizada.
+ * @returns {Function} Roteador protegido.
+ */
+function createAdministrativeInitialSetupRouter({
+    passwordHashRounds,
+    initialSetupToken,
+    appOrigin,
+}) {
+    const initialSetupService = new InitialSetupService({
+        UserModel: User,
+        passwordHasherService: new PasswordHasher({ rounds: passwordHashRounds }),
+        initialSetupToken,
+    });
+    return createInitialSetupRouter({
+        controller: new InitialSetupController({ initialSetupService }),
+        initialSetupRateLimiter: createInitialSetupRateLimiter(),
+        initialSetupRequestGuard: createInitialSetupRequestGuard({ appOrigin }),
+    });
+}
+
+/**
  * Compõe os serviços e a camada HTTP da autenticação administrativa.
  *
  * O nome do cookie é escolhido pela mesma constante utilizada na criação do
@@ -319,8 +381,8 @@ function createAdministrativeMonthlyMaterialRouter() {
  * Carrega a configuração e inicia todos os componentes da aplicação.
  *
  * A ordem é intencional: ambiente, segurança, frontend, MongoDB,
- * índices administrativos, administrador, armazenamento de sessões,
- * middleware, autenticação,
+ * índices administrativos, recuperação e decisão administrativa,
+ * armazenamento de sessões, middleware, autenticação e primeiro cadastro,
  * aulas, materiais mensais, Express e servidor HTTP.
  *
  * @param {object} options Dependências de inicialização.
@@ -330,6 +392,10 @@ function createAdministrativeMonthlyMaterialRouter() {
  * Fábrica da preparação explícita dos índices de usuário.
  * @param {Function} [options.adminBootstrapperFactory]
  * Fábrica da inicialização administrativa.
+ * @param {Function} [options.administrativeStartupServiceFactory]
+ * Fábrica da recuperação e decisão administrativa.
+ * @param {Function} [options.initialSetupRouterFactory]
+ * Fábrica da composição protegida do primeiro cadastro.
  * @param {Function} [options.sessionStoreFactory]
  * Fábrica do armazenamento de sessões.
  * @param {Function} [options.sessionMiddlewareFactory]
@@ -353,6 +419,8 @@ async function startServer({
     administrativeIndexInitializerFactory =
         createAdministrativeIndexInitializer,
     adminBootstrapperFactory = createAdminBootstrapper,
+    administrativeStartupServiceFactory = createAdministrativeStartupService,
+    initialSetupRouterFactory = createAdministrativeInitialSetupRouter,
     sessionStoreFactory = createMongoSessionStore,
     sessionMiddlewareFactory = createSessionMiddleware,
     authenticationRouterFactory =
@@ -383,6 +451,13 @@ async function startServer({
 
     if (typeof adminBootstrapperFactory !== 'function') {
         throw new TypeError(SERVER_ERROR_MESSAGES.INVALID_ADMIN_FACTORY);
+    }
+
+    if (typeof administrativeStartupServiceFactory !== 'function') {
+        throw new TypeError(SERVER_ERROR_MESSAGES.INVALID_ADMINISTRATIVE_STARTUP_FACTORY);
+    }
+    if (typeof initialSetupRouterFactory !== 'function') {
+        throw new TypeError(SERVER_ERROR_MESSAGES.INVALID_INITIAL_SETUP_ROUTER_FACTORY);
     }
 
     if (typeof sessionStoreFactory !== 'function') {
@@ -501,11 +576,29 @@ async function startServer({
             );
         }
 
-        await adminBootstrapper.ensureAdmin({
+        const administrativeStartupService = administrativeStartupServiceFactory({
+            adminBootstrapper,
+        });
+        if (!administrativeStartupService
+            || typeof administrativeStartupService.initialize !== 'function') {
+            throw new TypeError(SERVER_ERROR_MESSAGES.INVALID_ADMINISTRATIVE_STARTUP_SERVICE);
+        }
+
+        // A ausência do grupo nunca é substituída por credenciais padrão.
+        // O serviço decide pelo estado persistente antes de usar o bootstrap.
+        const adminCredentials = environment.HAS_ADMIN_BOOTSTRAP_CREDENTIALS ? {
             name: environment.ADMIN_NAME,
             email: environment.ADMIN_EMAIL,
             password: environment.ADMIN_PASSWORD,
+        } : undefined;
+        const administrativeStartup = await administrativeStartupService.initialize({
+            adminCredentials,
+            initialSetupToken: environment.INITIAL_SETUP_TOKEN,
         });
+        if (!administrativeStartup
+            || !Object.values(ADMINISTRATIVE_STARTUP_STATUS).includes(administrativeStartup.status)) {
+            throw new TypeError(SERVER_ERROR_MESSAGES.INVALID_ADMINISTRATIVE_STARTUP_RESULT);
+        }
 
         const nativeClient = database.getNativeClient();
         const sessionStore = sessionStoreFactory({
@@ -563,10 +656,20 @@ async function startServer({
             );
         }
 
+        const initialSetupRouter = initialSetupRouterFactory({
+            passwordHashRounds: environment.PASSWORD_HASH_ROUNDS,
+            initialSetupToken: environment.INITIAL_SETUP_TOKEN,
+            appOrigin: environment.APP_ORIGIN,
+        });
+        if (typeof initialSetupRouter !== 'function') {
+            throw new TypeError(SERVER_ERROR_MESSAGES.INVALID_INITIAL_SETUP_ROUTER);
+        }
+
         const app = appFactory({
             logger,
             securityHeadersMiddleware,
             sessionMiddleware,
+            initialSetupRouter,
             authenticationRouter,
             lessonRouter,
             monthlyMaterialRouter,
@@ -659,6 +762,8 @@ module.exports = {
     SERVER_ERROR_MESSAGES,
     createAdminBootstrapper,
     createAdministrativeIndexInitializer,
+    createAdministrativeStartupService,
+    createAdministrativeInitialSetupRouter,
     createAdministrativeAuthenticationRouter,
     createAdministrativeLessonRouter,
     createAdministrativeMonthlyMaterialRouter,
