@@ -1,5 +1,6 @@
 import {
     useEffect,
+    useRef,
     useState,
 } from 'react';
 
@@ -7,7 +8,12 @@ import {
     AuthenticationApiError,
     authenticationApi,
 } from '../services/AuthenticationApi.js';
+import {
+    InitialSetupApiError,
+    initialSetupApi,
+} from '../services/InitialSetupApi.js';
 import { LoginForm } from '../components/authentication/LoginForm.jsx';
+import { InitialSetupForm } from '../components/authentication/InitialSetupForm.jsx';
 import { CalendarWorkspace } from '../components/calendar/CalendarWorkspace.jsx';
 
 const DATE_LOCALE = 'pt-BR';
@@ -19,8 +25,20 @@ const AUTHENTICATION_REQUIRED_CODE = 'AUTHENTICATION_REQUIRED';
 const APP_MESSAGES = Object.freeze({
     INVALID_AUTHENTICATION_SERVICE:
         'A aplicação exige um serviço de autenticação válido.',
+    INVALID_INITIAL_SETUP_SERVICE:
+        'A aplicação exige um serviço de primeiro cadastro válido.',
     CHECKING_SESSION:
         'Verificando sua sessão...',
+    CHECKING_SETUP:
+        'Verificando o primeiro acesso desta instalação...',
+    SETUP_CHECK_FAILED:
+        'Não foi possível verificar o primeiro cadastro. Se já possui uma conta, você pode entrar.',
+    SETUP_CREATED:
+        'Sua conta foi criada. Entre com o e-mail e a senha que você escolheu.',
+    SETUP_UNAVAILABLE:
+        'O cadastro inicial não está disponível nesta instalação. Se já criou sua conta, entre com seu e-mail e senha.',
+    UNEXPECTED_SETUP_ERROR:
+        'Não foi possível confirmar a criação da conta. Se ela já foi criada, tente entrar com os dados informados.',
     SESSION_CHECK_FAILED:
         'Não foi possível verificar a sessão anterior. Você ainda pode entrar novamente.',
     UNEXPECTED_LOGIN_ERROR:
@@ -97,17 +115,20 @@ function isAuthenticationRequiredError(error) {
 /**
  * Composição principal da interface administrativa.
  *
- * App consulta a sessão existente e coordena a entrada administrativa. A
- * comunicação HTTP permanece encapsulada em AuthenticationApi e os campos
- * continuam isolados em LoginForm.
+ * App restaura a sessão ou consulta qual formulário a instalação permite.
+ * Os serviços cuidam da comunicação HTTP; os formulários cuidam dos campos.
+ * As credenciais do primeiro cadastro não são guardadas no estado de App.
  *
  * @param {object} props Propriedades da aplicação.
  * @param {{ login: Function, getSession: Function, logout: Function }}
  * [props.authenticationService] Serviço substituível nos testes.
+ * @param {{ getStatus: Function, createAdmin: Function }}
+ * [props.initialSetupService] Serviço de primeiro cadastro substituível.
  * @returns {import('react').ReactElement} Estrutura principal da aplicação.
  */
 function App({
     authenticationService = authenticationApi,
+    initialSetupService = initialSetupApi,
 } = {}) {
     const isValidAuthenticationService =
         authenticationService !== null
@@ -123,54 +144,164 @@ function App({
         );
     }
 
-    const [isCheckingSession, setIsCheckingSession] = useState(true);
+    if (
+        !initialSetupService
+        || typeof initialSetupService !== 'object'
+        || Array.isArray(initialSetupService)
+        || typeof initialSetupService.getStatus !== 'function'
+        || typeof initialSetupService.createAdmin !== 'function'
+    ) {
+        throw new TypeError(APP_MESSAGES.INVALID_INITIAL_SETUP_SERVICE);
+    }
+
+    const [accessMode, setAccessMode] = useState('checking-session');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [errorMessage, setErrorMessage] = useState(null);
     const [authenticatedUser, setAuthenticatedUser] = useState(null);
+    const [successMessage, setSuccessMessage] = useState(null);
+    const [canCheckSetup, setCanCheckSetup] = useState(false);
+    const lifecycleRef = useRef(null);
+
+    const isCheckingAccess = accessMode === 'checking-session'
+        || accessMode === 'checking-setup';
 
     const currentDate = createCurrentDatePresentation();
 
     /**
-     * Verifica uma sessão persistida antes de apresentar o formulário.
-     *
-     * A função de limpeza impede que uma resposta tardia altere uma instância
-     * do componente que já tenha sido desmontada. Isso também mantém o efeito
-     * seguro durante as verificações adicionais do StrictMode.
+     * Cada composição possui sua própria marca de atividade. Respostas de
+     * serviços antigos ou de uma instância desmontada são ignoradas, incluindo
+     * envios. O bloqueio síncrono evita duas operações antes do próximo render.
      */
     useEffect(() => {
-        let isCurrentInstance = true;
+        const lifecycle = { active: true, pending: true };
+        lifecycleRef.current = lifecycle;
+        setAccessMode('checking-session');
+        setAuthenticatedUser(null);
+        setErrorMessage(null);
+        setSuccessMessage(null);
+        setCanCheckSetup(false);
+        setIsSubmitting(false);
+        setIsLoggingOut(false);
 
         async function restoreSession() {
+            let sessionWarning = null;
             try {
-                const session =
-                    await authenticationService.getSession();
-
-                if (isCurrentInstance) {
-                    setAuthenticatedUser(session.user);
+                const session = await authenticationService.getSession();
+                if (!isCurrent(lifecycle)) return;
+                if (!session?.authenticated || !session.user) {
+                    throw new TypeError('Confirmação de sessão inválida.');
                 }
+                setAuthenticatedUser(session.user);
+                setAccessMode('login');
             } catch (error) {
-                if (
-                    isCurrentInstance
-                    && !isAuthenticationRequiredError(error)
-                ) {
-                    setErrorMessage(
-                        APP_MESSAGES.SESSION_CHECK_FAILED,
-                    );
+                if (!isCurrent(lifecycle)) return;
+                if (!isAuthenticationRequiredError(error)) {
+                    sessionWarning = APP_MESSAGES.SESSION_CHECK_FAILED;
                 }
+                await checkInitialSetup(lifecycle, sessionWarning);
             } finally {
-                if (isCurrentInstance) {
-                    setIsCheckingSession(false);
-                }
+                if (isCurrent(lifecycle)) lifecycle.pending = false;
             }
         }
 
         restoreSession();
 
         return () => {
-            isCurrentInstance = false;
+            lifecycle.active = false;
         };
-    }, [authenticationService]);
+    }, [authenticationService, initialSetupService]);
+
+    function isCurrent(lifecycle) {
+        return lifecycle?.active && lifecycleRef.current === lifecycle;
+    }
+
+    /** Uma consulta malsucedida nunca é interpretada como cadastro liberado. */
+    async function checkInitialSetup(lifecycle, sessionWarning = null) {
+        if (!isCurrent(lifecycle)) return;
+        setAccessMode('checking-setup');
+        try {
+            const status = await initialSetupService.getStatus();
+            if (!isCurrent(lifecycle)) return;
+            if (
+                !status || typeof status !== 'object' || Array.isArray(status)
+                || typeof status.available !== 'boolean'
+            ) {
+                throw new TypeError('Disponibilidade de cadastro inválida.');
+            }
+            setAccessMode(status.available ? 'setup' : 'login');
+            setCanCheckSetup(status.available);
+            setErrorMessage(status.available ? null : sessionWarning);
+        } catch {
+            if (!isCurrent(lifecycle)) return;
+            setAccessMode('login');
+            setCanCheckSetup(true);
+            setErrorMessage(APP_MESSAGES.SETUP_CHECK_FAILED);
+        }
+    }
+
+    async function handleCheckSetup() {
+        const lifecycle = lifecycleRef.current;
+        if (!isCurrent(lifecycle) || lifecycle.pending) return;
+        lifecycle.pending = true;
+        setErrorMessage(null);
+        setSuccessMessage(null);
+        try {
+            await checkInitialSetup(lifecycle);
+        } finally {
+            if (isCurrent(lifecycle)) lifecycle.pending = false;
+        }
+    }
+
+    async function handleInitialSetup(data) {
+        const lifecycle = lifecycleRef.current;
+        if (!isCurrent(lifecycle) || lifecycle.pending || accessMode !== 'setup') return;
+        lifecycle.pending = true;
+        setIsSubmitting(true);
+        setErrorMessage(null);
+        setSuccessMessage(null);
+        try {
+            const creation = await initialSetupService.createAdmin(data);
+            if (!isCurrent(lifecycle)) return;
+            if (
+                !creation || typeof creation !== 'object' || Array.isArray(creation)
+                || creation.created !== true
+            ) {
+                throw new TypeError('Confirmação de cadastro inválida.');
+            }
+            // Desmontar o formulário descarta senha, confirmação e convite.
+            setAccessMode('login');
+            setCanCheckSetup(false);
+            setSuccessMessage(APP_MESSAGES.SETUP_CREATED);
+        } catch (error) {
+            if (!isCurrent(lifecycle)) return;
+            if (
+                error instanceof InitialSetupApiError
+                && error.statusCode === 409
+                && error.code === 'INITIAL_SETUP_UNAVAILABLE'
+            ) {
+                setAccessMode('login');
+                setCanCheckSetup(false);
+                setErrorMessage(APP_MESSAGES.SETUP_UNAVAILABLE);
+            } else {
+                setErrorMessage(error instanceof InitialSetupApiError
+                    ? error.message : APP_MESSAGES.UNEXPECTED_SETUP_ERROR);
+            }
+        } finally {
+            if (isCurrent(lifecycle)) {
+                lifecycle.pending = false;
+                setIsSubmitting(false);
+            }
+        }
+    }
+
+    function handleShowLogin() {
+        const lifecycle = lifecycleRef.current;
+        if (!isCurrent(lifecycle) || lifecycle.pending) return;
+        setAccessMode('login');
+        setErrorMessage(null);
+        setSuccessMessage(null);
+    }
 
     /**
      * Solicita a autenticação sem armazenar as credenciais no estado de App.
@@ -184,20 +315,21 @@ function App({
      * @returns {Promise<void>}
      */
     async function handleLogin(credentials) {
-        if (isSubmitting) {
-            return;
-        }
-
+        const lifecycle = lifecycleRef.current;
+        if (!isCurrent(lifecycle) || lifecycle.pending || accessMode !== 'login') return;
+        lifecycle.pending = true;
         setIsSubmitting(true);
         setErrorMessage(null);
+        setSuccessMessage(null);
 
         try {
             const user = await authenticationService.login(
                 credentials,
             );
 
-            setAuthenticatedUser(user);
+            if (isCurrent(lifecycle)) setAuthenticatedUser(user);
         } catch (error) {
+            if (!isCurrent(lifecycle)) return;
             const publicMessage =
                 error instanceof AuthenticationApiError
                     ? error.message
@@ -205,7 +337,10 @@ function App({
 
             setErrorMessage(publicMessage);
         } finally {
-            setIsSubmitting(false);
+            if (isCurrent(lifecycle)) {
+                lifecycle.pending = false;
+                setIsSubmitting(false);
+            }
         }
     }
 
@@ -218,17 +353,20 @@ function App({
      * @returns {Promise<void>}
      */
     async function handleLogout() {
-        if (isLoggingOut) {
-            return;
-        }
-
+        const lifecycle = lifecycleRef.current;
+        if (!isCurrent(lifecycle) || lifecycle.pending) return;
+        lifecycle.pending = true;
         setIsLoggingOut(true);
         setErrorMessage(null);
 
         try {
             await authenticationService.logout();
+            if (!isCurrent(lifecycle)) return;
             setAuthenticatedUser(null);
+            setAccessMode('login');
+            setCanCheckSetup(false);
         } catch (error) {
+            if (!isCurrent(lifecycle)) return;
             const publicMessage =
                 error instanceof AuthenticationApiError
                     ? error.message
@@ -236,7 +374,10 @@ function App({
 
             setErrorMessage(publicMessage);
         } finally {
-            setIsLoggingOut(false);
+            if (isCurrent(lifecycle)) {
+                lifecycle.pending = false;
+                setIsLoggingOut(false);
+            }
         }
     }
 
@@ -250,7 +391,7 @@ function App({
      * responsabilidade do componente específico. O serviço e o estado da
      * sessão continuam coordenados nesta camada.
      */
-    if (!isCheckingSession && authenticatedUser) {
+    if (!isCheckingAccess && authenticatedUser) {
         return (
             <CalendarWorkspace
                 administratorName={authenticatedUserName || null}
@@ -261,9 +402,9 @@ function App({
         );
     }
 
-    const authenticationTitle = isCheckingSession
+    const authenticationTitle = isCheckingAccess
         ? 'Verificando acesso'
-        : 'Acesso ao calendário';
+        : accessMode === 'setup' ? 'Crie sua conta' : 'Acesso ao calendário';
 
     return (
         <main className="app-shell">
@@ -316,25 +457,64 @@ function App({
                     {authenticationTitle}
                 </h2>
 
-                {isCheckingSession ? (
+                {isCheckingAccess ? (
                     <p
                         className="authentication-description"
                         role="status"
                     >
-                        {APP_MESSAGES.CHECKING_SESSION}
+                        {accessMode === 'checking-session'
+                            ? APP_MESSAGES.CHECKING_SESSION
+                            : APP_MESSAGES.CHECKING_SETUP}
                     </p>
                 ) : (
                     <>
                         <p className="authentication-description">
-                            Entre com sua conta para consultar e organizar
-                            as aulas.
+                            {accessMode === 'setup'
+                                ? 'Defina sua conta para começar a usar esta instalação. Depois, entre com seu e-mail e senha.'
+                                : 'Entre com sua conta para consultar e organizar as aulas.'}
                         </p>
 
-                        <LoginForm
-                            onSubmit={handleLogin}
-                            isSubmitting={isSubmitting}
-                            errorMessage={errorMessage}
-                        />
+                        {successMessage && (
+                            <p className="authentication-success" role="status">
+                                {successMessage}
+                            </p>
+                        )}
+
+                        {accessMode === 'setup' ? (
+                            <>
+                                <InitialSetupForm
+                                    onSubmit={handleInitialSetup}
+                                    isSubmitting={isSubmitting}
+                                    errorMessage={errorMessage}
+                                />
+                                <button
+                                    className="authentication-logout"
+                                    type="button"
+                                    disabled={isSubmitting}
+                                    onClick={handleShowLogin}
+                                >
+                                    Já tenho uma conta
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <LoginForm
+                                    onSubmit={handleLogin}
+                                    isSubmitting={isSubmitting}
+                                    errorMessage={errorMessage}
+                                />
+                                {canCheckSetup && (
+                                    <button
+                                        className="authentication-logout"
+                                        type="button"
+                                        disabled={isSubmitting}
+                                        onClick={handleCheckSetup}
+                                    >
+                                        Verificar primeiro cadastro
+                                    </button>
+                                )}
+                            </>
+                        )}
                     </>
                 )}
             </section>

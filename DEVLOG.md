@@ -4110,3 +4110,166 @@ Reservas sem conta ou cadastros concluídos com conta removida interrompem
 a inicialização; um procedimento operacional de intervenção e recuperação de
 acesso ainda precisa ser definido. As instruções de instalação local, a opção
 Docker Compose, os guias de uso e o backup/restauração permanecem planejados.
+
+## 21 de outubro de 2026 — Primeiro cadastro pela interface
+
+### Objetivo
+
+Permitir que a pessoa responsável por uma instalação independente defina seu
+nome, e-mail e senha pelo navegador, usando o convite configurado na instalação.
+Integrar a interface à API existente, confirmar a criação e encaminhar ao
+login, preservando o acesso das instalações já configuradas.
+
+### Cliente HTTP do primeiro cadastro
+
+Foi criado `client/src/services/InitialSetupApi.js`, com cliente fetch injetável,
+métodos vinculados e instância padrão imutável. Importar ou construir o serviço
+não realiza requisições. As operações são:
+
+- `getStatus()`: consulta `GET /api/setup/status` e retorna somente
+  `{ available: boolean }`;
+- `createAdmin()`: envia `POST /api/setup/admin` com convite, nome, e-mail e
+  senha e aceita somente a confirmação `201` com `{ created: true }`.
+
+O cliente normaliza nome e e-mail, preserva a senha e o convite e seleciona
+somente os quatro campos permitidos. Valida o limite de 72 bytes em UTF-8
+sem truncamento. Requisições usam caminhos relativos, mesma origem, JSON,
+cache desativado e recusa de redirecionamentos.
+
+O convite é enviado somente no corpo. O cliente não mantém credenciais em
+armazenamento do navegador nem realiza login. Falhas de rede não repetem a
+criação automaticamente: a gravação pode ter ocorrido antes de a resposta
+chegar. Mensagens de recusas são locais, escolhidas por combinações conhecidas
+de código e estado HTTP; mensagens, detalhes e causas recebidas não são
+incorporados ao erro apresentado pela interface.
+
+Os 63 testes de `InitialSetupApi.test.js` passaram, cobrindo contratos,
+seleção dos campos, limites UTF-8, respostas inconsistentes, recusas públicas,
+confidencialidade e ausência de repetição automática.
+
+### Formulário acessível
+
+Foi criado `client/src/components/authentication/InitialSetupForm.jsx` com
+cinco campos: nome, e-mail, senha, confirmação e código de primeiro acesso.
+A confirmação é conferida localmente e não é enviada à API.
+
+O componente mantém os valores digitados, valida o preenchimento e o limite
+UTF-8, foca o campo inválido e relaciona orientações e mensagens aos controles.
+Senha, confirmação e código são apresentados em campos protegidos. O envio
+entrega uma cópia imutável dos quatro campos esperados. Controles ficam
+bloqueados durante a operação; recusas preservam os valores para correção.
+Desmontar o formulário descarta seu estado local.
+
+O formulário reutiliza os estilos existentes e recebe envio, processamento e
+mensagem pública por propriedades. Não conhece HTTP, MongoDB ou sessões.
+Os 36 testes de `InitialSetupForm.test.jsx` passaram, incluindo envio pelo
+teclado, foco, confirmação com espaços, Unicode, preservação dos campos,
+bloqueio e apresentação de mensagens como texto.
+
+### Integração em App
+
+O `client/src/app/App.jsx` passou a receber também o serviço de primeiro
+cadastro por injeção. A abertura da interface segue estas decisões:
+
+- sessão válida abre diretamente o workspace, sem consultar o cadastro;
+- visitante sem sessão aguarda a consulta de disponibilidade;
+- disponibilidade positiva apresenta o primeiro cadastro;
+- disponibilidade negativa apresenta o login;
+- falha ou resultado inválido da consulta mantém login disponível, com
+  mensagem e opção de consultar novamente.
+
+Uma criação confirmada desmonta o formulário, descarta seus campos e apresenta
+mensagem de sucesso junto ao login. A conta não é autenticada automaticamente.
+Uma recusa `409 INITIAL_SETUP_UNAVAILABLE` encaminha ao login; outras recusas
+mantêm o formulário e permitem corrigir o preenchimento. A pessoa também pode
+optar por entrar com uma conta existente.
+
+O fluxo usa bloqueio síncrono contra operações repetidas e identifica a
+composição ativa. Respostas de serviços substituídos ou de uma instância já
+desmontada não alteram a interface. App não guarda senha ou convite em seu
+estado.
+
+O `App.test.jsx` foi ampliado de 16 para 33 testes. Foram preservados os
+cenários de login, restauração e logout e adicionadas verificações da decisão
+de acesso, cadastro, respostas inválidas, bloqueios e operações tardias.
+
+### Execução temporária para verificação visual
+
+Foi criado `scripts/previewInitialSetup.js`. Ele exige MongoDB local ativo e
+frontend compilado e prepara banco, porta, segredo de sessão e convite próprios
+para uma verificação manual. O servidor real é iniciado em processo filho,
+a partir de uma pasta temporária vazia, com configuração explícita e sem
+carregar o `.env` do projeto ou utilizar `ADMIN_*`.
+
+O script aguarda o primeiro cadastro disponível e informa o endereço em
+loopback e o código do teste. Frontend compilado e API são servidos pelo Express
+na mesma origem. A pessoa mantém o terminal aberto e usa dados fictícios no
+navegador. Este recurso é uma ferramenta de verificação, não um instalador.
+
+Ao receber `Ctrl+C`, encerra o processo filho antes de conferir o nome e a
+marca de propriedade do banco temporário e removê-lo. A pasta temporária e a
+conexão de verificação também são encerradas. Os dados do teste são descartados.
+
+### Validação manual com MongoDB e navegador
+
+O MongoDB local foi ativado e seu ping confirmado antes da execução.
+Em uma janela anônima, foram confirmados:
+
+- apresentação de **Crie sua conta**;
+- criação da conta pelo formulário;
+- login com a conta criada;
+- navegação entre as abas da área autenticada;
+- saída pelo botão **Sair**;
+- atualização da página após o logout mantendo o formulário de login;
+- novo acesso somente depois de enviar as credenciais em **Entrar**;
+- encerramento com `Ctrl+C` e mensagem de remoção do banco temporário.
+
+O navegador ofereceu campos pré-preenchidos no retorno ao login. Foi
+confirmado que isso não abria o calendário automaticamente: uma nova entrada
+continuava necessária. O preenchimento automático do navegador não representa
+uma sessão administrativa ativa.
+
+Essa verificação não utilizou o banco normal da aplicação. O endereço, o
+convite e o nome aleatório do banco não são configurações permanentes e não
+foram incorporados à documentação.
+
+### Resultados e documentação
+
+- 419 testes do frontend aprovados em 18 arquivos na máquina de desenvolvimento;
+- zero falhas e zero testes ignorados no resultado dessa suíte;
+- compilação de produção aprovada, com 33 módulos;
+- primeiro cadastro, acesso, navegação e logout verificados no navegador;
+- remoção do banco temporário confirmada após o encerramento;
+- formatação validada por `git diff --check` após código e README;
+- nenhuma dependência adicionada ou atualizada.
+
+O backend não foi executado novamente neste marco. Seu último resultado,
+de 16 de outubro, permanece em 858 testes aprovados em 141 suítes. Somados
+ao frontend atual, os últimos resultados registrados são 1277 testes em
+159 conjuntos. A verificação manual não entra nessa contagem. Não foi
+executada uma nova auditoria das dependências neste marco.
+
+O README foi atualizado com o primeiro acesso pela interface, configuração
+da origem para Express e Vite, execução temporária, responsabilidades dos
+componentes, contratos da API, estrutura de arquivos e resultados datados.
+O guia de uso ainda precisa incorporar a escolha das próprias credenciais.
+
+### Limites e próximo marco: cursos personalizados
+
+O primeiro acesso permite escolher a conta da instalação, mas os cursos
+continuam fixos em `APQSA`, `TECMKT` e `TECADM`, com restrições no backend e
+no frontend. Portanto, a aplicação ainda não permite que cada professor
+cadastre os cursos de sua escola. Os textos e algumas opções da interface
+também preservam características do protótipo original.
+
+O próximo marco será permitir cadastro personalizado de cursos por instalação,
+com nome e sigla, edição e desativação que preserve as aulas existentes.
+Esses registros deverão alimentar formulários, filtros, painel e calendário,
+com validações, testes e tratamento dos dados existentes. Essa funcionalidade
+está planejada e ainda não foi implementada.
+
+Continuam pendentes a revisão geral da identidade, a instalação simplificada
+em Linux, a preparação com Docker Compose, os guias para iniciantes,
+backup/restauração e o procedimento operacional para reservas sem conta ou
+recuperação de acesso. O novo formulário também requer validação dedicada em
+telas pequenas. A publicação em produção permanece fora deste marco.

@@ -8,7 +8,12 @@ os dados somente no navegador. A nova aplicação utiliza Node.js, Express e
 MongoDB para oferecer armazenamento centralizado e, futuramente, acesso seguro
 por computadores e celulares.
 
-> Última atualização desta documentação: 16 de outubro de 2026.
+Cada pessoa instala sua própria cópia, com banco de dados e conta
+administrativa próprios. O projeto não disponibiliza hospedagem compartilhada
+para terceiros. A instalação simplificada para usuários sem conhecimento de
+programação ainda está em preparação.
+
+> Última atualização desta documentação: 21 de outubro de 2026.
 
 ## Documentos e materiais remotos
 
@@ -56,8 +61,8 @@ quatro seções originais.
 A compilação de produção é validada e servida pelo próprio Express sob a mesma
 origem da API.
 
-Está em preparação o primeiro cadastro administrativo por convite, para que
-cada pessoa defina suas credenciais na própria instalação. O serviço
+O primeiro cadastro administrativo por convite está integrado à interface,
+permitindo definir nome, e-mail e senha na própria instalação. O serviço
 `InitialSetupService` valida o convite e os dados e utiliza `InitialSetupState`
 para reservar e registrar a conclusão do cadastro. A reserva possui id fixo,
 sem expiração, e bloqueia novas tentativas mesmo após reinício ou remoção
@@ -78,8 +83,23 @@ intervenção para esses casos continua pendente.
 O servidor compõe o roteador protegido: `GET /api/setup/status` consulta a
 disponibilidade e `POST /api/setup/admin` confirma a criação sem autenticar
 automaticamente ou devolver credenciais. A API está integrada à inicialização
-e foi validada por HTTP com MongoDB real. A interface de primeiro acesso no
-navegador ainda não foi implementada.
+e foi validada por HTTP com MongoDB real. A interface consulta a sessão antes
+de decidir o acesso: uma sessão válida abre o calendário; sem sessão, a
+disponibilidade determina primeiro cadastro ou login. Se essa consulta falhar,
+o login continua disponível com uma mensagem e opção de nova consulta.
+
+O formulário solicita nome, e-mail, senha, confirmação da senha e código de
+primeiro acesso. A confirmação fica somente no formulário. Nome e e-mail são
+normalizados, enquanto senha e convite são preservados. O cliente HTTP envia
+apenas os quatro campos da API, sem colocar credenciais na URL ou no
+armazenamento do navegador. O preenchimento automático do navegador pode
+continuar oferecendo credenciais; isso não substitui uma autenticação válida.
+
+Depois da criação confirmada, o formulário é desmontado, seus campos são
+descartados e a tela pede login com os dados escolhidos. Não há autenticação
+automática. Uma recusa de cadastro indisponível encaminha ao login; outras
+recusas mantêm o formulário para correção. Falhas de rede não repetem o POST
+automaticamente. Respostas tardias de operações antigas são ignoradas.
 
 A criação executa limitador específico, proteção de origem/JSON e controlador,
 nessa ordem. A origem deve corresponder ao `APP_ORIGIN` configurado; requisições
@@ -258,6 +278,12 @@ mês sem depender do armazenamento local do navegador.
 - tabelas responsivas com rolagem horizontal controlada em telas estreitas;
 - formulário administrativo acessível com estados de envio e erro;
 - login real integrado ao backend sem armazenar credenciais em App;
+- cliente HTTP de disponibilidade e criação da primeira conta por convite;
+- formulário de primeiro cadastro com confirmação da senha e validação UTF-8;
+- decisão visual entre primeiro cadastro, login e sessão já autenticada;
+- confirmação de criação seguida de login explícito, com descarte dos campos;
+- bloqueio de campos, navegação e novos envios durante a criação da conta;
+- mensagens locais seguras para códigos e estados HTTP conhecidos do cadastro;
 - restauração da sessão administrativa depois de recarregar a página;
 - encerramento da sessão com confirmação do backend antes de remover o acesso;
 - área autenticada separada da tela de entrada;
@@ -285,7 +311,8 @@ mês sem depender do armazenamento local do navegador.
 
 ### Ainda não implementado
 
-- formulário de primeiro cadastro no navegador e integração visual desse fluxo;
+- instalação simplificada, incluindo preparação com Docker e guia para iniciantes;
+- revisão dos textos e opções ainda específicos do protótipo original;
 - procedimento operacional para reservas sem conta e recuperação de acesso;
 - acesso externo à aplicação;
 - implantação em ambiente de produção.
@@ -421,8 +448,8 @@ Escolha o fluxo administrativo para uma instalação nova:
 
 - **Cadastro por convite:** remova os três campos `ADMIN_NAME`, `ADMIN_EMAIL` e
   `ADMIN_PASSWORD` e configure `INITIAL_SETUP_TOKEN` com 64 caracteres
-  hexadecimais aleatórios. A API permite escolher as credenciais, mas o
-  formulário no navegador ainda será implementado.
+  hexadecimais aleatórios. Ao abrir a interface, a pessoa escolhe suas
+  credenciais no formulário **Crie sua conta** e informa esse código.
 - **Conta predefinida:** informe os três campos `ADMIN_*` completos e válidos,
   sem convite, para criar a conta durante a inicialização.
 
@@ -520,8 +547,15 @@ npm --prefix client run dev
 ```
 
 A interface estará em `http://127.0.0.1:5173`. O Vite encaminha os caminhos
-iniciados por `/api` ao backend local. O formulário utiliza a conta
-administrativa configurada no arquivo `.env`.
+iniciados por `/api` ao backend local. Para realizar o primeiro cadastro nessa
+interface, configure `APP_ORIGIN=http://127.0.0.1:5173` e reinicie o backend.
+O proxy mantém a origem enviada pelo navegador. Um `APP_ORIGIN` diferente
+faz o servidor recusar o cadastro.
+
+Ao acessar a compilação servida pelo Express, use em `APP_ORIGIN` a origem
+desse acesso, por exemplo `http://localhost:3000`. `localhost` e `127.0.0.1`
+são hosts diferentes para essa verificação. O login utiliza a conta criada
+pelo primeiro cadastro ou pelo fluxo de credenciais predefinidas.
 
 O diagnóstico do backend permanece disponível em:
 
@@ -557,6 +591,29 @@ http://localhost:3000
 Se a compilação, a configuração, o banco, a conta administrativa ou a
 infraestrutura de sessões falhar, o servidor não será disponibilizado.
 
+## Primeiro cadastro no navegador
+
+Depois de configurar o convite e iniciar a aplicação pelo Express:
+
+1. abra o endereço correspondente ao `APP_ORIGIN` da instalação;
+2. na tela **Crie sua conta**, informe nome e e-mail;
+3. escolha uma senha com pelo menos 12 caracteres e repita-a na confirmação;
+4. cole o código gerado para `INITIAL_SETUP_TOKEN` no campo de primeiro acesso;
+5. clique em **Criar minha conta** e aguarde a confirmação;
+6. entre pelo formulário de login com o e-mail e a senha escolhidos.
+
+A senha é limitada a 72 bytes UTF-8; acentos e emojis ocupam mais de um byte.
+Entradas acima desse limite são recusadas, sem truncamento. A conta criada
+encerra o primeiro cadastro dessa instalação. Alterar o convite não libera
+outro cadastro.
+
+Uma instalação já configurada apresenta o login. Se o navegador preencher
+os campos automaticamente, o acesso ainda depende de **Entrar** e da
+validação da API. Para encerrar a sessão, use **Sair** dentro da aplicação.
+
+O guia de uso ainda deverá incorporar esse fluxo e substituir as orientações
+anteriores de recebimento de credenciais prontas.
+
 ## Scripts disponíveis
 
 | Comando | Finalidade |
@@ -570,6 +627,7 @@ infraestrutura de sessões falhar, o servidor não será disponibilizado.
 | `npm --prefix client test` | Executa os testes do frontend |
 | `npm --prefix client run build` | Compila o frontend para produção |
 | `npm --prefix client run preview` | Serve localmente a compilação produzida |
+| `node scripts/previewInitialSetup.js` | Abre uma instalação temporária para teste manual do primeiro cadastro |
 
 ## Testes automatizados
 
@@ -580,14 +638,18 @@ npm test
 npm --prefix client test
 ```
 
-Em 16 de outubro de 2026, o backend foi validado com 858 testes aprovados
-em 141 suítes. O último resultado do frontend, de 14 de outubro, permanece
-em 303 testes aprovados em 16 arquivos. O frontend não foi repetido nesta
-etapa, e nenhum arquivo seu foi alterado. Os resultados registrados somam:
+Em 21 de outubro de 2026, o frontend foi validado com 419 testes aprovados
+em 18 arquivos. São 63 testes do novo cliente HTTP, 36 do formulário de
+primeiro cadastro e 33 da composição de App, além dos demais componentes e
+serviços. A compilação de produção também passou, com 33 módulos.
+
+O último resultado do backend, de 16 de outubro, permanece em 858 testes
+aprovados em 141 suítes. O backend não foi executado novamente neste marco.
+Somados, os últimos resultados registrados são:
 
 ```text
-1161 testes
-157 suítes/conjuntos
+1277 testes
+159 suítes/conjuntos
 0 falhas
 0 testes ignorados
 ```
@@ -666,6 +728,12 @@ Os testes verificam, entre outros comportamentos:
 - identidade visual e contexto administrativo apresentados;
 - data local determinística e formatada em português;
 - contratos HTTP de login, consulta da sessão e logout no frontend;
+- consulta do primeiro cadastro sem cache e criação por JSON na mesma origem;
+- seleção de quatro campos, preservação da senha e limite UTF-8 no navegador;
+- validação da confirmação, foco no campo inválido e mensagens acessíveis;
+- decisão entre cadastro e login, falha de consulta com possibilidade de repetir;
+- criação confirmada sem login automático, bloqueio durante envio e campos descartados;
+- recusas conhecidas e inesperadas, respostas malformadas e operações tardias;
 - contratos frontend de consulta e criação de aulas;
 - normalização e serialização determinística dos filtros de aulas;
 - seleção dos oito campos funcionais aceitos durante a criação no navegador;
@@ -782,6 +850,37 @@ Somente o middleware do frontend é substituído, pois essa verificação não
 avalia a interface visual nem exige sua compilação. Os oito cenários são
 adicionais às suítes automatizadas e aos outros scripts de verificação.
 
+### Verificação manual do primeiro cadastro no navegador
+
+Em 21 de outubro, a interface compilada foi servida pelo Express com MongoDB
+local usando `scripts/previewInitialSetup.js`. Foram confirmados manualmente:
+
+- apresentação da tela **Crie sua conta** em uma instalação vazia;
+- criação da conta pelo formulário;
+- entrada com a conta criada e navegação entre as abas;
+- retorno ao login depois de usar **Sair**;
+- permanência no login após atualizar a página depois da saída;
+- novo acesso somente depois de enviar as credenciais pelo botão **Entrar**;
+- encerramento do teste por `Ctrl+C` e remoção confirmada do banco temporário.
+
+Para repetir, inicie o MongoDB local e execute:
+
+```bash
+npm --prefix client run build && node scripts/previewInitialSetup.js
+```
+
+O script abre o servidor real apenas em `127.0.0.1`, em uma porta disponível,
+e informa o endereço e um convite aleatório no terminal. Abra esse endereço
+em uma janela anônima e utilize dados fictícios. O servidor usa configuração
+própria em um processo filho, a partir de uma pasta temporária vazia, sem
+carregar o `.env` do projeto ou as credenciais administrativas predefinidas.
+
+Mantenha o terminal aberto durante a verificação. Ao pressionar `Ctrl+C`,
+o script encerra o servidor, confere o nome e a marca do banco temporário e o
+remove. A conta, a sessão e os demais registros desse teste são descartados.
+Este comando serve para testes, não para iniciar uma instalação de uso diário.
+A verificação manual é adicional e não entra no total das suítes automatizadas.
+
 A API administrativa de aulas também foi validada com MongoDB local em um banco
 isolado. Uma criação autorizada retornou `201`, e a consulta combinando curso,
 mês e data mínima retornou `200` com o mesmo registro e sem campos internos. O
@@ -848,14 +947,16 @@ npm audit
 npm --prefix client audit
 ```
 
-No marco documentado, a auditoria apresentou:
+O último resultado de auditoria registrado no projeto foi:
 
 ```text
 found 0 vulnerabilities
 ```
 
-Esse resultado representa o momento da verificação. A auditoria deve ser
-executada novamente após alterações nas dependências e antes da implantação.
+Esse resultado representa o momento da verificação, não uma nova auditoria
+em 21 de outubro. Nenhuma dependência foi adicionada ou atualizada neste
+marco. A auditoria deve ser executada novamente após alterações nas
+dependências e antes da implantação.
 
 ## Estrutura atual
 
@@ -868,6 +969,8 @@ sistema-gerenciamento-aulas/
 │   │   │   └── App.test.jsx
 │   │   ├── components/
 │   │   │   ├── authentication/
+│   │   │   │   ├── InitialSetupForm.jsx
+│   │   │   │   ├── InitialSetupForm.test.jsx
 │   │   │   │   ├── LoginForm.jsx
 │   │   │   │   ├── LoginForm.test.jsx
 │   │   │   │   ├── LogoutButton.jsx
@@ -896,6 +999,8 @@ sistema-gerenciamento-aulas/
 │   │   ├── services/
 │   │   │   ├── AuthenticationApi.js
 │   │   │   ├── AuthenticationApi.test.js
+│   │   │   ├── InitialSetupApi.js
+│   │   │   ├── InitialSetupApi.test.js
 │   │   │   ├── LessonApi.js
 │   │   │   ├── LessonApi.test.js
 │   │   │   ├── MonthlyMaterialApi.js
@@ -908,6 +1013,13 @@ sistema-gerenciamento-aulas/
 │   ├── package-lock.json
 │   ├── package.json
 │   └── vite.config.js
+├── docs/
+│   └── GUIA_DO_USUARIO.md
+├── scripts/
+│   ├── previewInitialSetup.js
+│   ├── verifyInitialSetup.js
+│   ├── verifyInitialSetupHttp.js
+│   └── verifySingleAdminIndex.js
 ├── src/
 │   ├── config/
 │   │   ├── database.js
@@ -915,6 +1027,7 @@ sistema-gerenciamento-aulas/
 │   │   └── session.js
 │   ├── controllers/
 │   │   ├── AuthenticationController.js
+│   │   ├── InitialSetupController.js
 │   │   ├── LessonController.js
 │   │   └── MonthlyMaterialController.js
 │   ├── errors/
@@ -924,18 +1037,26 @@ sistema-gerenciamento-aulas/
 │   │   ├── authenticationRateLimiter.js
 │   │   ├── errorHandler.js
 │   │   ├── frontendAssets.js
+│   │   ├── initialSetupRateLimiter.js
+│   │   ├── initialSetupRequestGuard.js
 │   │   └── securityHeaders.js
 │   ├── models/
+│   │   ├── InitialSetupState.js
 │   │   ├── Lesson.js
 │   │   ├── MonthlyMaterial.js
 │   │   └── User.js
 │   ├── routes/
 │   │   ├── authenticationRoutes.js
+│   │   ├── initialSetupRoutes.js
 │   │   ├── lessonRoutes.js
 │   │   └── monthlyMaterialRoutes.js
 │   ├── services/
 │   │   ├── AdminBootstrapper.js
+│   │   ├── AdministrativeIndexInitializer.js
+│   │   ├── AdministrativeStartupService.js
 │   │   ├── AuthenticationService.js
+│   │   ├── InitialSetupRecoveryService.js
+│   │   ├── InitialSetupService.js
 │   │   ├── LessonService.js
 │   │   ├── MonthlyMaterialService.js
 │   │   ├── PasswordHasher.js
@@ -944,40 +1065,49 @@ sistema-gerenciamento-aulas/
 │   └── server.js
 ├── test/
 │   ├── AdminBootstrapper.test.js
+│   ├── administrativeAuthorization.test.js
+│   ├── administrativeBootstrapEnv.test.js
+│   ├── administrativeIndexInitializer.test.js
+│   ├── administrativeStartupService.test.js
+│   ├── app.test.js
 │   ├── AppError.test.js
 │   ├── AuthenticationController.test.js
-│   ├── AuthenticationService.test.js
-│   ├── LessonController.test.js
-│   ├── LessonService.test.js
-│   ├── MonthlyMaterialController.test.js
-│   ├── MonthlyMaterialService.test.js
-│   ├── PasswordHasher.test.js
-│   ├── SessionManager.test.js
-│   ├── administrativeAuthorization.test.js
-│   ├── app.test.js
 │   ├── authenticationIntegration.test.js
-│   ├── authenticationRateLimitIntegration.test.js
 │   ├── authenticationRateLimiter.test.js
+│   ├── authenticationRateLimitIntegration.test.js
 │   ├── authenticationRoutes.test.js
+│   ├── AuthenticationService.test.js
 │   ├── authenticationSessionController.test.js
 │   ├── database.test.js
 │   ├── env.test.js
 │   ├── errorHandler.test.js
 │   ├── frontendAssets.test.js
 │   ├── frontendAssetsServerIntegration.test.js
+│   ├── initialSetupController.test.js
+│   ├── initialSetupEnv.test.js
+│   ├── initialSetupRateLimiter.test.js
+│   ├── initialSetupRecoveryService.test.js
+│   ├── initialSetupRequestGuard.test.js
+│   ├── initialSetupRoutes.test.js
+│   ├── initialSetupService.test.js
+│   ├── initialSetupState.test.js
 │   ├── lesson.test.js
+│   ├── LessonController.test.js
 │   ├── lessonIntegration.test.js
 │   ├── lessonRoutes.test.js
+│   ├── LessonService.test.js
 │   ├── monthlyMaterial.test.js
+│   ├── MonthlyMaterialController.test.js
 │   ├── monthlyMaterialIntegration.test.js
 │   ├── monthlyMaterialRoutes.test.js
+│   ├── MonthlyMaterialService.test.js
+│   ├── PasswordHasher.test.js
 │   ├── securityHeaders.test.js
 │   ├── securityHeadersServerIntegration.test.js
 │   ├── server.test.js
 │   ├── session.test.js
+│   ├── SessionManager.test.js
 │   └── user.test.js
-├── docs/
-│   └── GUIA_DO_USUARIO.md
 ├── .editorconfig
 ├── .env.example
 ├── .gitignore
@@ -1007,10 +1137,20 @@ dependências, testes, comandos de desenvolvimento e compilação.
 
 ### `client/src/app/App.jsx`
 
-Coordena a apresentação da data local, a verificação inicial da sessão, o
-login e o logout. O componente mantém a tela de entrada para visitantes e
-entrega a apresentação autenticada ao workspace do calendário sem armazenar
-as credenciais recebidas.
+Coordena a data local, a restauração da sessão, a consulta do primeiro cadastro,
+a criação da conta, o login e o logout. Seleciona o formulário de acordo com a
+disponibilidade e entrega a sessão autenticada ao workspace do calendário.
+Confirmações de cadastro são validadas antes de mostrar sucesso. Bloqueios
+síncronos evitam operações repetidas, e respostas de serviços substituídos ou
+de uma instância desmontada são ignoradas. Não mantém credenciais em seu estado.
+
+### `client/src/components/authentication/InitialSetupForm.jsx`
+
+Mantém nome, e-mail, senha, confirmação e convite. Valida o preenchimento,
+mede a senha em bytes UTF-8, foca o campo inválido e relaciona mensagens aos
+controles. Encaminha somente os quatro campos esperados, sem a confirmação.
+Preserva os campos após recusas e bloqueia os controles durante o envio.
+Reutiliza os estilos existentes e não conhece HTTP, sessões ou persistência.
 
 ### `client/src/components/authentication/LoginForm.jsx`
 
@@ -1097,6 +1237,15 @@ Encapsula os contratos HTTP de login, consulta da sessão e logout. Valida as
 respostas do backend e converte falhas em erros públicos seguros para a
 interface.
 
+### `client/src/services/InitialSetupApi.js`
+
+Consulta `/api/setup/status` e envia a criação a `/api/setup/admin`, utilizando
+caminhos relativos, JSON, mesma origem e ausência de cache. Recusa
+redirecionamentos e respostas inconsistentes, seleciona os campos públicos e
+não repete automaticamente o cadastro. Códigos e estados HTTP conhecidos são
+convertidos em mensagens locais; mensagens, detalhes e causas recebidas não
+são propagados para a interface. Não armazena credenciais nem realiza login.
+
 ### `client/src/services/LessonApi.js`
 
 Encapsula consulta e criação de aulas no navegador. Valida e serializa filtros
@@ -1130,15 +1279,15 @@ ambiente jsdom utilizado pelos testes de componentes.
 ### `src/app.js`
 
 Configura o Express, instala os cabeçalhos de segurança antes da sessão,
-monta as rotas de autenticação sob `/api/auth`, as rotas de aulas sob
-`/api/lessons` e os materiais sob `/api/monthly-materials`, disponibiliza o
+monta o primeiro cadastro sob `/api/setup`, a autenticação sob `/api/auth`,
+as aulas sob `/api/lessons` e os materiais sob `/api/monthly-materials`, disponibiliza o
 frontend depois da API e mantém o tratamento de erros por último.
 
 ### `src/server.js`
 
 Compõe cabeçalhos de segurança, arquivos compilados do frontend, banco,
-administrador, sessões, autenticação, APIs de aulas e materiais mensais e Express.
-A porta HTTP somente é aberta depois que todas as dependências obrigatórias
+preparação administrativa, primeiro cadastro, sessões, autenticação, APIs de
+aulas e materiais mensais e Express. A porta HTTP somente é aberta depois que todas as dependências obrigatórias
 estão prontas.
 
 ### `src/config/env.js`
@@ -1327,6 +1476,15 @@ de senhas acima de 72 bytes por meio de medição UTF-8 independente do cliente.
 Regenera, grava e destrói sessões autenticadas. Somente o identificador e o
 papel do usuário são persistidos.
 
+### `scripts/previewInitialSetup.js`
+
+Prepara uma execução visual com banco temporário marcado, porta disponível,
+convite e segredo aleatórios. Inicia o servidor em processo filho com
+configuração isolada, aguarda a disponibilidade do primeiro cadastro e mantém
+a aplicação aberta para uso manual no navegador. Encerra o filho antes da
+limpeza do banco e da pasta temporária. A remoção exige confirmar o nome e a
+marca gravada pela própria execução.
+
 ### `test/`
 
 Contém os testes unitários, HTTP e de integração controlada correspondentes.
@@ -1342,6 +1500,56 @@ Registra cronologicamente os marcos, decisões e verificações do desenvolvimen
 ```http
 GET /api/health
 ```
+
+### Primeiro cadastro
+
+```http
+GET /api/setup/status
+```
+
+Retorna `200` com apenas a disponibilidade:
+
+```json
+{
+  "data": {
+    "available": true
+  }
+}
+```
+
+Para criar a conta, envie o convite real da instalação somente no corpo:
+
+```http
+POST /api/setup/admin
+Origin: http://localhost:3000
+Content-Type: application/json
+```
+
+```json
+{
+  "invitationToken": "<convite-de-64-caracteres-hexadecimais>",
+  "name": "Nome do Administrador",
+  "email": "administrador@example.com",
+  "password": "senha-escolhida-pelo-usuario"
+}
+```
+
+Substitua o marcador de convite pelo valor configurado. O `Origin` deve
+corresponder ao `APP_ORIGIN`; no navegador, esse cabeçalho é definido pelo
+próprio navegador. Uma criação confirmada retorna `201` com
+`{ "data": { "created": true } }`, sem autenticar ou devolver credenciais.
+A confirmação da senha não faz parte do corpo da API.
+
+As recusas específicas incluem:
+
+| Estado | Código |
+| --- | --- |
+| `400` | `INITIAL_SETUP_INVALID_DATA` |
+| `403` | `INITIAL_SETUP_INVALID_INVITATION` |
+| `403` | `INITIAL_SETUP_FORBIDDEN_ORIGIN` |
+| `409` | `INITIAL_SETUP_UNAVAILABLE` |
+| `415` | `INITIAL_SETUP_UNSUPPORTED_MEDIA_TYPE` |
+| `429` | `INITIAL_SETUP_RATE_LIMITED` |
 
 ### Entrada administrativa
 

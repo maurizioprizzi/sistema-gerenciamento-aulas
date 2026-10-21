@@ -1,6 +1,7 @@
 import {
     act,
     cleanup,
+    fireEvent,
     render,
     screen,
 } from '@testing-library/react';
@@ -20,6 +21,7 @@ import {
 import {
     AuthenticationApiError,
 } from '../services/AuthenticationApi.js';
+import { InitialSetupApiError } from '../services/InitialSetupApi.js';
 
 afterEach(() => {
     cleanup();
@@ -152,7 +154,7 @@ async function submitLogin(
 
 describe('configuração da aplicação', () => {
     test('expõe mensagens estáveis e protegidas', () => {
-        expect(APP_MESSAGES).toEqual({
+        expect(APP_MESSAGES).toMatchObject({
             INVALID_AUTHENTICATION_SERVICE:
                 'A aplicação exige um serviço de autenticação válido.',
             CHECKING_SESSION:
@@ -185,7 +187,7 @@ describe('configuração da aplicação', () => {
         for (const authenticationService of invalidServices) {
             expect(() => render(
                 <App
-                    authenticationService={authenticationService}
+                    authenticationService={authenticationService} initialSetupService={createInitialSetupService()}
                 />,
             )).toThrowError(
                 APP_MESSAGES.INVALID_AUTHENTICATION_SERVICE,
@@ -202,7 +204,10 @@ describe('estrutura inicial da aplicação', () => {
             createAuthenticationService();
 
         render(
-            <App authenticationService={authenticationService} />,
+            <App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />,
         );
 
         expect(screen.getByRole('main')).toBeTruthy();
@@ -241,7 +246,10 @@ describe('estrutura inicial da aplicação', () => {
             });
 
         render(
-            <App authenticationService={authenticationService} />,
+            <App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />,
         );
 
         const calendar = screen.getByLabelText(
@@ -265,7 +273,10 @@ describe('estrutura inicial da aplicação', () => {
             });
 
         render(
-            <App authenticationService={authenticationService} />,
+            <App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />,
         );
 
         expect(screen.getByRole('heading', {
@@ -288,7 +299,10 @@ describe('restauração da sessão administrativa', () => {
             });
 
         render(
-            <App authenticationService={authenticationService} />,
+            <App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />,
         );
 
         expect(await findCalendarWorkspace()).toBeTruthy();
@@ -304,7 +318,10 @@ describe('restauração da sessão administrativa', () => {
             createAuthenticationService();
 
         render(
-            <App authenticationService={authenticationService} />,
+            <App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />,
         );
 
         expect(await findLoginForm()).toBeTruthy();
@@ -323,7 +340,10 @@ describe('restauração da sessão administrativa', () => {
             });
 
         render(
-            <App authenticationService={authenticationService} />,
+            <App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />,
         );
 
         expect(await findLoginForm()).toBeTruthy();
@@ -346,7 +366,10 @@ describe('entrada administrativa pela aplicação', () => {
             });
 
         render(
-            <App authenticationService={authenticationService} />,
+            <App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />,
         );
 
         await submitLogin(user, {
@@ -388,7 +411,10 @@ describe('entrada administrativa pela aplicação', () => {
             });
 
         render(
-            <App authenticationService={authenticationService} />,
+            <App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />,
         );
 
         await submitLogin(user);
@@ -425,7 +451,10 @@ describe('entrada administrativa pela aplicação', () => {
             });
 
         render(
-            <App authenticationService={authenticationService} />,
+            <App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />,
         );
 
         await submitLogin(user);
@@ -451,7 +480,10 @@ describe('entrada administrativa pela aplicação', () => {
             });
 
         render(
-            <App authenticationService={authenticationService} />,
+            <App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />,
         );
 
         await submitLogin(user);
@@ -467,7 +499,6 @@ describe('entrada administrativa pela aplicação', () => {
     });
 });
 
-
 describe('encerramento da sessão pela aplicação', () => {
     test('remove o acesso somente depois da saída confirmada', async () => {
         const user = userEvent.setup();
@@ -480,7 +511,10 @@ describe('encerramento da sessão pela aplicação', () => {
             });
 
         render(
-            <App authenticationService={authenticationService} />,
+            <App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />,
         );
 
         const logoutButton = await screen.findByRole('button', {
@@ -515,7 +549,10 @@ describe('encerramento da sessão pela aplicação', () => {
             });
 
         render(
-            <App authenticationService={authenticationService} />,
+            <App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />,
         );
 
         await user.click(await screen.findByRole('button', {
@@ -555,7 +592,10 @@ describe('encerramento da sessão pela aplicação', () => {
             });
 
         render(
-            <App authenticationService={authenticationService} />,
+            <App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />,
         );
 
         await user.click(await screen.findByRole('button', {
@@ -589,7 +629,10 @@ describe('encerramento da sessão pela aplicação', () => {
             });
 
         render(
-            <App authenticationService={authenticationService} />,
+            <App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />,
         );
 
         await user.click(await screen.findByRole('button', {
@@ -605,5 +648,208 @@ describe('encerramento da sessão pela aplicação', () => {
             technicalMessage,
         );
         expect(await findCalendarWorkspace()).toBeTruthy();
+    });
+});
+
+
+/**
+ * Simula uma instalação já configurada. Cada cenário pode liberar o primeiro
+ * cadastro ou controlar sua resposta, sem chamar a API real.
+ */
+function createInitialSetupService(overrides = {}) {
+    return {
+        getStatus: vi.fn().mockResolvedValue({ available: false }),
+        createAdmin: vi.fn().mockResolvedValue({ created: true }),
+        ...overrides,
+    };
+}
+
+/** Preenche exclusivamente dados fictícios do formulário de primeiro acesso. */
+function fillInitialSetup() {
+    for (const [label, value] of Object.entries({
+        'Seu nome': 'Ana Silva',
+        'E-mail': 'ana@example.com',
+        Senha: 'senha fictícia de teste',
+        'Confirme a senha': 'senha fictícia de teste',
+        'Código de primeiro acesso': 'ab'.repeat(32),
+    })) {
+        fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    }
+}
+
+async function findInitialSetupForm() {
+    return screen.findByRole('form', { name: 'Primeiro cadastro administrativo' });
+}
+
+/** Permite resolver ou recusar uma operação no momento escolhido pelo teste. */
+function deferred() {
+    let resolve;
+    let reject;
+    const promise = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+}
+
+describe('decisão entre primeiro cadastro e login', () => {
+    test('recusa serviço de primeiro cadastro incompleto', () => {
+        for (const initialSetupService of [null, [], {}, { getStatus() {} }, { getStatus() {}, createAdmin: true }]) {
+            expect(() => render(<App authenticationService={createAuthenticationService()} initialSetupService={initialSetupService} />))
+                .toThrow(APP_MESSAGES.INVALID_INITIAL_SETUP_SERVICE);
+        }
+    });
+
+    test('sessão válida entra diretamente sem consultar cadastro', async () => {
+        const initialSetupService = createInitialSetupService();
+        render(<App authenticationService={createAuthenticationService({ getSession: vi.fn().mockResolvedValue(createAuthenticatedSession()) })} initialSetupService={initialSetupService} />);
+        await findCalendarWorkspace();
+        expect(initialSetupService.getStatus).not.toHaveBeenCalled();
+    });
+
+    test('aguarda disponibilidade antes de mostrar qualquer formulário', async () => {
+        const pending = deferred();
+        const initialSetupService = createInitialSetupService({ getStatus: vi.fn().mockReturnValue(pending.promise) });
+        render(<App authenticationService={createAuthenticationService()} initialSetupService={initialSetupService} />);
+        expect(await screen.findByText(APP_MESSAGES.CHECKING_SETUP)).toBeTruthy();
+        expect(screen.queryByRole('form')).toBeNull();
+        await act(async () => { pending.resolve({ available: true }); await pending.promise; });
+        await findInitialSetupForm();
+        expect(screen.queryByRole('form', { name: 'Entrada administrativa' })).toBeNull();
+    });
+
+    test('falha da consulta mantém login e permite consultar novamente', async () => {
+        const initialSetupService = createInitialSetupService({ getStatus: vi.fn()
+            .mockRejectedValueOnce(new Error('detalhe privado'))
+            .mockResolvedValueOnce({ available: true }) });
+        render(<App authenticationService={createAuthenticationService()} initialSetupService={initialSetupService} />);
+        await findLoginForm();
+        expect(screen.getByRole('alert').textContent).toBe(APP_MESSAGES.SETUP_CHECK_FAILED);
+        expect(document.body.textContent).not.toContain('detalhe privado');
+        fireEvent.click(screen.getByRole('button', { name: 'Verificar primeiro cadastro' }));
+        await findInitialSetupForm();
+        expect(initialSetupService.getStatus).toHaveBeenCalledTimes(2);
+    });
+
+    test.each([{ label: 'ausente', status: undefined }, { label: 'texto', status: { available: 'true' } }, { label: 'lista', status: [] }])('disponibilidade $label não libera cadastro', async ({ status }) => {
+        const initialSetupService = createInitialSetupService({ getStatus: vi.fn().mockResolvedValue(status) });
+        render(<App authenticationService={createAuthenticationService()} initialSetupService={initialSetupService} />);
+        await findLoginForm();
+        expect(screen.getByRole('alert').textContent).toBe(APP_MESSAGES.SETUP_CHECK_FAILED);
+        expect(screen.queryByRole('form', { name: 'Primeiro cadastro administrativo' })).toBeNull();
+    });
+
+    test('quem já tem conta pode ir ao login e voltar mediante nova consulta', async () => {
+        const initialSetupService = createInitialSetupService({ getStatus: vi.fn().mockResolvedValue({ available: true }) });
+        render(<App authenticationService={createAuthenticationService()} initialSetupService={initialSetupService} />);
+        await findInitialSetupForm();
+        fillInitialSetup();
+        fireEvent.click(screen.getByRole('button', { name: 'Já tenho uma conta' }));
+        await findLoginForm();
+        expect(screen.getByLabelText('Senha').value).toBe('');
+        fireEvent.click(screen.getByRole('button', { name: 'Verificar primeiro cadastro' }));
+        await findInitialSetupForm();
+        expect(initialSetupService.getStatus).toHaveBeenCalledTimes(2);
+        expect(screen.getByLabelText('Código de primeiro acesso').value).toBe('');
+    });
+});
+
+describe('criação da conta pela tela principal', () => {
+    test('confirma criação, descarta os campos e solicita login sem autenticar automaticamente', async () => {
+        const authenticationService = createAuthenticationService();
+        const initialSetupService = createInitialSetupService({ getStatus: vi.fn().mockResolvedValue({ available: true }) });
+        render(<App authenticationService={authenticationService} initialSetupService={initialSetupService} />);
+        await findInitialSetupForm();
+        fillInitialSetup();
+        fireEvent.submit(screen.getByRole('form'));
+        await findLoginForm();
+        expect(initialSetupService.createAdmin).toHaveBeenCalledExactlyOnceWith({ invitationToken: 'ab'.repeat(32), name: 'Ana Silva', email: 'ana@example.com', password: 'senha fictícia de teste' });
+        expect(screen.getByRole('status').textContent).toBe(APP_MESSAGES.SETUP_CREATED);
+        expect(screen.getByLabelText('E-mail').value).toBe('');
+        expect(screen.getByLabelText('Senha').value).toBe('');
+        expect(screen.queryByLabelText('Código de primeiro acesso')).toBeNull();
+        expect(authenticationService.login).not.toHaveBeenCalled();
+        expect(authenticationService.getSession).toHaveBeenCalledOnce();
+        expect(screen.queryByRole('navigation', { name: 'Seções do calendário' })).toBeNull();
+    });
+
+    test('bloqueia campos, navegação e novo envio enquanto cria a conta', async () => {
+        const pending = deferred();
+        const initialSetupService = createInitialSetupService({ getStatus: vi.fn().mockResolvedValue({ available: true }), createAdmin: vi.fn().mockReturnValue(pending.promise) });
+        render(<App authenticationService={createAuthenticationService()} initialSetupService={initialSetupService} />);
+        await findInitialSetupForm();
+        fillInitialSetup();
+        fireEvent.submit(screen.getByRole('form'));
+        expect(screen.getByRole('button', { name: 'Criando sua conta...' }).disabled).toBe(true);
+        expect(screen.getByRole('button', { name: 'Já tenho uma conta' }).disabled).toBe(true);
+        for (const input of screen.getByRole('form').querySelectorAll('input')) expect(input.disabled).toBe(true);
+        fireEvent.submit(screen.getByRole('form'));
+        expect(initialSetupService.createAdmin).toHaveBeenCalledOnce();
+        await act(async () => { pending.resolve({ created: true }); await pending.promise; });
+        await findLoginForm();
+    });
+
+    test('recusa pública preserva os dados para correção', async () => {
+        const initialSetupService = createInitialSetupService({ getStatus: vi.fn().mockResolvedValue({ available: true }), createAdmin: vi.fn().mockRejectedValue(new InitialSetupApiError('Convite inválido.', { statusCode: 403, code: 'INITIAL_SETUP_INVALID_INVITATION' })) });
+        render(<App authenticationService={createAuthenticationService()} initialSetupService={initialSetupService} />);
+        await findInitialSetupForm();
+        fillInitialSetup();
+        fireEvent.submit(screen.getByRole('form'));
+        expect((await screen.findByRole('alert')).textContent).toBe('Convite inválido.');
+        expect(screen.getByLabelText('Senha').value).toBe('senha fictícia de teste');
+        expect(screen.getByRole('button', { name: 'Criar minha conta' }).disabled).toBe(false);
+    });
+
+    test('cadastro indisponível encaminha ao login sem repetir a criação', async () => {
+        const initialSetupService = createInitialSetupService({ getStatus: vi.fn().mockResolvedValue({ available: true }), createAdmin: vi.fn().mockRejectedValue(new InitialSetupApiError('Indisponível.', { statusCode: 409, code: 'INITIAL_SETUP_UNAVAILABLE' })) });
+        render(<App authenticationService={createAuthenticationService()} initialSetupService={initialSetupService} />);
+        await findInitialSetupForm();
+        fillInitialSetup();
+        fireEvent.submit(screen.getByRole('form'));
+        await findLoginForm();
+        expect(screen.getByRole('alert').textContent).toBe(APP_MESSAGES.SETUP_UNAVAILABLE);
+        expect(initialSetupService.createAdmin).toHaveBeenCalledOnce();
+        expect(screen.queryByLabelText('Código de primeiro acesso')).toBeNull();
+    });
+
+    test.each([{ label: 'falha técnica', outcome: new Error('senha e convite privados') }, { label: 'confirmação falsa', outcome: { created: false } }, { label: 'confirmação ausente', outcome: undefined }])('não confirma sucesso com $label', async ({ outcome }) => {
+        const createAdmin = outcome instanceof Error ? vi.fn().mockRejectedValue(outcome) : vi.fn().mockResolvedValue(outcome);
+        const initialSetupService = createInitialSetupService({ getStatus: vi.fn().mockResolvedValue({ available: true }), createAdmin });
+        render(<App authenticationService={createAuthenticationService()} initialSetupService={initialSetupService} />);
+        await findInitialSetupForm();
+        fillInitialSetup();
+        fireEvent.submit(screen.getByRole('form'));
+        expect((await screen.findByRole('alert')).textContent).toBe(APP_MESSAGES.UNEXPECTED_SETUP_ERROR);
+        expect(screen.queryByText(APP_MESSAGES.SETUP_CREATED)).toBeNull();
+        expect(document.body.textContent).not.toContain('senha e convite privados');
+    });
+});
+
+describe('respostas tardias do fluxo de acesso', () => {
+    test('não consulta cadastro depois de desmontar durante a consulta da sessão', async () => {
+        const pending = deferred();
+        const initialSetupService = createInitialSetupService();
+        const { unmount } = render(<App authenticationService={createAuthenticationService({ getSession: vi.fn().mockReturnValue(pending.promise) })} initialSetupService={initialSetupService} />);
+        unmount();
+        await act(async () => { pending.reject(createAuthenticationRequiredError()); await pending.promise.catch(() => {}); });
+        expect(initialSetupService.getStatus).not.toHaveBeenCalled();
+    });
+
+    test('ignora criação pendente quando os serviços são substituídos', async () => {
+        const pending = deferred();
+        const authenticationService = createAuthenticationService();
+        const firstService = createInitialSetupService({ getStatus: vi.fn().mockResolvedValue({ available: true }), createAdmin: vi.fn().mockReturnValue(pending.promise) });
+        const { rerender } = render(<App authenticationService={authenticationService} initialSetupService={firstService} />);
+        await findInitialSetupForm();
+        fillInitialSetup();
+        fireEvent.submit(screen.getByRole('form'));
+        rerender(<App
+                authenticationService={authenticationService}
+                initialSetupService={createInitialSetupService()}
+            />);
+        await findLoginForm();
+        await act(async () => { pending.resolve({ created: true }); await pending.promise; });
+        expect(screen.queryByText(APP_MESSAGES.SETUP_CREATED)).toBeNull();
+        expect(screen.getByRole('button', { name: 'Entrar' }).disabled).toBe(true);
     });
 });
