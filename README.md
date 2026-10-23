@@ -13,7 +13,7 @@ administrativa próprios. O projeto não disponibiliza hospedagem compartilhada
 para terceiros. A instalação simplificada para usuários sem conhecimento de
 programação ainda está em preparação.
 
-> Última atualização desta documentação: 21 de outubro de 2026.
+> Última atualização desta documentação: 23 de outubro de 2026.
 
 ## Documentos e materiais remotos
 
@@ -28,8 +28,8 @@ administradas pelo professor no Google Drive. Cadastrar um link não concede
 permissão para abrir o arquivo. Os campos continuam aceitando links remotos
 conforme as validações existentes, sem exclusividade de provedor.
 
-O guia de instalação e uso deverá explicar organização, cópia de links e
-compartilhamento dos materiais. Essa orientação ainda será incorporada ao guia.
+O guia de uso explica a cópia e o compartilhamento dos links. A preparação
+local simplificada e seu guia de instalação para iniciantes continuam pendentes.
 
 ## Estado atual
 
@@ -55,11 +55,16 @@ materiais mensais persistidos, apresenta totais, próximas aulas e registros
 marcados para revisão com a mesma precedência de links do protótipo. O
 calendário visual organiza essas aulas em uma grade mensal navegável, aplica o
 filtro local de curso e apresenta detalhes e materiais efetivos de cada
-registro. Depois da autenticação, a interface mantém a navegação entre as
-quatro seções originais.
+registro. Depois da autenticação, a interface apresenta cinco seções:
+**Painel geral**, **Cursos**, **Gerenciar aulas**, **Materiais** e
+**Calendário visual**.
 
 A compilação de produção é validada e servida pelo próprio Express sob a mesma
 origem da API.
+
+As telas de entrada e da área autenticada, o título HTML, as descrições dos
+pacotes e o guia utilizam uma apresentação genérica. Os nomes de teste também
+foram generalizados, preservando a instalação independente por professor.
 
 O primeiro cadastro administrativo por convite está integrado à interface,
 permitindo definir nome, e-mail e senha na própria instalação. O serviço
@@ -108,7 +113,14 @@ em 15 minutos, incluindo sucessos e recusas. O contador é separado do login e
 fica em memória por instância. Reiniciar o processo reinicia esse contador;
 a reserva persistente continua protegendo a exclusividade do primeiro cadastro.
 
-O fluxo administrativo atual continua funcionando com as variáveis `ADMIN_*`.
+O cliente de primeiro cadastro configura `referrerPolicy: 'strict-origin'`
+somente no POST. Isso preserva a origem enviada pelo navegador mesmo quando a
+página utiliza a política `no-referrer` do Helmet, sem enviar caminho ou consulta
+no cabeçalho de referência. A validação de `Origin` no servidor permanece exata;
+origem ausente, `null` ou diferente continua sendo recusada.
+
+O fluxo de conta predefinida também continua disponível com as variáveis `ADMIN_*`.
+O `.env.example` utiliza o cadastro por convite e não fornece conta pronta.
 
 O administrador é preparado depois da conexão com o banco e antes da abertura
 da porta HTTP. O processo consulta a conta pelo papel `admin`, sem depender
@@ -156,6 +168,41 @@ com a mesma precedência definida no protótipo original. O calendário visual
 consulta essas fontes persistentes e reúne os registros na grade civil de cada
 mês sem depender do armazenamento local do navegador.
 
+### Catálogo de cursos personalizados
+
+A seção **Cursos** permite cadastrar nome e sigla, editar os textos e desativar
+um curso com confirmação. A sigla é normalizada para maiúsculas e permanece
+única inclusive entre cursos desativados. O nome admite 2 a 120 caracteres;
+a sigla admite 1 a 20. A normalização considera Unicode e espaços antes de
+aplicar os limites. Não há lista fixa de nomes ou siglas nesse catálogo.
+
+Cada curso possui identificador estável e situação ativa ou desativada. Editar
+um curso desativado não o reativa. Desativar preserva o registro e não escreve
+nas aulas. Não há exclusão definitiva nem reativação pela API de cursos.
+
+Todas as operações de `/api/courses` exigem uma sessão administrativa. A
+composição `createAdministrativeCourseRouter` aguarda `Course.createIndexes()`
+antes de disponibilizar o roteador, inclusive com `autoIndex` desativado em
+produção. Falha de preparação impede a abertura HTTP e encerra a conexão.
+Nenhum documento é excluído para resolver conflitos de índice.
+
+A tela consulta o catálogo ao abrir, filtra **Todos**, **Ativos** e
+**Desativados** localmente e oferece atualização explícita da lista. Depois de
+salvar, atualiza o registro pela identidade, mantém o filtro e ordena por nome,
+sigla e identificador. Confirmação, cancelamento, erros públicos e operações
+pendentes têm estados próprios. A interface bloqueia envios repetidos e ignora
+respostas concluídas após desmontagem ou substituição do serviço.
+
+**Limite deste marco:** o catálogo ainda não alimenta os formulários, filtros,
+painel e calendário de aulas. Esses componentes continuam usando as opções
+fixas do contrato anterior. Criar ou editar um curso em **Cursos** ainda não
+altera essas opções. O vínculo das aulas por identificador será o próximo marco,
+para que mudanças de nome ou sigla preservem a associação dos registros.
+
+Turno diurno ou noturno, turmas, salas e capacidade de alunos ainda não fazem
+parte desse cadastro. A modelagem dessas informações será tratada depois do
+vínculo entre cursos e aulas, mantendo uma cópia independente por professor.
+
 ### Funcionalidades concluídas
 
 - servidor Node.js com Express;
@@ -173,6 +220,12 @@ mês sem depender do armazenamento local do navegador.
 - validação e normalização das configurações com Zod;
 - proteção do arquivo `.env` contra inclusão no Git;
 - modelo Mongoose para o usuário administrativo;
+- catálogo de cursos com nome, sigla, identidade estável e situação;
+- índice único de sigla incluindo cursos desativados, aguardado antes do HTTP;
+- serviço, controlador e rotas protegidas de consulta, cadastro, edição e desativação;
+- cliente HTTP de cursos com validações e mensagens locais seguras;
+- formulário acessível para criação e edição de cursos;
+- tela de cursos com filtros, confirmação de desativação e preservação dos registros;
 - modelo Mongoose para aulas, atividades e avaliações do calendário;
 - modelo Mongoose para os materiais aplicáveis a um mês inteiro;
 - serviço isolado para criação, edição, exclusão e consulta de aulas;
@@ -194,7 +247,7 @@ mês sem depender do armazenamento local do navegador.
 - controlador mensal com representações públicas defensivas;
 - rotas protegidas `GET /api/monthly-materials`, `GET`, `PUT` e `DELETE /api/monthly-materials/:month`;
 - composição da API mensal no ciclo real do servidor;
-- cursos e tipos limitados aos valores existentes no protótipo original;
+- tipos de aula e opções do campo de curso ainda limitados ao contrato anterior;
 - datas civis preservadas sem conversão dependente de fuso horário;
 - links de materiais limitados a HTTP e HTTPS sem credenciais incorporadas;
 - índice de consulta das aulas por data e curso;
@@ -287,7 +340,7 @@ mês sem depender do armazenamento local do navegador.
 - restauração da sessão administrativa depois de recarregar a página;
 - encerramento da sessão com confirmação do backend antes de remover o acesso;
 - área autenticada separada da tela de entrada;
-- navegação acessível entre painel, aulas, materiais e calendário visual;
+- navegação acessível entre painel, cursos, aulas, materiais e calendário visual;
 - painel geral ligado às aulas e aos materiais mensais persistidos;
 - total de aulas e quantidades separadas pelos cursos presentes;
 - próximas cinco aulas ordenadas a partir da data civil local;
@@ -297,7 +350,7 @@ mês sem depender do armazenamento local do navegador.
 - calendário visual mensal ligado às aulas e aos materiais persistidos;
 - navegação civil pelo mês anterior, próximo mês e retorno à data atual;
 - grade semanal iniciada no domingo com destaque para hoje e fins de semana;
-- filtro local pelos três cursos sem novas requisições ao backend;
+- filtro local pelas opções de curso do contrato anterior, ainda sem ligação com o catálogo;
 - cores por curso e destaque dos registros marcados para revisão;
 - diálogo acessível com os dados públicos e materiais efetivos da aula;
 - proteção do calendário contra respostas antigas e atualizações após desmontagem;
@@ -311,6 +364,9 @@ mês sem depender do armazenamento local do navegador.
 
 ### Ainda não implementado
 
+- vínculo entre o catálogo de cursos e as aulas por identificador estável;
+- substituição das opções fixas em formulários, filtros, painel e calendário;
+- turmas com turno, salas e capacidade de alunos;
 - instalação simplificada, incluindo preparação com Docker e guia para iniciantes;
 - revisão dos textos e opções ainda específicos do protótipo original;
 - procedimento operacional para reservas sem conta e recuperação de acesso;
@@ -424,13 +480,19 @@ o comando apropriado para a finalidade desejada.
 
 ## Configuração local
 
-Crie o arquivo local de configuração a partir do exemplo:
+Em uma instalação nova, crie o arquivo local de configuração a partir do exemplo:
 
 ```bash
-cp .env.example .env
+cp -i .env.example .env
 ```
 
-Abra `.env` no editor e substitua os valores demonstrativos.
+Se já houver um `.env`, preserve sua configuração. Em uma instalação nova,
+abra o arquivo no editor e preencha os dois valores privados deixados vazios:
+`SESSION_SECRET` e `INITIAL_SETUP_TOKEN`. Um valor vazio não é um convite ausente.
+
+O exemplo usa `HOST=127.0.0.1`, restringindo o servidor a este computador, e
+`MONGODB_URI=mongodb://127.0.0.1:27017/sistema_gerenciamento_aulas`. Esse banco
+pertence somente a esta instalação. Não existe conta administrativa de exemplo.
 
 Gere um segredo de sessão com:
 
@@ -446,10 +508,10 @@ consulta ou fragmento.
 
 Escolha o fluxo administrativo para uma instalação nova:
 
-- **Cadastro por convite:** remova os três campos `ADMIN_NAME`, `ADMIN_EMAIL` e
-  `ADMIN_PASSWORD` e configure `INITIAL_SETUP_TOKEN` com 64 caracteres
-  hexadecimais aleatórios. Ao abrir a interface, a pessoa escolhe suas
-  credenciais no formulário **Crie sua conta** e informa esse código.
+- **Cadastro por convite, utilizado no exemplo:** mantenha os três campos
+  `ADMIN_NAME`, `ADMIN_EMAIL` e `ADMIN_PASSWORD` ausentes e preencha
+  `INITIAL_SETUP_TOKEN` com 64 caracteres hexadecimais aleatórios. Ao abrir a
+  interface, a pessoa escolhe suas credenciais no formulário **Crie sua conta** e informa esse código.
 - **Conta predefinida:** informe os três campos `ADMIN_*` completos e válidos,
   sem convite, para criar a conta durante a inicialização.
 
@@ -465,8 +527,10 @@ Para gerar o convite, quando optar por esse fluxo:
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ```
 
-Não coloque o convite em URLs ou no código. Sua remoção da configuração fecha
-o cadastro no serviço; a reserva persistente impede reutilização após a criação.
+Não coloque o convite em URLs ou no código. Após concluir o primeiro cadastro,
+a linha `INITIAL_SETUP_TOKEN` pode ser removida por inteiro do `.env`. Não deixe
+`INITIAL_SETUP_TOKEN=` vazio. A remoção fecha o cadastro no serviço; a reserva
+persistente impede reutilização após a criação.
 
 Ao optar pela conta predefinida, a senha administrativa deve:
 
@@ -512,7 +576,8 @@ Confirme que o serviço está ativo:
 systemctl is-active mongod
 ```
 
-Teste a comunicação com o banco:
+O serviço pode aparecer como ativo antes de terminar sua inicialização.
+Aguarde alguns segundos e teste a comunicação com o banco:
 
 ```bash
 mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'
@@ -611,8 +676,25 @@ Uma instalação já configurada apresenta o login. Se o navegador preencher
 os campos automaticamente, o acesso ainda depende de **Entrar** e da
 validação da API. Para encerrar a sessão, use **Sair** dentro da aplicação.
 
-O guia de uso ainda deverá incorporar esse fluxo e substituir as orientações
-anteriores de recebimento de credenciais prontas.
+O guia de uso já descreve o primeiro cadastro e o login com as credenciais
+escolhidas pela própria pessoa responsável pela instalação.
+
+## Gerenciar cursos
+
+Depois de entrar, abra **Cursos**:
+
+1. use **Novo curso**, preencha nome e sigla e clique em **Cadastrar curso**;
+2. para alterar os textos, use **Editar** e **Salvar alterações**;
+3. para desativar, use **Desativar** e **Confirmar desativação**; o cancelamento
+   não grava alterações;
+4. use o filtro **Desativados** ou **Todos** para localizar o curso depois;
+5. use **Atualizar lista** para consultar novamente o estado do servidor.
+
+A sigla de um curso desativado permanece ocupada. Editar o nome ou a sigla
+mantém sua identidade e não reativa o registro. Os dados são persistidos no
+MongoDB; após atualizar a página, volte à seção **Cursos** para consultá-los.
+O vínculo com aulas ainda está pendente, conforme o limite descrito em
+**Catálogo de cursos personalizados**.
 
 ## Scripts disponíveis
 
@@ -627,7 +709,7 @@ anteriores de recebimento de credenciais prontas.
 | `npm --prefix client test` | Executa os testes do frontend |
 | `npm --prefix client run build` | Compila o frontend para produção |
 | `npm --prefix client run preview` | Serve localmente a compilação produzida |
-| `node scripts/previewInitialSetup.js` | Abre uma instalação temporária para teste manual do primeiro cadastro |
+| `node scripts/previewInitialSetup.js` | Abre uma instalação temporária para verificar primeiro cadastro e cursos |
 
 ## Testes automatizados
 
@@ -638,24 +720,34 @@ npm test
 npm --prefix client test
 ```
 
-Em 21 de outubro de 2026, o frontend foi validado com 419 testes aprovados
-em 18 arquivos. São 63 testes do novo cliente HTTP, 36 do formulário de
-primeiro cadastro e 33 da composição de App, além dos demais componentes e
-serviços. A compilação de produção também passou, com 33 módulos.
+Resultados registrados em 23 de outubro de 2026:
 
-O último resultado do backend, de 16 de outubro, permanece em 858 testes
-aprovados em 141 suítes. O backend não foi executado novamente neste marco.
-Somados, os últimos resultados registrados são:
+| Camada | Testes aprovados | Organização |
+| --- | ---: | --- |
+| Backend | 995 | 162 suítes |
+| Frontend | 540 | 21 arquivos |
+| Total | 1535 | 183 suítes/conjuntos |
 
-```text
-1277 testes
-159 suítes/conjuntos
-0 falhas
-0 testes ignorados
-```
+Zero falhas, testes ignorados ou cancelados nos resultados registrados. O
+backend foi executado na máquina de desenvolvimento. O frontend completo foi
+executado no ambiente de verificação; os arquivos novos e alterados também
+foram testados por etapas na máquina de desenvolvimento. Após a correção da
+origem do primeiro cadastro, a suíte completa do frontend foi executada
+novamente, mantendo 540 testes aprovados.
+
+A compilação de produção passou com 36 módulos. A validação manual com MongoDB
+e navegador não entra na contagem automatizada. Não foi executada nova auditoria
+de dependências neste marco.
 
 Os testes verificam, entre outros comportamentos:
 
+- modelo de curso, normalização Unicode e declaração do índice único de sigla;
+- consulta, criação, edição e desativação sem operação de exclusão no serviço;
+- autenticação antes das quatro operações HTTP de cursos;
+- espera pelo índice e interrupção segura da inicialização em caso de falha;
+- cliente HTTP, formulário e tela de cursos, incluindo recusas e respostas inconsistentes;
+- preservação dos filtros e descarte de respostas antigas do catálogo;
+- acesso a Cursos pela navegação e pela área autenticada;
 - fundação HTTP, erros e limites do corpo JSON;
 - controlador e roteador de primeiro cadastro com respostas mínimas e
   bloqueio antes do serviço; origem autorizada, JSON e limitação de tentativas
@@ -763,7 +855,7 @@ Os testes verificam, entre outros comportamentos:
 - mensagens públicas seguras para recusas e falhas inesperadas;
 - restauração da sessão válida e retorno ao formulário para visitantes;
 - encerramento confirmado e preservação do acesso quando o logout falha;
-- contrato das quatro seções originais da área autenticada;
+- contrato das cinco seções da área autenticada, incluindo Cursos;
 - indicação acessível da seção atualmente selecionada;
 - painel inicial sem dados inventados ou operações ainda indisponíveis;
 - integração do workspace ao ciclo de login, restauração e logout;
@@ -850,7 +942,7 @@ Somente o middleware do frontend é substituído, pois essa verificação não
 avalia a interface visual nem exige sua compilação. Os oito cenários são
 adicionais às suítes automatizadas e aos outros scripts de verificação.
 
-### Verificação manual do primeiro cadastro no navegador
+### Verificação manual do primeiro cadastro e dos cursos
 
 Em 21 de outubro, a interface compilada foi servida pelo Express com MongoDB
 local usando `scripts/previewInitialSetup.js`. Foram confirmados manualmente:
@@ -863,7 +955,24 @@ local usando `scripts/previewInitialSetup.js`. Foram confirmados manualmente:
 - novo acesso somente depois de enviar as credenciais pelo botão **Entrar**;
 - encerramento do teste por `Ctrl+C` e remoção confirmada do banco temporário.
 
-Para repetir, inicie o MongoDB local e execute:
+Em 23 de outubro, depois de corrigir a política da requisição de primeiro
+cadastro, foram confirmados novamente a criação da conta, o login e a abertura
+de **Cursos**. Também foram conferidos:
+
+- cadastro de um curso e permanência após `F5`;
+- edição de nome e sigla, mantendo a situação ativa após `F5`;
+- cancelamento da desativação, sem alterar a situação;
+- desativação confirmada, mantendo o curso no catálogo;
+- localização pelo filtro **Desativados** após `F5`;
+- recusa de cadastro com a mesma sigla de um curso desativado;
+- encerramento com `Ctrl+C` e remoção confirmada do banco temporário.
+
+Essas verificações ocorreram no navegador em computador. A tela de cursos e o
+primeiro cadastro ainda precisam de uma verificação manual dedicada em largura
+de celular. Não foi validada nesta etapa a preservação de vínculos entre cursos
+e aulas, pois essa integração ainda não existe.
+
+Para repetir, inicie o MongoDB local, confirme o ping e execute:
 
 ```bash
 npm --prefix client run build && node scripts/previewInitialSetup.js
@@ -871,7 +980,7 @@ npm --prefix client run build && node scripts/previewInitialSetup.js
 
 O script abre o servidor real apenas em `127.0.0.1`, em uma porta disponível,
 e informa o endereço e um convite aleatório no terminal. Abra esse endereço
-em uma janela anônima e utilize dados fictícios. O servidor usa configuração
+exatamente como exibido, em uma janela anônima, e utilize dados fictícios. O servidor usa configuração
 própria em um processo filho, a partir de uma pasta temporária vazia, sem
 carregar o `.env` do projeto ou as credenciais administrativas predefinidas.
 
@@ -923,7 +1032,7 @@ removeu o acesso. Uma nova atualização depois do logout manteve o formulário,
 confirmando que a sessão também havia sido encerrada no servidor.
 
 A área autenticada também foi validada no navegador. O painel geral apresentou
-a contagem inicial igual a zero e os estados vazios esperados. As quatro seções
+a contagem inicial igual a zero e os estados vazios esperados. As seções disponíveis naquela etapa
 puderam ser selecionadas, a sessão foi restaurada depois de atualizar a página,
 o layout respondeu à redução da janela e a saída retornou ao formulário.
 
@@ -954,7 +1063,7 @@ found 0 vulnerabilities
 ```
 
 Esse resultado representa o momento da verificação, não uma nova auditoria
-em 21 de outubro. Nenhuma dependência foi adicionada ou atualizada neste
+em 23 de outubro. Nenhuma dependência foi adicionada ou atualizada neste
 marco. A auditoria deve ser executada novamente após alterações nas
 dependências e antes da implantação.
 
@@ -975,6 +1084,11 @@ sistema-gerenciamento-aulas/
 │   │   │   │   ├── LoginForm.test.jsx
 │   │   │   │   ├── LogoutButton.jsx
 │   │   │   │   └── LogoutButton.test.jsx
+│   │   │   ├── courses/
+│   │   │   │   ├── CourseForm.jsx
+│   │   │   │   ├── CourseForm.test.jsx
+│   │   │   │   ├── CourseManagement.jsx
+│   │   │   │   └── CourseManagement.test.jsx
 │   │   │   └── calendar/
 │   │   │       ├── CalendarDashboard.jsx
 │   │   │       ├── CalendarDashboard.test.jsx
@@ -999,6 +1113,8 @@ sistema-gerenciamento-aulas/
 │   │   ├── services/
 │   │   │   ├── AuthenticationApi.js
 │   │   │   ├── AuthenticationApi.test.js
+│   │   │   ├── CourseApi.js
+│   │   │   ├── CourseApi.test.js
 │   │   │   ├── InitialSetupApi.js
 │   │   │   ├── InitialSetupApi.test.js
 │   │   │   ├── LessonApi.js
@@ -1016,6 +1132,7 @@ sistema-gerenciamento-aulas/
 ├── docs/
 │   └── GUIA_DO_USUARIO.md
 ├── scripts/
+│   ├── inspectLocalDatabase.js
 │   ├── previewInitialSetup.js
 │   ├── verifyInitialSetup.js
 │   ├── verifyInitialSetupHttp.js
@@ -1027,6 +1144,7 @@ sistema-gerenciamento-aulas/
 │   │   └── session.js
 │   ├── controllers/
 │   │   ├── AuthenticationController.js
+│   │   ├── CourseController.js
 │   │   ├── InitialSetupController.js
 │   │   ├── LessonController.js
 │   │   └── MonthlyMaterialController.js
@@ -1041,12 +1159,14 @@ sistema-gerenciamento-aulas/
 │   │   ├── initialSetupRequestGuard.js
 │   │   └── securityHeaders.js
 │   ├── models/
+│   │   ├── Course.js
 │   │   ├── InitialSetupState.js
 │   │   ├── Lesson.js
 │   │   ├── MonthlyMaterial.js
 │   │   └── User.js
 │   ├── routes/
 │   │   ├── authenticationRoutes.js
+│   │   ├── courseRoutes.js
 │   │   ├── initialSetupRoutes.js
 │   │   ├── lessonRoutes.js
 │   │   └── monthlyMaterialRoutes.js
@@ -1055,6 +1175,7 @@ sistema-gerenciamento-aulas/
 │   │   ├── AdministrativeIndexInitializer.js
 │   │   ├── AdministrativeStartupService.js
 │   │   ├── AuthenticationService.js
+│   │   ├── CourseService.js
 │   │   ├── InitialSetupRecoveryService.js
 │   │   ├── InitialSetupService.js
 │   │   ├── LessonService.js
@@ -1078,6 +1199,10 @@ sistema-gerenciamento-aulas/
 │   ├── authenticationRoutes.test.js
 │   ├── AuthenticationService.test.js
 │   ├── authenticationSessionController.test.js
+│   ├── CourseController.test.js
+│   ├── CourseService.test.js
+│   ├── course.test.js
+│   ├── courseRoutes.test.js
 │   ├── database.test.js
 │   ├── env.test.js
 │   ├── errorHandler.test.js
@@ -1123,10 +1248,11 @@ O passo a passo de uso da aplicação está disponível em:
 
 [`docs/GUIA_DO_USUARIO.md`](docs/GUIA_DO_USUARIO.md)
 
-O documento explica a entrada, o cadastro e a consulta de aulas, a organização
-dos materiais, o painel geral, o calendário visual e a saída segura. O texto foi
-preparado para leitores sem conhecimento de programação e deverá ser validado com
-os usuários antes da primeira utilização real.
+O documento explica o primeiro cadastro, o login, a criação, edição e
+desativação de cursos, as operações com aulas, os materiais e os links do Google
+Drive, o painel, o calendário e a saída. Foi preparado para leitores sem
+conhecimento de programação e ainda deverá ser validado com usuários iniciantes.
+O guia informa que o catálogo personalizado ainda não alimenta as aulas.
 
 ## Responsabilidades dos módulos
 
@@ -1173,13 +1299,13 @@ desmontagem.
 
 ### `client/src/components/calendar/CalendarNavigation.jsx`
 
-Mantém o contrato das quatro seções previstas no HTML original, identifica de
+Mantém o contrato das cinco seções da área administrativa, identifica de
 forma acessível a seleção atual e comunica mudanças sem carregar ou alterar
 dados do calendário.
 
 ### `client/src/components/calendar/CalendarVisual.jsx`
 
-Consulta aulas e materiais mensais ao abrir a quarta seção e organiza os
+Consulta aulas e materiais mensais ao abrir o calendário visual e organiza os
 registros na grade civil do mês atual. Mantém localmente a navegação mensal e o
 filtro por curso, destaca hoje, fins de semana e revisões e apresenta detalhes
 em um diálogo acessível. Os links específicos preservam sua precedência e o
@@ -1190,8 +1316,9 @@ ausentes. Consultas antigas ou concluídas depois da desmontagem são ignoradas.
 
 Compõe o cabeçalho autenticado, a saída, a navegação e o conteúdo da seção
 ativa. Entrega os mesmos serviços persistentes ao painel geral e ao calendário
-visual; aulas, materiais e calendário montam suas próprias consultas somente
-quando a seção correspondente é selecionada.
+visual; cursos, aulas, materiais e calendário montam suas próprias consultas
+somente quando a seção correspondente é selecionada. O cabeçalho utiliza uma
+descrição genérica e apresenta o nome da conta a partir da sessão.
 
 ### `client/src/components/calendar/LessonForm.jsx`
 
@@ -1245,6 +1372,20 @@ redirecionamentos e respostas inconsistentes, seleciona os campos públicos e
 não repete automaticamente o cadastro. Códigos e estados HTTP conhecidos são
 convertidos em mensagens locais; mensagens, detalhes e causas recebidas não
 são propagados para a interface. Não armazena credenciais nem realiza login.
+O POST configura `referrerPolicy: 'strict-origin'` para compatibilidade entre
+`mode: 'same-origin'`, a política da página e a validação de origem do servidor.
+
+### Componentes e cliente HTTP de cursos
+
+- `client/src/services/CourseApi.js`: lista, cadastra, edita e desativa pela API,
+  valida os contratos e usa mensagens locais para recusas conhecidas. Não
+  repete escritas automaticamente nem oferece exclusão definitiva.
+- `client/src/components/courses/CourseForm.jsx`: apresenta nome e sigla,
+  normaliza os dados, identifica o campo inválido e preserva o preenchimento
+  enquanto a tela controla o envio e a mensagem pública.
+- `client/src/components/courses/CourseManagement.jsx`: coordena consulta,
+  filtro local, formulário, confirmação de desativação e atualização da lista.
+  Bloqueia operações repetidas e descarta respostas de ciclos anteriores.
 
 ### `client/src/services/LessonApi.js`
 
@@ -1280,15 +1421,16 @@ ambiente jsdom utilizado pelos testes de componentes.
 
 Configura o Express, instala os cabeçalhos de segurança antes da sessão,
 monta o primeiro cadastro sob `/api/setup`, a autenticação sob `/api/auth`,
-as aulas sob `/api/lessons` e os materiais sob `/api/monthly-materials`, disponibiliza o
-frontend depois da API e mantém o tratamento de erros por último.
+os cursos sob `/api/courses`, as aulas sob `/api/lessons` e os materiais sob
+`/api/monthly-materials`, disponibiliza o frontend depois da API e mantém o tratamento de erros por último.
 
 ### `src/server.js`
 
 Compõe cabeçalhos de segurança, arquivos compilados do frontend, banco,
 preparação administrativa, primeiro cadastro, sessões, autenticação, APIs de
-aulas e materiais mensais e Express. A porta HTTP somente é aberta depois que todas as dependências obrigatórias
-estão prontas.
+cursos, aulas e materiais mensais e Express. A composição de cursos confirma
+seus índices antes de disponibilizar o roteador. A porta HTTP somente é aberta
+depois que todas as dependências obrigatórias estão prontas.
 
 ### `src/config/env.js`
 
@@ -1351,6 +1493,17 @@ para o tratamento normal do Express.
 
 Encapsula o Helmet e aplica políticas de segurança adequadas ao ambiente,
 mantendo HSTS e atualização forçada para HTTPS somente em produção.
+
+### Componentes persistentes e HTTP de cursos
+
+- `src/models/Course.js`: nome e sigla normalizados, situação e índice único de
+  sigla incluindo registros desativados.
+- `src/services/CourseService.js`: valida os dados, consulta, cria e atualiza
+  documentos e desativa pelo identificador, sem excluir registros.
+- `src/controllers/CourseController.js`: traduz filtros textuais, seleciona
+  respostas públicas e encaminha as falhas ao tratamento central.
+- `src/routes/courseRoutes.js`: aplica autorização antes de cada uma das quatro
+  operações de cursos.
 
 ### `src/models/Lesson.js`
 
@@ -1475,6 +1628,13 @@ de senhas acima de 72 bytes por meio de medição UTF-8 independente do cliente.
 
 Regenera, grava e destrói sessões autenticadas. Somente o identificador e o
 papel do usuário são persistidos.
+
+### `scripts/inspectLocalDatabase.js`
+
+Lê a configuração do banco local e apresenta coleções, quantidades e siglas
+textuais encontradas em aulas. Exige endereço de loopback e banco explícito,
+sem consultar bancos de sistema. Não modifica registros nem exibe a URI completa.
+Não substitui uma cópia de segurança.
 
 ### `scripts/previewInitialSetup.js`
 
@@ -1643,9 +1803,52 @@ Uma requisição sem sessão válida retorna `401 AUTHENTICATION_REQUIRED`. Uma
 sessão válida sem papel administrativo retorna
 `403 ADMINISTRATIVE_ACCESS_REQUIRED`.
 
+### Cursos administrativos
+
+Todas as operações exigem sessão administrativa válida. A listagem retorna
+`200` com `data.courses`; sem filtro, inclui ativos e desativados:
+
+```http
+GET /api/courses
+GET /api/courses?active=true
+GET /api/courses?active=false
+```
+
+Para criar ou editar, o corpo contém somente nome e sigla completos:
+
+```json
+{
+  "name": "Ciência de Dados",
+  "code": "CD"
+}
+```
+
+| Operação | Caminho | Sucesso |
+| --- | --- | --- |
+| Criar | `POST /api/courses` | `201`, curso ativo em `data.course` |
+| Editar | `PUT /api/courses/:id` | `200`, curso atualizado em `data.course` |
+| Desativar | `PATCH /api/courses/:id/deactivate` | `200`, curso desativado em `data.course` |
+
+A desativação não precisa de corpo JSON. `active` não é um campo editável no
+POST ou PUT. A representação pública contém somente `id`, `name`, `code` e
+`active`. A identidade permanece estável ao editar os textos. Não há rota
+DELETE de cursos, e repetir a desativação mantém a situação desativada.
+
+| Estado | Código |
+| --- | --- |
+| `400` | `INVALID_COURSE_DATA`, `INVALID_COURSE_ID` ou `INVALID_COURSE_FILTERS` |
+| `401` | `AUTHENTICATION_REQUIRED` |
+| `403` | `ADMINISTRATIVE_ACCESS_REQUIRED` |
+| `404` | `COURSE_NOT_FOUND` |
+| `409` | `COURSE_CODE_CONFLICT` |
+
+A sigla permanece única entre todas as situações. Curso inexistente na edição
+ou desativação retorna `404`; não é criado automaticamente. Todas as respostas
+de sucesso do controlador utilizam `Cache-Control: no-store`.
+
 ### Aulas administrativas
 
-As duas operações exigem uma sessão com papel administrativo.
+Todas as operações de aulas exigem uma sessão com papel administrativo.
 
 ```http
 GET /api/lessons
@@ -1655,7 +1858,7 @@ A consulta aceita somente os filtros opcionais abaixo:
 
 | Parâmetro | Formato | Finalidade |
 | --- | --- | --- |
-| `course` | `APQSA`, `TECMKT` ou `TECADM` | Limita a consulta ao curso |
+| `course` | Sigla aceita pelo contrato anterior de aulas | Limita a consulta ao curso |
 | `month` | `YYYY-MM` | Limita a consulta ao mês civil |
 | `fromDate` | `YYYY-MM-DD` | Define a menor data incluída |
 
@@ -1682,7 +1885,7 @@ O corpo aceita somente os oito campos funcionais do protótipo:
 ```json
 {
   "date": "2026-09-18",
-  "course": "APQSA",
+  "course": "<sigla-aceita-pelo-formulario-de-aulas>",
   "curricularUnit": "Qualidade de Software",
   "type": "Aula",
   "lessonNumber": "12",
@@ -1692,10 +1895,20 @@ O corpo aceita somente os oito campos funcionais do protótipo:
 }
 ```
 
+Substitua o marcador `course` por uma opção aceita pelo formulário de aulas.
+As opções desse campo ainda pertencem ao contrato anterior: o catálogo
+personalizado não está integrado a ele. O exemplo não deve ser enviado com o
+marcador literal.
+
 Uma criação válida retorna `201` sob `data.lesson`. Identificadores e
 timestamps recebidos do cliente, assim como quaisquer campos desconhecidos,
 são recusados. Dados inválidos retornam `400 INVALID_LESSON_DATA`; filtros
 inválidos retornam `400 INVALID_LESSON_FILTERS`.
+
+Para editar, envie o corpo completo dos oito campos para
+`PUT /api/lessons/:id`. A confirmação retorna `200` com `data.lesson`; uma aula
+inexistente retorna `404`. Para excluir, use `DELETE /api/lessons/:id`, que
+retorna `204` sem corpo, inclusive quando o registro já está ausente.
 
 ### Materiais mensais administrativos
 
@@ -1806,7 +2019,11 @@ JSON malformado retorna `400` com o código `INVALID_JSON`. Corpos acima de
 - validação da compilação antes da abertura de recursos externos;
 - mensagens técnicas e causas de rede ocultadas da interface;
 - acesso visual removido somente depois da confirmação do logout;
-- limpeza do banco após falhas de inicialização;
+- encerramento da conexão com o banco após falhas de inicialização;
+- autorização administrativa antes das quatro operações de cursos;
+- índice de sigla única confirmado antes da abertura HTTP;
+- dados de curso limitados a nome e sigla e respostas públicas com quatro campos;
+- desativação sem excluir o curso ou gravar alterações nas aulas;
 - autorização administrativa executada antes de consultar ou criar aulas;
 - lista explícita de campos aceitos durante a criação de aulas;
 - identificadores, timestamps e campos desconhecidos recusados na entrada;
@@ -1837,13 +2054,21 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. revisar os nomes e textos da interface e da documentação para a nova identidade;
-2. atualizar e validar o guia de uso com usuários sem conhecimento técnico;
-3. preparar e testar a instalação e a operação local em Linux;
-4. documentar e validar as cópias de segurança e a recuperação dos dados.
+1. vincular as aulas ao identificador dos cursos e substituir as opções fixas
+   em formulários, filtros, painel, materiais e calendário visual;
+2. validar manualmente o primeiro cadastro e a tela de cursos em largura de
+   celular;
+3. modelar turmas com turno diurno ou noturno, salas e capacidade de alunos;
+4. preparar o guia de instalação simplificada e validar o guia de uso com
+   pessoas sem conhecimento técnico;
+5. preparar e validar instalação e operação local em Linux, incluindo a opção
+   Docker Compose;
+6. documentar e validar backup, restauração e recuperação de acesso.
 
-O foco imediato é a execução no próprio computador do usuário. A instalação
-simplificada e o guia correspondente ainda estão em preparação.
+O foco é a execução no próprio computador, com uma cópia independente por
+professor. O sistema não oferece hospedagem compartilhada para terceiros nem
+cadastro institucional. A instalação simplificada e o guia para iniciantes
+continuam em preparação.
 
 ## Fluxo de atualização pelo Git
 

@@ -8,10 +8,10 @@ const mongoose = require('mongoose');
 const LESSON_MODEL_NAME = 'Lesson';
 
 /**
- * Cursos presentes no calendário original do Prof. Dionísio.
+ * Opções legadas de curso aceitas pelo contrato atual das aulas.
  *
- * A coleção fechada impede pequenas diferenças de escrita e poderá ser
- * ampliada conscientemente caso o calendário passe a atender outro curso.
+ * Esta lista permanece durante a transição. O próximo marco substituirá
+ * essas opções pelo vínculo com os identificadores do catálogo de cursos.
  */
 const LESSON_COURSES = Object.freeze({
     APQSA: 'APQSA',

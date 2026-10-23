@@ -163,6 +163,7 @@ describe('dados enviados no primeiro cadastro', () => {
             mode: 'same-origin',
             cache: 'no-store',
             redirect: 'error',
+            referrerPolicy: 'strict-origin',
             body: JSON.stringify({
                 invitationToken: input.invitationToken,
                 name: 'Ana Silva',

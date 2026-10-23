@@ -6,8 +6,8 @@ próximos passos do Sistema de Gerenciamento de Aulas.
 O README explica como utilizar o projeto. Este diário explica como e por que
 ele está sendo construído.
 
-> Revisão documental: 9 de outubro de 2026.
-> As referências pessoais e institucionais foram generalizadas nesta revisão.
+> Revisão documental: 23 de outubro de 2026.
+> As referências pessoais e institucionais foram generalizadas.
 > As entradas anteriores preservam os acontecimentos e verificações de cada
 > marco. Seus próximos passos descrevem o planejamento da época; a orientação
 > atual está registrada na entrada mais recente.
@@ -4273,3 +4273,230 @@ em Linux, a preparação com Docker Compose, os guias para iniciantes,
 backup/restauração e o procedimento operacional para reservas sem conta ou
 recuperação de acesso. O novo formulário também requer validação dedicada em
 telas pequenas. A publicação em produção permanece fora deste marco.
+
+## 23 de outubro de 2026 — Catálogo de cursos e identidade genérica
+
+### Objetivo e alcance
+
+Permitir que cada professor mantenha seu próprio catálogo de cursos em uma
+instalação independente, com nome e sigla personalizados, edição e desativação.
+Entregar a API e a tela completa, verificar o funcionamento com MongoDB real e
+retirar as identificações pessoais e institucionais ainda presentes no projeto.
+
+O catálogo foi concluído como uma seção própria. O vínculo dos cursos com as
+aulas ainda não foi implementado: os formulários e filtros de aulas, os
+materiais por aula, o painel e o calendário ainda utilizam o contrato anterior.
+Turnos, turmas, salas e capacidade de alunos permanecem para uma etapa posterior.
+Não foi introduzido uso compartilhado por instituições ou por vários professores.
+
+### Modelo e regras persistentes dos cursos
+
+Foi criado `src/models/Course.js`, com fábrica injetável, reutilização do modelo,
+datas automáticas, ausência de versionKey e recusa de campos desconhecidos.
+O documento possui nome, sigla e situação, além do identificador do MongoDB.
+
+Nome e sigla recebem normalização Unicode NFC, remoção de espaços externos e
+redução de sequências de espaços. O nome preserva a capitalização; a sigla é
+convertida para maiúsculas. Os limites são aplicados depois da normalização:
+2 a 120 caracteres no nome e 1 a 20 na sigla. O curso inicia ativo.
+
+O índice `courses_code_unique` mantém a sigla única incluindo os registros
+desativados. Nome e sigla são editáveis sem alterar o identificador. Não há
+exclusão definitiva nem reativação pela API implementada neste marco.
+
+O `CourseService` recebe o modelo por injeção. As operações são:
+
+- `listCourses()`: consulta todas as situações ou filtra um booleano `active`,
+  com ordenação por nome, sigla e identificador;
+- `createCourse()`: exige somente nome e sigla e cria o curso ativo;
+- `updateCourse()`: valida o identificador e substitui nome e sigla completos,
+  sem upsert e sem solicitar mudança de situação;
+- `deactivateCourse()`: altera somente `active` para false, mantendo o registro.
+
+Entradas inválidas são recusadas antes de acessar o modelo. Confirmações são
+conferidas antes de devolver sucesso. As representações públicas imutáveis
+contêm somente `id`, `name`, `code` e `active`. Conflitos conhecidos de sigla
+recebem mensagem pública, sem metadados privados do MongoDB; falhas inesperadas
+permanecem para o tratamento centralizado. O serviço não escreve em aulas.
+
+### Controlador, rotas e composição do servidor
+
+O `CourseController` traduz `active=true` e `active=false`, recusa consultas
+ambíguas, seleciona os campos públicos e encaminha erros ao tratamento comum.
+Ausência na edição ou desativação resulta em `404 COURSE_NOT_FOUND`.
+
+O roteador aplica autorização administrativa antes de todas as operações:
+
+| Operação | Caminho | Sucesso |
+| --- | --- | --- |
+| Listar | `GET /api/courses` | `200`, coleção sob `data.courses` |
+| Cadastrar | `POST /api/courses` | `201`, registro sob `data.course` |
+| Editar | `PUT /api/courses/:id` | `200`, registro sob `data.course` |
+| Desativar | `PATCH /api/courses/:id/deactivate` | `200`, registro sob `data.course` |
+
+Não foi registrada rota DELETE de cursos. O `app.js` recebe um roteador opcional,
+valida sua configuração e o monta depois da sessão e antes do frontend.
+
+O `server.js` compõe modelo, serviço, controlador e roteador por meio de
+`createAdministrativeCourseRouter`. Essa fábrica é aguardada e confirma
+`Course.createIndexes()` antes de devolver o roteador, inclusive em produção
+com `autoIndex` desativado. Falhas impedem a abertura HTTP e encerram a conexão.
+Conflitos de unicidade na preparação recebem mensagem sem valores privados;
+nenhum registro ou índice é removido para tentar resolver o problema.
+
+Foram adicionados 27 testes do modelo, 38 do serviço, 30 do controlador e 24 do
+roteador. Os testes do app passaram a 26 e os do servidor a 60. As integrações
+de autenticação e cabeçalhos passaram a fornecer uma fábrica de cursos simulada,
+preservando sua independência de MongoDB externo.
+
+### Cliente HTTP e interface de cursos
+
+O `CourseApi` encapsula as quatro operações com fetch injetável e métodos
+vinculados. Usa caminhos relativos, sessão na mesma origem, ausência de cache
+e recusa de redirecionamentos. Normaliza entradas e valida estado HTTP, JSON,
+identidade, conteúdo público e confirmação de situação antes de retornar.
+Não repete automaticamente uma escrita após falha de rede.
+
+As mensagens de erros conhecidos são locais, escolhidas por combinação de
+código, estado e operação. Mensagens técnicas, dados extras e causas recebidas
+não são incorporados ao erro apresentado. Os 62 testes do cliente passaram.
+
+O `CourseForm` apresenta nome e sigla para criação ou edição. Ele recebe envio,
+cancelamento, estado pendente e mensagem pública da tela responsável, sem
+executar HTTP. Relaciona rótulos, orientações e erros aos campos, foca a entrada
+inválida e preserva o preenchimento quando a gravação é recusada. Selecionar
+outra identidade limpa o estado anterior; reapresentar a mesma identidade
+preserva uma edição ainda não enviada. Os 24 testes do formulário passaram.
+
+O `CourseManagement` consulta o catálogo ao abrir a seção e oferece filtros
+locais Todos, Ativos e Desativados. Uma gravação confirmada atualiza a lista
+pela identidade, mantendo filtro e ordenação, sem consulta adicional automática.
+A atualização explícita permanece disponível. Uma resposta malformada não é
+apresentada como catálogo vazio.
+
+A desativação exige confirmação, permite cancelamento e mantém o curso visível
+na situação apropriada. As operações usam trava síncrona contra repetição e
+versão de ciclo de vida para descartar respostas antigas. Controles ficam
+bloqueados durante a operação e falhas públicas permitem nova tentativa.
+Os 30 testes da tela passaram.
+
+A navegação passou a cinco seções: Painel geral, Cursos, Gerenciar aulas,
+Materiais e Calendário visual. O `CalendarWorkspace` recebe o serviço de cursos
+por injeção e monta a tela somente quando ela é selecionada. Foram aprovados
+9 testes da navegação e 21 da área autenticada, incluindo abertura do formulário
+e cadastro pelo serviço fornecido ao workspace.
+
+O CSS recebeu estilos próprios do catálogo, campos, cartões, situações,
+mensagens, controles bloqueados e confirmação. A navegação passou a cinco
+colunas em telas maiores, com reorganização e empilhamento em larguras menores.
+A validação manual específica em largura de celular permanece pendente.
+
+### Correção do primeiro cadastro identificada no navegador
+
+A primeira tentativa de validação encontrou a recusa de origem no cadastro.
+A página utilizava a política `no-referrer` do Helmet, enquanto o cliente
+executava o POST com `mode: 'same-origin'`. Essa combinação pode produzir
+`Origin: null`, que é corretamente recusado pela proteção da API.
+
+O `InitialSetupApi` passou a configurar `referrerPolicy: 'strict-origin'` somente
+no POST de criação. A alteração preserva a origem necessária, sem enviar caminho
+ou consulta no Referer. O navegador continua gerando o Origin; não há cabeçalho
+forjado pelo cliente nem flexibilização da comparação do servidor.
+
+A referência técnica é a regra de [formação do cabeçalho Origin no Fetch
+Standard](https://fetch.spec.whatwg.org/#append-a-request-origin-header).
+
+Foram atualizados os testes das opções de fetch, mantendo os 63 cenários do
+cliente. Também passaram os 33 testes de App e os 17 da proteção de origem.
+Depois de recompilar e reabrir a prévia, o cadastro foi confirmado no navegador.
+A verificação manual mostrou um comportamento que os testes com fetch simulado
+não reproduziam: a formação efetiva do cabeçalho pelo navegador.
+
+### Revisão da identidade e configuração local
+
+Foram retiradas identificações pessoais e institucionais de login, primeiro
+cadastro, cabeçalho autenticado, título da aba, descrição HTML, comentários,
+dados fictícios de testes, metadados npm e guia de uso. Os pacotes passaram a
+`sistema-gerenciamento-aulas` e `sistema-gerenciamento-aulas-client`, com seus
+lockfiles sincronizados. Somente os campos de nome dos lockfiles mudaram;
+nenhuma versão de dependência foi alterada.
+
+O `.env.example` passou a usar `127.0.0.1`, o banco local genérico
+`sistema_gerenciamento_aulas` e primeiro cadastro por convite, sem conta
+predefinida. Segredo de sessão e convite ficam vazios no exemplo e precisam
+ser gerados e preenchidos em cada instalação. Após o cadastro, o convite pode
+ser removido por inteiro; um texto vazio não equivale a ausência.
+
+O banco legado de desenvolvimento foi inspecionado com autorização para remover
+os dados de teste. Havia uma conta, sem aulas, materiais ou sessões. A remoção
+desse banco foi confirmada e a configuração local foi refeita com nome genérico,
+sem credenciais antigas e com novos valores privados gerados na máquina.
+O arquivo local continuou ignorado pelo Git. O script temporário dessa preparação
+foi removido depois de cumprir sua finalidade.
+
+O script `inspectLocalDatabase.js` foi mantido como ferramenta de leitura:
+confere configuração local, apresenta quantidades e siglas textuais de aulas,
+sem modificar registros ou exibir a URI completa. Ele não é um instalador.
+
+Uma busca final nos arquivos de trabalho, excluindo histórico Git, dependências,
+compilação e configuração privada, não encontrou as identificações removidas.
+A verificação foi repetida na máquina de desenvolvimento com grep. Essa revisão
+não reescreveu o histórico de commits.
+
+### Verificação manual com navegador e MongoDB local
+
+A aplicação compilada foi servida pelo Express com o script
+`previewInitialSetup.js`, usando conta, banco, porta, segredo e convite temporários.
+A prévia não carregou o arquivo local de configuração da instalação normal.
+Após a correção da origem, foram confirmados:
+
+- criação da primeira conta, login e abertura da seção Cursos;
+- cadastro de um curso com nome e sigla personalizados;
+- persistência desse cadastro após atualizar a página e reabrir Cursos;
+- edição de nome e sigla, mantendo a situação ativa após atualizar a página;
+- cancelamento da desativação sem alterar a situação;
+- desativação confirmada sem remover o curso do catálogo;
+- localização em Desativados depois de atualizar a página;
+- recusa de nova criação com a sigla pertencente ao curso desativado;
+- encerramento por Ctrl+C e mensagem de remoção do banco temporário.
+
+A revisão posterior dos textos de entrada e do título HTML passou nos testes e
+na compilação; não foi registrada nova sessão manual de navegação depois dessa
+última revisão visual. A prova de preservação de vínculos entre cursos e aulas
+permanece para o marco de integração, pois os vínculos ainda não existem.
+
+### Resultados consolidados e documentação
+
+| Camada | Testes aprovados | Organização |
+| --- | ---: | --- |
+| Backend | 995 | 162 suítes |
+| Frontend | 540 | 21 arquivos |
+| Total | 1535 | 183 suítes/conjuntos |
+
+As duas suítes completas foram aprovadas no ambiente de verificação após a
+revisão dos arquivos. Na máquina de desenvolvimento, o backend completo e os
+arquivos novos ou alterados do frontend foram aprovados por etapas. Zero falhas,
+testes ignorados ou cancelados nos resultados registrados.
+
+A compilação de produção passou com 36 módulos. As verificações manuais e os
+scripts de MongoDB são adicionais à contagem das suítes. Não houve adição ou
+atualização de dependências nem nova auditoria de vulnerabilidades neste marco.
+A formatação dos arquivos foi conferida com `git diff --check`.
+
+O README passou a registrar catálogo, API, configuração genérica, resultados e
+limites da integração. O guia do usuário recebeu primeiro cadastro, distinção
+entre conta da aplicação e conta Google, cópia e compartilhamento de links,
+cadastro, edição e desativação de cursos. Também deixou explícito o vínculo com
+aulas que ainda está pendente.
+
+### Próximo marco
+
+Vincular as aulas ao identificador estável do curso e substituir as opções fixas
+nos formulários, filtros, painel, materiais por aula e calendário visual. Conferir
+que editar nome ou sigla preserva os vínculos e definir o tratamento de cursos
+desativados em registros novos e existentes.
+
+Depois, modelar turmas com turno, salas e capacidade de alunos; validar o uso em
+telas pequenas; concluir instalação local simplificada, opção Docker Compose,
+backup/restauração e recuperação de acesso. A aplicação permanece individual,
+com uma cópia por professor, sem serviço compartilhado para terceiros.

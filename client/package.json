@@ -1,5 +1,5 @@
 {
-  "name": "calendario-dionisio-client",
+  "name": "sistema-gerenciamento-aulas-client",
   "version": "0.1.0",
   "scripts": {
     "dev": "vite",
@@ -8,7 +8,7 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "description": "Interface administrativa do Calendário do Prof. Dionísio",
+  "description": "Interface para gerenciamento individual de aulas, cursos e materiais didáticos.",
   "type": "module",
   "private": true,
   "engines": {

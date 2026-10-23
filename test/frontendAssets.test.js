@@ -101,7 +101,7 @@ before(() => {
     temporaryRoot = fs.mkdtempSync(
         path.join(
             os.tmpdir(),
-            'dionisio-frontend-assets-',
+            'aulas-frontend-assets-',
         ),
     );
 

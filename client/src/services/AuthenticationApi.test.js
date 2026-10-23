@@ -36,8 +36,8 @@ function createLoginPayload(overrides = {}) {
         data: {
             user: {
                 id: 'user-123',
-                name: 'Professor Dionísio',
-                email: 'dionisio@example.com',
+                name: 'Ana Silva',
+                email: 'ana@example.com',
                 role: 'admin',
                 passwordHash: 'campo-que-nao-deve-atravessar',
                 ...overrides,
@@ -62,7 +62,7 @@ function createSessionPayload(overrides = {}) {
 
 function createCredentials(overrides = {}) {
     return {
-        email: 'dionisio@example.com',
+        email: 'ana@example.com',
         password: 'senha de teste',
         ...overrides,
     };
@@ -199,13 +199,13 @@ describe('AuthenticationApiError', () => {
 describe('preparação das credenciais', () => {
     test('normaliza somente os espaços externos do e-mail', () => {
         const credentials = AuthenticationApi.createCredentials({
-            email: '  Dionisio@Example.com  ',
+            email: '  Ana@Example.com  ',
             password: '  senha com espaços  ',
             ignored: 'campo adicional',
         });
 
         expect(credentials).toEqual({
-            email: 'Dionisio@Example.com',
+            email: 'Ana@Example.com',
             password: '  senha com espaços  ',
         });
         expect(Object.isFrozen(credentials)).toBe(true);
@@ -218,12 +218,12 @@ describe('preparação das credenciais', () => {
             null,
             [],
             {},
-            { email: 'dionisio@example.com' },
+            { email: 'ana@example.com' },
             { password: 'senha' },
             { email: '', password: 'senha' },
             { email: '   ', password: 'senha' },
-            { email: 'dionisio@example.com', password: '' },
-            { email: 'dionisio@example.com', password: null },
+            { email: 'ana@example.com', password: '' },
+            { email: 'ana@example.com', password: null },
         ];
 
         for (const credentials of invalidCredentials) {
@@ -242,14 +242,14 @@ describe('login administrativo', () => {
             200,
             createLoginPayload({
                 id: '  user-123  ',
-                name: '  Professor Dionísio  ',
+                name: '  Ana Silva  ',
             }),
         );
         const fetchClient = vi.fn().mockResolvedValue(response);
         const api = new AuthenticationApi({ fetchClient });
 
         const user = await api.login({
-            email: '  dionisio@example.com  ',
+            email: '  ana@example.com  ',
             password: '  senha preservada  ',
             ignored: 'não enviar',
         });
@@ -265,15 +265,15 @@ describe('login administrativo', () => {
                 credentials: 'same-origin',
                 cache: 'no-store',
                 body: JSON.stringify({
-                    email: 'dionisio@example.com',
+                    email: 'ana@example.com',
                     password: '  senha preservada  ',
                 }),
             },
         );
         expect(user).toEqual({
             id: 'user-123',
-            name: 'Professor Dionísio',
-            email: 'dionisio@example.com',
+            name: 'Ana Silva',
+            email: 'ana@example.com',
             role: 'admin',
         });
         expect(Object.isFrozen(user)).toBe(true);

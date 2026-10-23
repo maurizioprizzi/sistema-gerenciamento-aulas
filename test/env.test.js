@@ -23,12 +23,12 @@ function createValidEnvironment(overrides = {}) {
         HOST: '0.0.0.0',
         PORT: '3000',
         MONGODB_URI:
-            'mongodb://127.0.0.1:27017/calendario_dionisio',
+            'mongodb://127.0.0.1:27017/sistema_gerenciamento_aulas_teste',
         SESSION_SECRET:
             'segredo-de-teste-com-mais-de-trinta-e-dois-caracteres',
         PASSWORD_HASH_ROUNDS: '12',
-        ADMIN_NAME: 'Dionísio Pereira',
-        ADMIN_EMAIL: 'DIONISIO@EXAMPLE.COM',
+        ADMIN_NAME: 'Ana Silva',
+        ADMIN_EMAIL: 'ANA@EXAMPLE.COM',
         ADMIN_PASSWORD: 'senha-forte-de-teste',
         SESSION_HOURS: '8',
         APP_ORIGIN: 'http://localhost:3000',
@@ -48,9 +48,9 @@ describe('loadEnvironment', () => {
         assert.equal(environment.PORT, '3000');
         assert.equal(
             environment.MONGODB_URI,
-            'mongodb://127.0.0.1:27017/calendario_dionisio',
+            'mongodb://127.0.0.1:27017/sistema_gerenciamento_aulas_teste',
         );
-        assert.equal(environment.ADMIN_NAME, 'Dionísio Pereira');
+        assert.equal(environment.ADMIN_NAME, 'Ana Silva');
 
         /**
          * O e-mail deve ser normalizado para evitar contas duplicadas apenas
@@ -58,7 +58,7 @@ describe('loadEnvironment', () => {
          */
         assert.equal(
             environment.ADMIN_EMAIL,
-            'dionisio@example.com',
+            'ana@example.com',
         );
 
         /**

@@ -5,6 +5,10 @@ const path = require('node:path');
 const dotenv = require('dotenv');
 
 const { createApp } = require('./app');
+const { Course } = require('./models/Course');
+const { CourseService } = require('./services/CourseService');
+const { CourseController } = require('./controllers/CourseController');
+const { createCourseRouter } = require('./routes/courseRoutes');
 const { InitialSetupController } = require('./controllers/InitialSetupController');
 const { createInitialSetupRequestGuard } = require('./middlewares/initialSetupRequestGuard');
 const { createInitialSetupRateLimiter } = require('./middlewares/initialSetupRateLimiter');
@@ -120,6 +124,14 @@ const SERVER_ERROR_MESSAGES = Object.freeze({
         'A fábrica do roteador de autenticação deve ser uma função.',
     INVALID_AUTHENTICATION_ROUTER:
         'A fábrica de autenticação deve retornar um roteador válido.',
+    INVALID_COURSE_ROUTER_FACTORY:
+        'A fábrica do roteador de cursos deve ser uma função.',
+    INVALID_COURSE_ROUTER:
+        'A fábrica de cursos deve retornar um roteador válido.',
+    INVALID_COURSE_INDEX_MODEL:
+        'A preparação dos cursos exige um modelo com createIndexes().',
+    DUPLICATE_COURSE_CODES:
+        'O índice de cursos não pôde ser criado porque existem siglas duplicadas. Revise os cursos antes de iniciar novamente; nenhum registro foi excluído.',
     INVALID_LESSON_ROUTER_FACTORY:
         'A fábrica do roteador de aulas deve ser uma função.',
     INVALID_LESSON_ROUTER:
@@ -355,6 +367,38 @@ function createAdministrativeLessonRouter() {
 }
 
 /**
+ * Prepara o catálogo depois da conexão com o MongoDB e antes da abertura HTTP.
+ *
+ * A composição aguarda createIndexes(), inclusive com autoIndex desativado.
+ * Assim, a sigla única está protegida desde o primeiro cadastro. Esta função
+ * preserva documentos e índices existentes; não utiliza syncIndexes().
+ * O modelo injetável permite testar esta espera sem acessar um banco real.
+ *
+ * @param {object} options Dependências da composição.
+ * @param {object} [options.CourseModel=Course] Modelo persistente de cursos.
+ * @returns {Promise<Function>} Roteador administrativo pronto para montagem.
+ */
+async function createAdministrativeCourseRouter({ CourseModel = Course } = {}) {
+    if (!CourseModel || typeof CourseModel.createIndexes !== 'function') {
+        throw new TypeError(SERVER_ERROR_MESSAGES.INVALID_COURSE_INDEX_MODEL);
+    }
+
+    const courseService = new CourseService({ CourseModel });
+    const controller = new CourseController({ courseService });
+
+    try {
+        await CourseModel.createIndexes();
+    } catch (error) {
+        if (error?.code === 11000) {
+            throw new Error(SERVER_ERROR_MESSAGES.DUPLICATE_COURSE_CODES);
+        }
+        throw error;
+    }
+
+    return createCourseRouter({ controller });
+}
+
+/**
  * Compõe as regras e a camada HTTP dos materiais mensais.
  *
  * A construção utiliza o modelo real sem abrir conexão com o banco. Serviço,
@@ -383,7 +427,7 @@ function createAdministrativeMonthlyMaterialRouter() {
  * A ordem é intencional: ambiente, segurança, frontend, MongoDB,
  * índices administrativos, recuperação e decisão administrativa,
  * armazenamento de sessões, middleware, autenticação e primeiro cadastro,
- * aulas, materiais mensais, Express e servidor HTTP.
+ * cursos com índices confirmados, aulas, materiais mensais, Express e HTTP.
  *
  * @param {object} options Dependências de inicialização.
  * @param {object} [options.database=databaseConnection] Banco de dados.
@@ -402,6 +446,8 @@ function createAdministrativeMonthlyMaterialRouter() {
  * Fábrica do middleware de sessão.
  * @param {Function} [options.authenticationRouterFactory]
  * Fábrica da composição de autenticação.
+ * @param {Function} [options.courseRouterFactory]
+ * Fábrica aguardada do catálogo; prepara seus índices e devolve o roteador.
  * @param {Function} [options.lessonRouterFactory]
  * Fábrica da composição administrativa das aulas.
  * @param {Function} [options.monthlyMaterialRouterFactory]
@@ -425,6 +471,7 @@ async function startServer({
     sessionMiddlewareFactory = createSessionMiddleware,
     authenticationRouterFactory =
         createAdministrativeAuthenticationRouter,
+    courseRouterFactory = createAdministrativeCourseRouter,
     lessonRouterFactory = createAdministrativeLessonRouter,
     monthlyMaterialRouterFactory =
         createAdministrativeMonthlyMaterialRouter,
@@ -476,6 +523,10 @@ async function startServer({
         throw new TypeError(
             SERVER_ERROR_MESSAGES.INVALID_AUTHENTICATION_ROUTER_FACTORY,
         );
+    }
+
+    if (typeof courseRouterFactory !== 'function') {
+        throw new TypeError(SERVER_ERROR_MESSAGES.INVALID_COURSE_ROUTER_FACTORY);
     }
 
     if (typeof lessonRouterFactory !== 'function') {
@@ -638,6 +689,13 @@ async function startServer({
             );
         }
 
+        // A fábrica real só conclui depois de confirmar o índice de sigla.
+        // Sua falha impede a composição do app e a abertura da porta HTTP.
+        const courseRouter = await courseRouterFactory();
+        if (typeof courseRouter !== 'function') {
+            throw new TypeError(SERVER_ERROR_MESSAGES.INVALID_COURSE_ROUTER);
+        }
+
         const lessonRouter = lessonRouterFactory();
 
         if (typeof lessonRouter !== 'function') {
@@ -671,6 +729,7 @@ async function startServer({
             sessionMiddleware,
             initialSetupRouter,
             authenticationRouter,
+            courseRouter,
             lessonRouter,
             monthlyMaterialRouter,
             frontendAssetsMiddleware,
@@ -698,7 +757,7 @@ async function startServer({
         throw error;
     }
 
-    logger.log('Calendário do Prof. Dionísio iniciado com sucesso.');
+    logger.log('Sistema de Gerenciamento de Aulas iniciado com sucesso.');
     logger.log(`Ambiente: ${environment.NODE_ENV}`);
     logger.log(`Endereço local: http://localhost:${port}`);
 
@@ -765,6 +824,7 @@ module.exports = {
     createAdministrativeStartupService,
     createAdministrativeInitialSetupRouter,
     createAdministrativeAuthenticationRouter,
+    createAdministrativeCourseRouter,
     createAdministrativeLessonRouter,
     createAdministrativeMonthlyMaterialRouter,
     resolvePort,

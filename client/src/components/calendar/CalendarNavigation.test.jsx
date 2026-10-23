@@ -62,6 +62,7 @@ describe('configuração da navegação do calendário', () => {
 
         expect(CALENDAR_SECTION_IDS).toEqual({
             DASHBOARD: 'dashboard',
+            COURSES: 'courses',
             LESSONS: 'lessons',
             MATERIALS: 'materials',
             CALENDAR: 'calendar',
@@ -74,13 +75,14 @@ describe('configuração da navegação do calendário', () => {
             })),
         ).toEqual([
             { id: 'dashboard', label: 'Painel geral' },
+            { id: 'courses', label: 'Cursos' },
             { id: 'lessons', label: 'Gerenciar aulas' },
             { id: 'materials', label: 'Materiais' },
             { id: 'calendar', label: 'Calendário visual' },
         ]);
     });
 
-    test('reconhece somente as quatro seções cadastradas', () => {
+    test('reconhece somente as seções cadastradas', () => {
         for (const section of CALENDAR_SECTIONS) {
             expect(isCalendarSectionId(section.id)).toBe(true);
         }
@@ -126,7 +128,7 @@ describe('configuração da navegação do calendário', () => {
 });
 
 describe('apresentação da navegação do calendário', () => {
-    test('apresenta as quatro seções originais como botões', () => {
+    test('apresenta as cinco seções como botões', () => {
         renderNavigation();
 
         expect(
@@ -137,7 +139,7 @@ describe('apresentação da navegação do calendário', () => {
 
         const buttons = screen.getAllByRole('button');
 
-        expect(buttons).toHaveLength(4);
+        expect(buttons).toHaveLength(5);
 
         for (const section of CALENDAR_SECTIONS) {
             const button = screen.getByRole('button', {
@@ -163,6 +165,7 @@ describe('apresentação da navegação do calendário', () => {
 
         for (const label of [
             'Painel geral',
+            'Cursos',
             'Gerenciar aulas',
             'Calendário visual',
         ]) {
@@ -188,5 +191,25 @@ describe('apresentação da navegação do calendário', () => {
         expect(onSectionChange).toHaveBeenCalledWith(
             CALENDAR_SECTION_IDS.CALENDAR,
         );
+    });
+});
+
+
+describe('acesso ao catálogo de cursos pela navegação', () => {
+    test('permite abrir Cursos com o teclado', async () => {
+        const user = userEvent.setup();
+        const { onSectionChange } = renderNavigation();
+        screen.getByRole('button', { name: 'Cursos' }).focus();
+        await user.keyboard('{Enter}');
+        expect(onSectionChange).toHaveBeenCalledExactlyOnceWith(CALENDAR_SECTION_IDS.COURSES);
+    });
+
+    test('marca somente Cursos como ativo quando essa seção é selecionada', () => {
+        renderNavigation({ activeSectionId: CALENDAR_SECTION_IDS.COURSES });
+        const selected = screen.getByRole('button', { name: 'Cursos' });
+        expect(selected.getAttribute('aria-current')).toBe('page');
+        for (const button of screen.getAllByRole('button')) {
+            if (button !== selected) expect(button.hasAttribute('aria-current')).toBe(false);
+        }
     });
 });

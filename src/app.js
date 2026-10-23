@@ -19,6 +19,8 @@ const APP_ERROR_MESSAGES = Object.freeze({
         'A aplicação exige um roteador de primeiro acesso válido quando ele é informado.',
     INVALID_AUTHENTICATION_ROUTER:
         'A aplicação exige um roteador de autenticação válido quando ele é informado.',
+    INVALID_COURSE_ROUTER:
+        'A aplicação exige um roteador de cursos válido quando ele é informado.',
     INVALID_LESSON_ROUTER:
         'A aplicação exige um roteador de aulas válido quando ele é informado.',
     INVALID_MONTHLY_MATERIAL_ROUTER:
@@ -45,9 +47,11 @@ const APP_ERROR_MESSAGES = Object.freeze({
  * @param {Function | null} [options.sessionMiddleware=null]
  * Middleware de sessão previamente configurado.
  * @param {Function | null} [options.initialSetupRouter=null]
- * Roteador futuro para o primeiro cadastro com convite.
+ * Roteador responsável pelo primeiro cadastro com convite.
  * @param {Function | null} [options.authenticationRouter=null]
  * Roteador responsável pela entrada e saída administrativas.
+ * @param {Function | null} [options.courseRouter=null]
+ * Roteador responsável pelo catálogo de cursos personalizados.
  * @param {Function | null} [options.lessonRouter=null]
  * Roteador responsável pelas operações administrativas de aulas.
  * @param {Function | null} [options.monthlyMaterialRouter=null]
@@ -63,6 +67,7 @@ function createApp({
     sessionMiddleware = null,
     initialSetupRouter = null,
     authenticationRouter = null,
+    courseRouter = null,
     lessonRouter = null,
     monthlyMaterialRouter = null,
     frontendAssetsMiddleware = null,
@@ -101,6 +106,15 @@ function createApp({
     ) {
         throw new TypeError(
             APP_ERROR_MESSAGES.INVALID_AUTHENTICATION_ROUTER,
+        );
+    }
+
+    if (
+        courseRouter !== null
+        && typeof courseRouter !== 'function'
+    ) {
+        throw new TypeError(
+            APP_ERROR_MESSAGES.INVALID_COURSE_ROUTER,
         );
     }
 
@@ -156,7 +170,7 @@ function createApp({
 
     /**
      * Login e rotas administrativas utilizam a sessão. O primeiro cadastro
-     * poderá ser montado aqui sem criar uma sessão para visitantes anônimos,
+     * é montado aqui sem criar uma sessão para visitantes anônimos,
      * pois o middleware de sessão usa saveUninitialized: false.
      */
     if (sessionMiddleware) {
@@ -164,10 +178,8 @@ function createApp({
     }
 
     /**
-     * Este ponto fica inativo enquanto server.js não fornecer o roteador.
-     *
-     * Quando o fluxo estiver completo, o roteador ficará responsável por
-     * validar o convite e impedir um segundo cadastro inicial.
+     * O roteador de primeiro acesso valida o convite e o estado persistente
+     * da instalação para impedir um segundo cadastro inicial.
      */
     if (initialSetupRouter) {
         app.use('/api/setup', initialSetupRouter);
@@ -178,6 +190,16 @@ function createApp({
      */
     if (authenticationRouter) {
         app.use('/api/auth', authenticationRouter);
+    }
+
+    /**
+     * O catálogo oferece listagem, cadastro, edição e desativação de cursos.
+     * A autorização administrativa pertence ao próprio roteador. Ele recebe
+     * a sessão já preparada e atende antes dos arquivos do frontend.
+     * A construção do serviço e do roteador pertence ao servidor.
+     */
+    if (courseRouter) {
+        app.use('/api/courses', courseRouter);
     }
 
     /**
@@ -204,7 +226,7 @@ function createApp({
     app.get('/api/health', (request, response) => {
         response.status(200).json({
             status: 'ok',
-            application: 'Calendário do Prof. Dionísio',
+            application: 'Sistema de Gerenciamento de Aulas',
             version: '0.1.0',
             timestamp: new Date().toISOString(),
         });

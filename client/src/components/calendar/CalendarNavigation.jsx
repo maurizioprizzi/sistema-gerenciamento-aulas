@@ -1,18 +1,16 @@
 /**
- * Identificadores estáveis das seções previstas no calendário original.
- *
- * Os valores também serão utilizados pelos futuros painéis para relacionar
- * cada controle de navegação ao conteúdo correspondente.
+ * Identificadores estáveis das seções da área administrativa.
  */
 const CALENDAR_SECTION_IDS = Object.freeze({
     DASHBOARD: 'dashboard',
+    COURSES: 'courses',
     LESSONS: 'lessons',
     MATERIALS: 'materials',
     CALENDAR: 'calendar',
 });
 
 /**
- * Seções apresentadas no HTML original do Prof. Dionísio.
+ * Seções disponíveis para gerenciar o catálogo e as atividades do professor.
  *
  * Tanto a coleção quanto cada item são protegidos contra alterações para que
  * a navegação mantenha um contrato previsível em toda a interface.
@@ -22,6 +20,11 @@ const CALENDAR_SECTIONS = Object.freeze([
         id: CALENDAR_SECTION_IDS.DASHBOARD,
         label: 'Painel geral',
         symbol: '📊',
+    }),
+    Object.freeze({
+        id: CALENDAR_SECTION_IDS.COURSES,
+        label: 'Cursos',
+        symbol: '🎓',
     }),
     Object.freeze({
         id: CALENDAR_SECTION_IDS.LESSONS,
@@ -51,7 +54,7 @@ const CALENDAR_NAVIGATION_MESSAGES = Object.freeze({
 });
 
 /**
- * Verifica se um identificador pertence às seções originais do calendário.
+ * Verifica se um identificador pertence às seções disponíveis.
  *
  * @param {unknown} sectionId Identificador recebido pela interface.
  * @returns {boolean} Verdadeiro quando a seção está cadastrada.
@@ -75,7 +78,7 @@ function isCalendarSectionId(sectionId) {
  * @param {object} props Propriedades da navegação.
  * @param {string} props.activeSectionId Seção atualmente apresentada.
  * @param {Function} props.onSectionChange Função que recebe a nova seção.
- * @returns {import('react').ReactElement} Navegação entre as quatro seções.
+ * @returns {import('react').ReactElement} Navegação da área administrativa.
  */
 function CalendarNavigation({
     activeSectionId,

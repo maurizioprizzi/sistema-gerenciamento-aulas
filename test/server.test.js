@@ -13,6 +13,7 @@ const {
     createAdministrativeStartupService,
     createAdministrativeInitialSetupRouter,
     createAdminBootstrapper,
+    createAdministrativeCourseRouter,
     createAdministrativeLessonRouter,
     createAdministrativeMonthlyMaterialRouter,
     resolvePort,
@@ -319,6 +320,7 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        courseRouterFactory: createTestInitialSetupRouter,
                         administrativeStartupServiceFactory: createTestAdministrativeStartupService,
                         initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
@@ -388,6 +390,7 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        courseRouterFactory: createTestInitialSetupRouter,
                         administrativeStartupServiceFactory: createTestAdministrativeStartupService,
                         initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
@@ -445,6 +448,7 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        courseRouterFactory: createTestInitialSetupRouter,
                         administrativeStartupServiceFactory: createTestAdministrativeStartupService,
                         initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
@@ -521,6 +525,7 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        courseRouterFactory: createTestInitialSetupRouter,
                         administrativeStartupServiceFactory: createTestAdministrativeStartupService,
                         initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
@@ -600,6 +605,7 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        courseRouterFactory: createTestInitialSetupRouter,
                         administrativeStartupServiceFactory: createTestAdministrativeStartupService,
                         initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
@@ -650,6 +656,7 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        courseRouterFactory: createTestInitialSetupRouter,
                         administrativeStartupServiceFactory: createTestAdministrativeStartupService,
                         initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
@@ -696,6 +703,7 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        courseRouterFactory: createTestInitialSetupRouter,
                         administrativeStartupServiceFactory: createTestAdministrativeStartupService,
                         initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
@@ -814,6 +822,7 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        courseRouterFactory: createTestInitialSetupRouter,
                         administrativeStartupServiceFactory: createTestAdministrativeStartupService,
                         initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
@@ -871,6 +880,7 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        courseRouterFactory: createTestInitialSetupRouter,
                         administrativeStartupServiceFactory: createTestAdministrativeStartupService,
                         initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
@@ -979,6 +989,7 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        courseRouterFactory: createTestInitialSetupRouter,
                         administrativeStartupServiceFactory: createTestAdministrativeStartupService,
                         initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
@@ -1089,6 +1100,7 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        courseRouterFactory: createTestInitialSetupRouter,
                         administrativeStartupServiceFactory: createTestAdministrativeStartupService,
                         initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
@@ -1224,6 +1236,7 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        courseRouterFactory: createTestInitialSetupRouter,
                         administrativeStartupServiceFactory: createTestAdministrativeStartupService,
                         initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
@@ -1469,6 +1482,7 @@ describe('startServer', () => {
 
                 await assert.rejects(
                     startServer({
+                        courseRouterFactory: createTestInitialSetupRouter,
                         administrativeStartupServiceFactory: createTestAdministrativeStartupService,
                         initialSetupRouterFactory: createTestInitialSetupRouter,
                         administrativeIndexInitializerFactory:
@@ -1549,6 +1563,7 @@ describe('startServer', () => {
 
                     await assert.rejects(
                         startServer({
+                            courseRouterFactory: createTestInitialSetupRouter,
                             administrativeStartupServiceFactory: createTestAdministrativeStartupService,
                             initialSetupRouterFactory: createTestInitialSetupRouter,
                             administrativeIndexInitializerFactory:
@@ -1600,6 +1615,7 @@ describe('startServer', () => {
 describe('índices administrativos no ciclo do servidor', () => {
     function createDependencies(calls, administrativeIndexInitializerFactory) {
         return {
+            courseRouterFactory: createTestInitialSetupRouter,
             administrativeStartupServiceFactory: createTestAdministrativeStartupService,
             initialSetupRouterFactory: createTestInitialSetupRouter,
             frontendAssetsMiddlewareFactory: createTestFrontendAssetsMiddleware,
@@ -1779,6 +1795,7 @@ describe('primeiro cadastro e decisão administrativa no servidor', () => {
             },
             sessionStoreFactory: () => ({ on() {} }),
             sessionMiddlewareFactory: () => (_req, _res, next) => next(),
+            courseRouterFactory: createTestInitialSetupRouter,
             authenticationRouterFactory: createTestInitialSetupRouter,
             lessonRouterFactory: createTestInitialSetupRouter,
             monthlyMaterialRouterFactory: createTestInitialSetupRouter,
@@ -1929,6 +1946,165 @@ describe('primeiro cadastro e decisão administrativa no servidor', () => {
                 release({ status: 'existing_admin' });
                 await pending;
             }
+        });
+    });
+});
+
+/** Os modelos e o banco são simulados; nenhuma porta HTTP é aberta. */
+describe('catálogo de cursos no ciclo do servidor', () => {
+    function courseModel(createIndexes = async () => {}) {
+        return { createIndexes, create() {}, find() {}, findByIdAndUpdate() {} };
+    }
+
+    function setup(courseRouterFactory) {
+        const calls = [];
+        const stop = new Error('Parada controlada antes de abrir HTTP.');
+        let suppliedRouter;
+        const options = {
+            database: {
+                async connect(_uri, config) { calls.push(['connect', config.autoIndex]); },
+                async disconnect() { calls.push(['disconnect']); },
+                getNativeClient() { calls.push(['native']); return { db() {} }; },
+            },
+            frontendAssetsMiddlewareFactory: createTestFrontendAssetsMiddleware,
+            administrativeIndexInitializerFactory: createTestAdministrativeIndexInitializer,
+            adminBootstrapperFactory: () => ({ async ensureAdmin() {} }),
+            administrativeStartupServiceFactory: () => ({
+                async initialize() { return { status: 'existing_admin' }; },
+            }),
+            initialSetupRouterFactory: createTestInitialSetupRouter,
+            sessionStoreFactory: () => ({ on() {} }),
+            sessionMiddlewareFactory: createTestInitialSetupRouter,
+            authenticationRouterFactory: createTestInitialSetupRouter,
+            courseRouterFactory,
+            lessonRouterFactory() { calls.push(['lessons']); return createTestInitialSetupRouter(); },
+            monthlyMaterialRouterFactory: createTestInitialSetupRouter,
+            appFactory(config) {
+                suppliedRouter = config.courseRouter;
+                calls.push(['app']);
+                throw stop;
+            },
+            logger: createFakeLogger().logger,
+        };
+        return { options, calls, stop, get suppliedRouter() { return suppliedRouter; } };
+    }
+
+    test('composição aguarda o índice antes de devolver o roteador', async () => {
+        let release;
+        let completed = false;
+        const indexes = new Promise(resolve => { release = resolve; });
+        const pending = createAdministrativeCourseRouter({ CourseModel: courseModel(() => indexes) });
+        pending.then(() => { completed = true; });
+        try {
+            await new Promise(resolve => setImmediate(resolve));
+            assert.equal(completed, false);
+        } finally { release(); }
+        const router = await pending;
+        assert.equal(typeof router, 'function');
+        assert.equal(typeof router.get, 'function');
+    });
+
+    test('recusa modelo sem preparação de índices', async () => {
+        await assert.rejects(createAdministrativeCourseRouter({ CourseModel: {} }), {
+            message: SERVER_ERROR_MESSAGES.INVALID_COURSE_INDEX_MODEL,
+        });
+    });
+
+    test('recusa modelo sem operações do serviço antes de preparar os índices', async () => {
+        let indexCalls = 0;
+        await assert.rejects(createAdministrativeCourseRouter({ CourseModel: {
+            async createIndexes() { indexCalls += 1; },
+        } }), { name: 'TypeError' });
+        assert.equal(indexCalls, 0);
+    });
+
+    test('conflito do índice produz mensagem sem valores privados', async () => {
+        const failure = Object.assign(new Error('sigla privada do banco'), {
+            code: 11000, keyValue: { code: 'VALOR-PRIVADO' },
+        });
+        await assert.rejects(createAdministrativeCourseRouter({ CourseModel: courseModel(async () => {
+            throw failure;
+        }) }), error => {
+            assert.equal(error.message, SERVER_ERROR_MESSAGES.DUPLICATE_COURSE_CODES);
+            assert.equal(error.message.includes('VALOR-PRIVADO'), false);
+            assert.equal(error.message.includes(failure.message), false);
+            return true;
+        });
+    });
+
+    test('outras falhas de índices são preservadas', async () => {
+        const failure = new Error('Falha controlada de armazenamento.');
+        await assert.rejects(createAdministrativeCourseRouter({ CourseModel: courseModel(async () => {
+            throw failure;
+        }) }), error => error === failure);
+    });
+
+    test('fábrica inválida é recusada antes de conectar', async () => {
+        await withTestEnvironment(async () => {
+            const ctx = setup(null);
+            await assert.rejects(startServer(ctx.options), {
+                message: SERVER_ERROR_MESSAGES.INVALID_COURSE_ROUTER_FACTORY,
+            });
+            assert.deepEqual(ctx.calls, []);
+        });
+    });
+
+    test('retorno inválido da fábrica impede o app e encerra o banco', async () => {
+        await withTestEnvironment(async () => {
+            const ctx = setup(async () => ({}));
+            await assert.rejects(startServer(ctx.options), {
+                message: SERVER_ERROR_MESSAGES.INVALID_COURSE_ROUTER,
+            });
+            assert.deepEqual(ctx.calls, [['connect', true], ['native'], ['disconnect']]);
+        });
+    });
+
+    for (const nodeEnv of ['test', 'production']) {
+        test(`falha do índice impede app e HTTP em ${nodeEnv}`, async () => {
+            await withTestEnvironment(async () => {
+                const failure = new Error('Índice indisponível.');
+                const ctx = setup(() => createAdministrativeCourseRouter({ CourseModel: courseModel(async () => {
+                    throw failure;
+                }) }));
+                await assert.rejects(startServer(ctx.options), error => error === failure);
+                assert.deepEqual(ctx.calls, [['connect', nodeEnv !== 'production'], ['native'], ['disconnect']]);
+            }, { NODE_ENV: nodeEnv });
+        });
+
+        test(`confirma índice e entrega roteador ao app em ${nodeEnv}`, async () => {
+            await withTestEnvironment(async () => {
+                let router;
+                const ctx = setup(async () => {
+                    router = await createAdministrativeCourseRouter({ CourseModel: courseModel(async () => {
+                        ctx.calls.push(['course-index-ready']);
+                    }) });
+                    return router;
+                });
+                await assert.rejects(startServer(ctx.options), error => error === ctx.stop);
+                assert.equal(typeof router, 'function');
+                assert.strictEqual(ctx.suppliedRouter, router);
+                assert.deepEqual(ctx.calls, [['connect', nodeEnv !== 'production'], ['native'],
+                    ['course-index-ready'], ['lessons'], ['app'], ['disconnect']]);
+            }, { NODE_ENV: nodeEnv });
+        });
+    }
+
+    test('não compõe aulas nem app enquanto a fábrica de cursos está pendente', async () => {
+        await withTestEnvironment(async () => {
+            let release;
+            const gate = new Promise(resolve => { release = resolve; });
+            const router = createTestInitialSetupRouter();
+            const ctx = setup(async () => { await gate; return router; });
+            const pending = assert.rejects(startServer(ctx.options), error => error === ctx.stop);
+            try {
+                await new Promise(resolve => setImmediate(resolve));
+                assert.deepEqual(ctx.calls, [['connect', true], ['native']]);
+            } finally {
+                release();
+                await pending;
+            }
+            assert.strictEqual(ctx.suppliedRouter, router);
+            assert.deepEqual(ctx.calls, [['connect', true], ['native'], ['lessons'], ['app'], ['disconnect']]);
         });
     });
 });

@@ -473,7 +473,7 @@ noscript {
 }
 
 /**
- * Navegação das quatro seções existentes no calendário original.
+ * Navegação das seções da área administrativa, incluindo o catálogo de cursos.
  */
 .calendar-navigation {
     background: var(--color-surface);
@@ -482,7 +482,7 @@ noscript {
 
 .calendar-navigation-list {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     width: min(100% - 3rem, 72rem);
     padding: 0;
     margin: 0 auto;
@@ -2651,5 +2651,359 @@ noscript {
     .calendar-visual-event,
     .calendar-visual-navigation button {
         transition: none;
+    }
+}
+
+
+/** Catálogo pessoal de cursos: consulta, formulário e desativação confirmada. */
+.course-management {
+    display: grid;
+    gap: 1.25rem;
+    min-width: 0;
+}
+
+.course-management-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    padding: 1.5rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+}
+
+.course-management-heading h2 {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.course-management-heading p,
+.course-form-description {
+    margin: 0.5rem 0 0;
+    line-height: 1.6;
+    color: var(--color-text-muted);
+}
+
+.course-management button {
+    min-height: 2.85rem;
+    padding: 0.65rem 1rem;
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--color-brand-700);
+    cursor: pointer;
+    background: var(--color-surface);
+    border: 1px solid var(--color-brand-300);
+    border-radius: 0.7rem;
+}
+
+.course-management button:hover:not(:disabled) {
+    background: #eef2ff;
+    border-color: var(--color-brand-600);
+}
+
+.course-management-heading > button,
+.course-form-actions button[type="submit"] {
+    color: #ffffff;
+    background: var(--color-brand-700);
+    border-color: var(--color-brand-700);
+}
+
+.course-management-heading > button:hover:not(:disabled),
+.course-form-actions button[type="submit"]:hover:not(:disabled) {
+    color: #ffffff;
+    background: #3730a3;
+    border-color: #3730a3;
+}
+
+.course-management button:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background: var(--color-surface-muted);
+    border-color: var(--color-border);
+    opacity: 0.72;
+}
+
+.course-management-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.course-management-toolbar label,
+.course-form-field label {
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.course-management-toolbar > button {
+    margin-left: auto;
+}
+
+.course-management-toolbar select,
+.course-form-field input {
+    min-width: 0;
+    min-height: 2.85rem;
+    padding: 0.7rem 0.8rem;
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.7rem;
+}
+
+.course-management-toolbar select:disabled,
+.course-form-field input:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background: var(--color-surface-muted);
+}
+
+.course-form-field input[aria-invalid="true"] {
+    border-color: var(--color-error);
+}
+
+.course-management-error,
+.course-form-error,
+.course-management-success {
+    padding: 0.9rem 1rem;
+    margin: 0;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+    border: 1px solid;
+    border-radius: 0.75rem;
+}
+
+.course-management-error,
+.course-form-error {
+    color: var(--color-error);
+    background: var(--color-error-surface);
+    border-color: var(--color-error-border);
+}
+
+.course-management-success {
+    color: #166534;
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+
+.course-form-section {
+    min-width: 0;
+    padding: 1.5rem;
+    background: #f4f3ff;
+    border: 1px solid var(--color-brand-300);
+    border-radius: 1rem;
+}
+
+.course-form-section h3 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.course-form {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 1rem;
+    margin-top: 1.25rem;
+}
+
+.course-form-field {
+    display: grid;
+    align-content: start;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.course-form-field input {
+    width: 100%;
+}
+
+.course-form-help {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: var(--color-text-muted);
+}
+
+.course-form-error,
+.course-form-actions {
+    grid-column: 1 / -1;
+}
+
+.course-form-actions,
+.course-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.course-form-actions {
+    justify-content: flex-end;
+}
+
+.course-management-count,
+.course-management-empty {
+    margin: 0;
+    line-height: 1.6;
+    color: var(--color-text-muted);
+}
+
+.course-management-empty {
+    padding: 1.5rem;
+    background: var(--color-surface);
+    border: 1px dashed var(--color-border);
+    border-radius: 1rem;
+}
+
+.course-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+
+.course-list > li {
+    min-width: 0;
+}
+
+.course-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    height: 100%;
+    min-width: 0;
+    padding: 1.5rem;
+    overflow-wrap: anywhere;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+}
+
+.course-card h3 {
+    margin: 0;
+    font-size: 1.15rem;
+    line-height: 1.5;
+}
+
+.course-card > p {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.course-card .course-status-active,
+.course-card .course-status-inactive {
+    align-self: flex-start;
+    padding: 0.25rem 0.7rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    border-radius: 999px;
+}
+
+.course-status-active {
+    color: #166534;
+    background: #dcfce7;
+}
+
+.course-status-inactive {
+    color: #475569;
+    background: #f1f5f9;
+}
+
+.course-card-actions {
+    margin-top: auto;
+    padding-top: 0.5rem;
+}
+
+.course-deactivation-confirmation {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 1rem;
+    margin-top: auto;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-radius: 0.75rem;
+}
+
+.course-deactivation-confirmation p {
+    flex-basis: 100%;
+    margin: 0;
+    line-height: 1.6;
+    color: #92400e;
+}
+
+.course-card-actions button:nth-child(2),
+.course-deactivation-confirmation button:first-of-type {
+    color: #92400e;
+    background: #fffbeb;
+    border-color: #fcd34d;
+}
+
+.course-card-actions button:nth-child(2):hover:not(:disabled),
+.course-deactivation-confirmation button:first-of-type:hover:not(:disabled) {
+    background: #fef3c7;
+    border-color: #d97706;
+}
+
+.course-deactivation-confirmation button:disabled {
+    color: var(--color-text-muted);
+    cursor: not-allowed;
+    background: var(--color-surface-muted);
+    border-color: var(--color-border);
+}
+
+@media (max-width: 760px) {
+    .calendar-navigation-list > li:last-child:nth-child(odd) {
+        grid-column: 1 / -1;
+    }
+
+    .course-management-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .course-management-toolbar {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .course-management-toolbar label {
+        grid-column: 1 / -1;
+    }
+
+    .course-management-toolbar select {
+        width: 100%;
+    }
+
+    .course-management-toolbar > button {
+        margin-left: 0;
+    }
+}
+
+@media (max-width: 600px) {
+    .course-form,
+    .course-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 420px) {
+    .course-management-heading,
+    .course-form-section,
+    .course-card {
+        padding: 1rem;
+    }
+
+    .course-management-toolbar {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .course-form-actions > button,
+    .course-card-actions > button,
+    .course-deactivation-confirmation > button {
+        flex-basis: 100%;
+        width: 100%;
     }
 }

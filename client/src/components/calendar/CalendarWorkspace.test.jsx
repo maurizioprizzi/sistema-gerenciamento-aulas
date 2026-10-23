@@ -71,6 +71,17 @@ function createMonthlyMaterialService(overrides = {}) {
     };
 }
 
+/** CursoService simulado: o catálogo só é consultado ao abrir sua seção. */
+function createCourseService(overrides = {}) {
+    return {
+        listCourses: vi.fn().mockResolvedValue([]),
+        createCourse: vi.fn(),
+        updateCourse: vi.fn(),
+        deactivateCourse: vi.fn(),
+        ...overrides,
+    };
+}
+
 /**
  * Monta a área autenticada com propriedades válidas que podem ser
  * substituídas por cada cenário.
@@ -86,12 +97,14 @@ function renderWorkspace(overrides = {}) {
     const monthlyMaterialService = overrides.monthlyMaterialService
         ?? createMonthlyMaterialService();
 
+    const courseService = overrides.courseService ?? createCourseService();
+
     render(
         <CalendarWorkspace
             administratorName={
                 Object.hasOwn(overrides, 'administratorName')
                     ? overrides.administratorName
-                    : 'Dionísio Pereira'
+                    : 'Ana Silva'
             }
             onLogout={onLogout}
             isLoggingOut={overrides.isLoggingOut ?? false}
@@ -102,6 +115,7 @@ function renderWorkspace(overrides = {}) {
             }
             lessonService={lessonService}
             monthlyMaterialService={monthlyMaterialService}
+            courseService={courseService}
         />,
     );
 
@@ -109,6 +123,7 @@ function renderWorkspace(overrides = {}) {
         onLogout,
         lessonService,
         monthlyMaterialService,
+        courseService,
     };
 }
 
@@ -158,7 +173,7 @@ describe('configuração da área do calendário', () => {
     test('rejeita uma função de saída inválida', () => {
         expect(() => render(
             <CalendarWorkspace
-                administratorName="Dionísio Pereira"
+                administratorName="Ana Silva"
                 onLogout={null}
             />,
         )).toThrowError(
@@ -169,7 +184,7 @@ describe('configuração da área do calendário', () => {
     test('rejeita estados de saída que não sejam booleanos', () => {
         expect(() => render(
             <CalendarWorkspace
-                administratorName="Dionísio Pereira"
+                administratorName="Ana Silva"
                 onLogout={() => {}}
                 isLoggingOut="false"
             />,
@@ -181,7 +196,7 @@ describe('configuração da área do calendário', () => {
     test('rejeita erros de saída com estrutura inválida', () => {
         expect(() => render(
             <CalendarWorkspace
-                administratorName="Dionísio Pereira"
+                administratorName="Ana Silva"
                 onLogout={() => {}}
                 logoutError={{}}
             />,
@@ -217,7 +232,7 @@ describe('configuração da área do calendário', () => {
         for (const lessonService of invalidServices) {
             expect(() => render(
                 <CalendarWorkspace
-                    administratorName="Dionísio Pereira"
+                    administratorName="Ana Silva"
                     onLogout={() => {}}
                     lessonService={lessonService}
                 />,
@@ -251,7 +266,7 @@ describe('configuração da área do calendário', () => {
         for (const monthlyMaterialService of invalidServices) {
             expect(() => render(
                 <CalendarWorkspace
-                    administratorName="Dionísio Pereira"
+                    administratorName="Ana Silva"
                     onLogout={() => {}}
                     monthlyMaterialService={monthlyMaterialService}
                 />,
@@ -266,9 +281,9 @@ describe('configuração da área do calendário', () => {
 });
 
 describe('painel geral da área autenticada', () => {
-    test('apresenta a identidade original e a sessão normalizada', () => {
+    test('apresenta identidade genérica e o nome da sessão normalizado', () => {
         renderWorkspace({
-            administratorName: '  Dionísio Pereira  ',
+            administratorName: '  Ana Silva  ',
         });
 
         expect(screen.getByRole('main')).toBeTruthy();
@@ -280,11 +295,11 @@ describe('painel geral da área autenticada', () => {
         ).toBeTruthy();
         expect(
             screen.getByText(
-                'Prof. Dionísio Pereira — Senac Ceilândia',
+                'Organize suas aulas, cursos e materiais.',
             ),
         ).toBeTruthy();
         expect(
-            screen.getByText('Sessão de Dionísio Pereira'),
+            screen.getByText('Sessão de Ana Silva'),
         ).toBeTruthy();
     });
 
@@ -326,10 +341,14 @@ describe('painel geral da área autenticada', () => {
 });
 
 describe('navegação da área autenticada', () => {
-    test('troca entre as quatro seções originais', async () => {
+    test('troca entre as cinco seções disponíveis', async () => {
         const user = userEvent.setup();
 
         renderWorkspace();
+
+        await user.click(screen.getByRole('button', { name: 'Cursos', exact: true }));
+        expect(screen.getByRole('heading', { level: 2, name: 'Cursos', exact: true })).toBeTruthy();
+        expect(await screen.findByText('Nenhum curso cadastrado. Use Novo curso para começar.')).toBeTruthy();
 
         await user.click(
             screen.getByRole('button', {
@@ -519,5 +538,48 @@ describe('saída pela área autenticada', () => {
         renderWorkspace({ logoutError: '   ' });
 
         expect(screen.queryByRole('alert')).toBeNull();
+    });
+});
+
+
+describe('catálogo de cursos dentro da área autenticada', () => {
+    test('exige as quatro operações do serviço de cursos', () => {
+        const valid = createCourseService();
+        for (const courseService of [null, [], {}, ...Object.keys(valid).map(key => ({ ...valid, [key]: null }))]) {
+            expect(() => render(<CalendarWorkspace onLogout={() => {}} courseService={courseService} />))
+                .toThrow(CALENDAR_WORKSPACE_MESSAGES.INVALID_COURSE_SERVICE);
+            cleanup();
+        }
+    });
+
+    test('consulta o catálogo somente ao abrir Cursos e novamente ao retornar à seção', async () => {
+        const user = userEvent.setup();
+        const { courseService } = renderWorkspace();
+        expect(await screen.findByRole('heading', { name: 'Próximas aulas' })).toBeTruthy();
+        expect(courseService.listCourses).not.toHaveBeenCalled();
+        await user.click(screen.getByRole('button', { name: 'Cursos', exact: true }));
+        expect(await screen.findByText('0 de 0 cursos')).toBeTruthy();
+        expect(courseService.listCourses).toHaveBeenCalledExactlyOnceWith();
+        await user.click(screen.getByRole('button', { name: 'Painel geral' }));
+        expect(screen.queryByRole('heading', { level: 2, name: 'Cursos', exact: true })).toBeNull();
+        await user.click(screen.getByRole('button', { name: 'Cursos', exact: true }));
+        expect(await screen.findByText('0 de 0 cursos')).toBeTruthy();
+        expect(courseService.listCourses).toHaveBeenCalledTimes(2);
+    });
+
+    test('o formulário aberto pelo menu grava pelo serviço fornecido à área autenticada', async () => {
+        const user = userEvent.setup();
+        const courseService = createCourseService({ createCourse: vi.fn(async input => ({
+            id: '507f1f77bcf86cd799439011', ...input, active: true,
+        })) });
+        renderWorkspace({ courseService });
+        await user.click(screen.getByRole('button', { name: 'Cursos', exact: true }));
+        await screen.findByText('0 de 0 cursos');
+        await user.click(screen.getByRole('button', { name: 'Novo curso' }));
+        await user.type(screen.getByLabelText('Nome do curso'), 'Ciência de Dados');
+        await user.type(screen.getByLabelText('Sigla'), 'cd');
+        await user.click(screen.getByRole('button', { name: 'Cadastrar curso' }));
+        expect(await screen.findByRole('article', { name: 'Ciência de Dados' })).toBeTruthy();
+        expect(courseService.createCourse).toHaveBeenCalledExactlyOnceWith({ name: 'Ciência de Dados', code: 'CD' });
     });
 });

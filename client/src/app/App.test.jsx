@@ -73,8 +73,8 @@ function createAuthenticationService(overrides = {}) {
 function createAuthenticatedUser(overrides = {}) {
     return Object.freeze({
         id: '507f1f77bcf86cd799439011',
-        name: 'Dionísio Pereira',
-        email: 'dionisio@example.com',
+        name: 'Ana Silva',
+        email: 'ana@example.com',
         role: 'admin',
         ...overrides,
     });
@@ -133,7 +133,7 @@ async function findCalendarWorkspace() {
 async function submitLogin(
     user,
     {
-        email = 'dionisio@example.com',
+        email = 'ana@example.com',
         password = 'senha administrativa',
     } = {},
 ) {
@@ -218,10 +218,10 @@ describe('estrutura inicial da aplicação', () => {
             }),
         ).toBeTruthy();
         expect(
-            screen.getByText('Senac Ceilândia'),
+            screen.getByText('Planejamento de aulas'),
         ).toBeTruthy();
         expect(
-            screen.getByText('Prof. Dionísio Pereira'),
+            screen.getByText('Organize seus cursos, atividades e materiais.'),
         ).toBeTruthy();
         expect(
             screen.getByText('Área administrativa'),
@@ -373,7 +373,7 @@ describe('entrada administrativa pela aplicação', () => {
         );
 
         await submitLogin(user, {
-            email: '  dionisio@example.com  ',
+            email: '  ana@example.com  ',
             password: '  senha preservada  ',
         });
 
@@ -383,7 +383,7 @@ describe('entrada administrativa pela aplicação', () => {
             authenticationService.login.mock.calls[0][0];
 
         expect(credentials).toEqual({
-            email: 'dionisio@example.com',
+            email: 'ana@example.com',
             password: '  senha preservada  ',
         });
         expect(Object.isFrozen(credentials)).toBe(true);
@@ -715,6 +715,8 @@ describe('decisão entre primeiro cadastro e login', () => {
         expect(screen.queryByRole('form')).toBeNull();
         await act(async () => { pending.resolve({ available: true }); await pending.promise; });
         await findInitialSetupForm();
+        expect(screen.getByText('Planejamento de aulas')).toBeTruthy();
+        expect(screen.getByText('Organize seus cursos, atividades e materiais.')).toBeTruthy();
         expect(screen.queryByRole('form', { name: 'Entrada administrativa' })).toBeNull();
     });
 

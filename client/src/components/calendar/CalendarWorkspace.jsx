@@ -1,10 +1,12 @@
 import { useState } from 'react';
 
 import { lessonApi } from '../../services/LessonApi.js';
+import { courseApi } from '../../services/CourseApi.js';
 import {
     monthlyMaterialApi,
 } from '../../services/MonthlyMaterialApi.js';
 import { LogoutButton } from '../authentication/LogoutButton.jsx';
+import { CourseManagement } from '../courses/CourseManagement.jsx';
 import { CalendarDashboard } from './CalendarDashboard.jsx';
 import {
     CALENDAR_SECTION_IDS,
@@ -39,15 +41,16 @@ const CALENDAR_WORKSPACE_MESSAGES = Object.freeze({
         'A área do calendário exige um serviço de aulas válido.',
     INVALID_MONTHLY_MATERIAL_SERVICE:
         'A área do calendário exige um serviço de materiais mensais válido.',
+    INVALID_COURSE_SERVICE:
+        'A área do calendário exige um serviço de cursos válido.',
 });
 
 /**
  * Área principal apresentada depois da autenticação administrativa.
  *
- * O componente coordena a navegação entre as quatro seções originais. As
- * operações persistentes permanecem encapsuladas nos componentes de painel,
- * aulas, materiais e calendário visual, enquanto autenticação e encerramento
- * de sessão continuam fora desta camada.
+ * O componente coordena a navegação entre painel, cursos, aulas, materiais e
+ * calendário visual. Cada seção encapsula suas operações persistentes,
+ * enquanto autenticação e encerramento de sessão continuam fora desta camada.
  *
  * @param {object} props Propriedades da área autenticada.
  * @param {string | null} [props.administratorName=null]
@@ -62,6 +65,9 @@ const CALENDAR_WORKSPACE_MESSAGES = Object.freeze({
  * saveMonthlyMaterial: Function, deleteMonthlyMaterial: Function }}
  * [props.monthlyMaterialService=monthlyMaterialApi]
  * Serviço mensal substituível nos testes.
+ * @param {{ listCourses: Function, createCourse: Function,
+ * updateCourse: Function, deactivateCourse: Function }}
+ * [props.courseService=courseApi] Serviço do catálogo de cursos.
  * @returns {import('react').ReactElement} Área autenticada do calendário.
  */
 function CalendarWorkspace({
@@ -71,6 +77,7 @@ function CalendarWorkspace({
     logoutError = null,
     lessonService = lessonApi,
     monthlyMaterialService = monthlyMaterialApi,
+    courseService = courseApi,
 }) {
     const hasValidAdministratorName =
         administratorName === null
@@ -141,6 +148,16 @@ function CalendarWorkspace({
         );
     }
 
+    const isValidCourseService = courseService !== null
+        && typeof courseService === 'object'
+        && !Array.isArray(courseService)
+        && ['listCourses', 'createCourse', 'updateCourse', 'deactivateCourse']
+            .every(method => typeof courseService[method] === 'function');
+
+    if (!isValidCourseService) {
+        throw new TypeError(CALENDAR_WORKSPACE_MESSAGES.INVALID_COURSE_SERVICE);
+    }
+
     const [activeSectionId, setActiveSectionId] = useState(
         CALENDAR_SECTION_IDS.DASHBOARD,
     );
@@ -158,7 +175,9 @@ function CalendarWorkspace({
         />
     );
 
-    if (activeSectionId === CALENDAR_SECTION_IDS.LESSONS) {
+    if (activeSectionId === CALENDAR_SECTION_IDS.COURSES) {
+        activeContent = <CourseManagement courseService={courseService} />;
+    } else if (activeSectionId === CALENDAR_SECTION_IDS.LESSONS) {
         activeContent = (
             <LessonManagement lessonService={lessonService} />
         );
@@ -191,7 +210,7 @@ function CalendarWorkspace({
                     </h1>
 
                     <p className="calendar-workspace-owner">
-                        Prof. Dionísio Pereira — Senac Ceilândia
+                        Organize suas aulas, cursos e materiais.
                     </p>
                 </div>
 

@@ -1,8 +1,8 @@
 {
-  "name": "calendario-dionisio",
+  "name": "sistema-gerenciamento-aulas",
   "version": "0.1.0",
   "private": true,
-  "description": "Aplicação web para organização das aulas e materiais do Prof. Dionísio Pereira.",
+  "description": "Aplicação web para gerenciamento individual de aulas, cursos e materiais didáticos.",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

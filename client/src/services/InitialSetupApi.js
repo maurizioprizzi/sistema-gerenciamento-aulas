@@ -234,6 +234,15 @@ class InitialSetupApi {
             options.body = JSON.stringify(body);
         }
 
+        if (method === 'POST') {
+            // Com mode: same-origin, a política no-referrer da página pode
+            // transformar Origin em "null". strict-origin preserva a origem
+            // neste POST, sem enviar caminho ou consulta no Referer.
+            // O navegador continua responsável por gerar o cabeçalho Origin.
+            // https://fetch.spec.whatwg.org/#append-a-request-origin-header
+            options.referrerPolicy = 'strict-origin';
+        }
+
         // O navegador define Origin no POST; o cliente não tenta forjá-lo.
         let response;
         try {

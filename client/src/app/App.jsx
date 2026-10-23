@@ -433,7 +433,7 @@ function App({
                 </time>
 
                 <p className="app-context">
-                    Senac Ceilândia
+                    Planejamento de aulas
                 </p>
 
                 <h1 id="application-title">
@@ -441,7 +441,7 @@ function App({
                 </h1>
 
                 <p className="app-owner">
-                    Prof. Dionísio Pereira
+                    Organize seus cursos, atividades e materiais.
                 </p>
             </section>
 

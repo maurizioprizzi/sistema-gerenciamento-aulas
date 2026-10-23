@@ -116,6 +116,117 @@ describe('configuração dos cabeçalhos de segurança no app', () => {
     );
 });
 
+/** Verifica o ponto de montagem do catálogo sem acessar o MongoDB. */
+describe('configuração das rotas de cursos no app', () => {
+    async function withApp(app, verify) {
+        const server = http.createServer(app);
+        await new Promise((resolve, reject) => {
+            server.once('error', reject);
+            server.listen(0, '127.0.0.1', resolve);
+        });
+        try {
+            await verify(`http://127.0.0.1:${server.address().port}`);
+        } finally {
+            await new Promise((resolve, reject) => {
+                server.close(error => error ? reject(error) : resolve());
+            });
+        }
+    }
+
+    test('permite criar a aplicação sem roteador de cursos', () => {
+        assert.doesNotThrow(() => createApp());
+        assert.doesNotThrow(() => createApp({ courseRouter: null }));
+    });
+
+    test('recusa roteador de cursos incompatível', () => {
+        for (const courseRouter of ['roteador', 42, {}, [], false]) {
+            assert.throws(() => createApp({ courseRouter }), {
+                name: 'TypeError', message: APP_ERROR_MESSAGES.INVALID_COURSE_ROUTER,
+            });
+        }
+    });
+
+    test('entrega JSON e sessão ao curso depois da segurança e antes do frontend', async () => {
+        const order = [];
+        const app = createApp({
+            securityHeadersMiddleware(_request, response, next) {
+                order.push('security');
+                response.set('X-Test-Security', 'active');
+                next();
+            },
+            sessionMiddleware(request, _response, next) {
+                order.push('session');
+                request.session = { testMarker: 'session-ready' };
+                next();
+            },
+            courseRouter(request, response, next) {
+                order.push('courses');
+                assert.deepEqual(request.body, { name: 'Ciência de Dados', code: 'CD' });
+                assert.equal(request.session.testMarker, 'session-ready');
+                assert.equal(request.baseUrl, '/api/courses');
+                next();
+            },
+            frontendAssetsMiddleware(_request, response) {
+                order.push('frontend');
+                response.json({ order });
+            },
+        });
+        await withApp(app, async baseUrl => {
+            const response = await fetch(`${baseUrl}/api/courses`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: 'Ciência de Dados', code: 'CD' }),
+            });
+            assert.equal(response.status, 200);
+            assert.equal(response.headers.get('x-test-security'), 'active');
+            assert.deepEqual((await response.json()).order,
+                ['security', 'session', 'courses', 'frontend']);
+        });
+    });
+
+    test('resposta do catálogo é atendida antes do frontend', async () => {
+        let frontendCalls = 0;
+        const app = createApp({
+            courseRouter(_request, response) { response.json({ data: { courses: [] } }); },
+            frontendAssetsMiddleware(_request, response) {
+                frontendCalls += 1;
+                response.status(200).send('frontend');
+            },
+        });
+        await withApp(app, async baseUrl => {
+            const response = await fetch(`${baseUrl}/api/courses`);
+            assert.equal(response.status, 200);
+            assert.deepEqual(await response.json(), { data: { courses: [] } });
+            assert.equal(frontendCalls, 0);
+        });
+    });
+
+    test('monta o catálogo somente sob o prefixo /api/courses', async () => {
+        const paths = [];
+        const app = createApp({ courseRouter(request, response) {
+            paths.push(request.url);
+            response.status(204).end();
+        } });
+        await withApp(app, async baseUrl => {
+            for (const endpoint of ['/courses', '/api/courses-other']) {
+                const response = await fetch(`${baseUrl}${endpoint}`);
+                assert.equal(response.status, 404);
+                assert.equal((await response.json()).error.code, 'ROUTE_NOT_FOUND');
+            }
+            const response = await fetch(`${baseUrl}/api/courses/example/deactivate`, { method: 'PATCH' });
+            assert.equal(response.status, 204);
+            assert.deepEqual(paths, ['/example/deactivate']);
+        });
+    });
+
+    test('sem roteador o endereço de cursos recebe o 404 padronizado', async () => {
+        await withApp(createApp(), async baseUrl => {
+            const response = await fetch(`${baseUrl}/api/courses`);
+            assert.equal(response.status, 404);
+            assert.equal((await response.json()).error.code, 'ROUTE_NOT_FOUND');
+        });
+    });
+});
+
 describe('configuração das rotas de aulas no app', () => {
     test('permite criar a aplicação sem roteador de aulas', () => {
         assert.doesNotThrow(() => createApp());
@@ -637,7 +748,7 @@ describe('Aplicação HTTP', () => {
         assert.equal(body.status, 'ok');
         assert.equal(
             body.application,
-            'Calendário do Prof. Dionísio'
+            'Sistema de Gerenciamento de Aulas'
         );
         assert.equal(body.version, '0.1.0');
 
