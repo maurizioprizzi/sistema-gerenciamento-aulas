@@ -4500,3 +4500,31 @@ Depois, modelar turmas com turno, salas e capacidade de alunos; validar o uso em
 telas pequenas; concluir instalação local simplificada, opção Docker Compose,
 backup/restauração e recuperação de acesso. A aplicação permanece individual,
 com uma cópia por professor, sem serviço compartilhado para terceiros.
+
+## 23 de outubro de 2026 — Calendário sem cores fixas por curso
+
+### Objetivo e alteração
+
+Remover a legenda herdada de cursos fixos e evitar a dependência de uma paleta
+que cresceria a cada novo curso. Todos os registros do calendário passaram a
+usar o mesmo fundo neutro, com identificação textual da sigla, unidade
+curricular, tipo e número da aula.
+
+O componente deixou de gerar classes de cor a partir do curso. Os estilos
+específicos dos três cursos anteriores foram removidos. O rodapé agora explica
+somente o destaque de Hoje e a marcação para revisão. Registros para revisão
+mantêm a borda adicional e apresentam uma estrela ao lado da sigla.
+
+### Verificação e documentação
+
+Os testes existentes foram ajustados para conferir a ausência das siglas na
+legenda, a ausência de classes por curso e a estrela visível de revisão.
+Os 18 testes do calendário visual passaram na máquina de desenvolvimento,
+assim como a compilação de produção, com 36 módulos. A formatação foi conferida
+com `git diff --check`. Não foi registrada nova verificação manual no navegador
+após este ajuste.
+
+O README e o guia do usuário passaram a descrever essa apresentação. Esta
+correção não altera os dados das aulas nem conclui sua ligação com o catálogo:
+a substituição das opções fixas dos formulários e filtros pelo identificador
+estável de cada curso continua sendo o próximo marco.

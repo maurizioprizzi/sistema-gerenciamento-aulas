@@ -385,6 +385,13 @@ describe('consulta e apresentação do calendário visual', () => {
         expect(today.classList.contains('is-today')).toBe(true);
         expect(today.querySelector('time').textContent).toBe('22');
         expect(screen.queryByRole('dialog')).toBeNull();
+
+        const legend = screen.getByLabelText('Legenda do calendário');
+        expect(within(legend).getByText('Hoje')).toBeTruthy();
+        expect(within(legend).getByText('Marcada para revisão')).toBeTruthy();
+        for (const code of ['APQSA', 'TECMKT', 'TECADM']) {
+            expect(within(legend).queryByText(code)).toBeNull();
+        }
     });
 
     test('navega entre meses e retorna à data atual sem consultar novamente', async () => {
@@ -472,7 +479,10 @@ describe('consulta e apresentação do calendário visual', () => {
                 + 'Avaliação Aula 2, marcada para revisão',
         });
 
-        expect(event.classList.contains('course-TECADM')).toBe(true);
+        expect([...event.classList].some(
+            (className) => className.startsWith('course-'),
+        )).toBe(false);
+        expect(within(event).getByText('TECADM ★')).toBeTruthy();
         expect(event.classList.contains('needs-review')).toBe(true);
         expect(event.title).toContain('★ Revisão');
         expect(event.textContent).toContain(

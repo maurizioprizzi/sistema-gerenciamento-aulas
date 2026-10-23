@@ -470,13 +470,16 @@ Na parte superior estão os botões:
 
 O campo **Curso** permite mostrar todos os cursos ou somente um curso.
 
-### 15.1 Cores e destaques
+### 15.1 Identificação e destaques
 
-Cada curso possui sua própria cor. A legenda abaixo da grade mostra a
-correspondência.
+Todos os registros usam a mesma aparência, sem uma cor diferente por curso.
+A sigla do curso aparece no próprio registro, junto da unidade curricular,
+do tipo e do número da aula. Use o filtro **Curso** quando quiser reduzir a
+quantidade de registros exibidos no mês.
 
 O dia atual possui um destaque próprio. Um registro marcado para revisão
-recebe uma borda adicional e é identificado pela estrela da legenda.
+recebe uma borda adicional e uma estrela `★` ao lado da sigla. A legenda abaixo
+da grade explica apenas **Hoje** e **Marcada para revisão**.
 
 ### 15.2 Ver os detalhes de um registro
 

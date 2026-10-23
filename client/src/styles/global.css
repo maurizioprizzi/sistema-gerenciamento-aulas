@@ -2376,6 +2376,8 @@ noscript {
     font-size: 0.72rem;
     line-height: 1.3;
     color: #ffffff;
+    /* Todos os cursos compartilham a mesma aparência; a sigla é textual. */
+    background: #334155;
     text-align: left;
     cursor: pointer;
     border: 2px solid transparent;
@@ -2403,21 +2405,6 @@ noscript {
     margin-top: 0.12rem;
     font-weight: 550;
     opacity: 0.96;
-}
-
-.calendar-visual-event.course-APQSA,
-.calendar-visual-legend-color.course-APQSA {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.calendar-visual-event.course-TECMKT,
-.calendar-visual-legend-color.course-TECMKT {
-    background: linear-gradient(135deg, #db5ce5 0%, #e7465a 100%);
-}
-
-.calendar-visual-event.course-TECADM,
-.calendar-visual-legend-color.course-TECADM {
-    background: linear-gradient(135deg, #258de3 0%, #0799aa 100%);
 }
 
 .calendar-visual-event.needs-review {

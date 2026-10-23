@@ -756,7 +756,6 @@ function CalendarVisual({
                                                     type="button"
                                                     className={[
                                                         'calendar-visual-event',
-                                                        `course-${lesson.course}`,
                                                         lesson.needsReview
                                                             ? 'needs-review'
                                                             : '',
@@ -793,6 +792,9 @@ function CalendarVisual({
                                                 >
                                                     <strong>
                                                         {lesson.course}
+                                                        {lesson.needsReview
+                                                            ? ' ★'
+                                                            : ''}
                                                     </strong>
                                                     <span>
                                                         UC{' '}
@@ -814,21 +816,6 @@ function CalendarVisual({
                             className="calendar-visual-legend"
                             aria-label="Legenda do calendário"
                         >
-                            {LESSON_API_COURSES.map((availableCourse) => (
-                                <div
-                                    key={availableCourse}
-                                    className="calendar-visual-legend-item"
-                                >
-                                    <span
-                                        className={
-                                            'calendar-visual-legend-color '
-                                            + `course-${availableCourse}`
-                                        }
-                                        aria-hidden="true"
-                                    />
-                                    <span>{availableCourse}</span>
-                                </div>
-                            ))}
                             <div className="calendar-visual-legend-item">
                                 <span
                                     className="calendar-visual-legend-color is-today"

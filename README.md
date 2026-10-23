@@ -351,7 +351,8 @@ vínculo entre cursos e aulas, mantendo uma cópia independente por professor.
 - navegação civil pelo mês anterior, próximo mês e retorno à data atual;
 - grade semanal iniciada no domingo com destaque para hoje e fins de semana;
 - filtro local pelas opções de curso do contrato anterior, ainda sem ligação com o catálogo;
-- cores por curso e destaque dos registros marcados para revisão;
+- aparência uniforme dos registros, identificação textual do curso e estrela de revisão;
+- legenda restrita ao dia atual e à marcação para revisão, sem lista fixa de cursos;
 - diálogo acessível com os dados públicos e materiais efetivos da aula;
 - proteção do calendário contra respostas antigas e atualizações após desmontagem;
 - preservação da sessão e dos erros públicos dentro da área autenticada;
