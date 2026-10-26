@@ -1,6 +1,10 @@
 'use strict';
 
 const { AppError } = require('../errors/AppError');
+const { isObjectIdOrHexString } = require('mongoose');
+const { Course } = require('../models/Course');
+const { CourseService } = require('./CourseService');
+const { LessonCourseValidator } = require('./LessonCourseValidator');
 const {
     LESSON_COURSES,
     Lesson,
@@ -17,6 +21,7 @@ const LESSON_SERVICE_CODES = Object.freeze({
     INVALID_LESSON_DATA: 'INVALID_LESSON_DATA',
     INVALID_LESSON_FILTERS: 'INVALID_LESSON_FILTERS',
     INVALID_LESSON_ID: 'INVALID_LESSON_ID',
+    LESSON_CHANGED: 'LESSON_CHANGED',
 });
 
 /**
@@ -35,6 +40,16 @@ const LESSON_SERVICE_MESSAGES = Object.freeze({
         'O modelo retornou uma aula inválida.',
     INVALID_LESSON_LIST:
         'O modelo retornou uma lista de aulas inválida.',
+    INVALID_COURSE_MODEL:
+        'Um modelo de curso com consultas válidas é necessário para gerenciar as aulas.',
+    INVALID_COURSE_VALIDATOR:
+        'Um validador de cursos válido é necessário para gerenciar as aulas.',
+    INVALID_COURSE_RESPONSE:
+        'O catálogo retornou dados incompatíveis com o vínculo da aula.',
+    INVALID_CATALOG_LESSON_MODEL:
+        'O modelo de aulas deve oferecer leitura por identificador e atualização condicional.',
+    LESSON_CHANGED:
+        'A aula foi alterada durante a edição. Atualize a lista e tente novamente.',
 });
 
 /**
@@ -63,6 +78,11 @@ const LESSON_CREATION_FIELDS = Object.freeze([
  */
 const LESSON_UPDATE_FIELDS = LESSON_CREATION_FIELDS;
 
+/** Contrato novo: a identidade substitui a sigla enviada pelo formulário. */
+const LESSON_CATALOG_FIELDS = Object.freeze(LESSON_CREATION_FIELDS.map(
+    (field) => field === 'course' ? 'courseId' : field,
+));
+
 /**
  * Formato textual dos identificadores ObjectId utilizados pelo MongoDB.
  *
@@ -83,6 +103,14 @@ const LESSON_UPDATE_OPTIONS = Object.freeze({
     context: 'query',
 });
 
+/** Opções da atualização condicional usada com os vínculos do catálogo. */
+const LESSON_CATALOG_UPDATE_OPTIONS = Object.freeze({
+    returnDocument: 'after',
+    upsert: false,
+    runValidators: true,
+    context: 'query',
+});
+
 /**
  * Filtros presentes na interface original de gerenciamento de aulas.
  *
@@ -92,6 +120,7 @@ const LESSON_UPDATE_OPTIONS = Object.freeze({
  */
 const LESSON_LIST_FILTER_FIELDS = Object.freeze([
     'course',
+    'courseId',
     'month',
     'fromDate',
 ]);
@@ -167,6 +196,21 @@ function createInvalidLessonIdError() {
 }
 
 /**
+ * Lê a referência persistida sem aceitar siglas, números ou objetos de filtro.
+ * Ausência continua possível somente para os registros do contrato anterior.
+ */
+function readStoredCourseId(lesson) {
+    if (!isInputObject(lesson)) {
+        throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_LESSON_DOCUMENT);
+    }
+    if (lesson.courseId === undefined || lesson.courseId === null) return null;
+    if (!isObjectIdOrHexString(lesson.courseId)) {
+        throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_LESSON_DOCUMENT);
+    }
+    return String(lesson.courseId).toLowerCase();
+}
+
+/**
  * Coordena as regras de criação, edição, exclusão e consulta das aulas.
  *
  * O serviço desconhece HTTP, sessões e detalhes visuais. O modelo é recebido
@@ -179,6 +223,8 @@ class LessonService {
      * @type {object}
      */
     #LessonModel;
+    #CourseModel;
+    #courseValidator;
 
     /**
      * Marca seletores construídos internamente como confiáveis para o
@@ -191,11 +237,36 @@ class LessonService {
     /**
      * @param {object} dependencies Dependências do serviço.
      * @param {object} dependencies.LessonModel Modelo Mongoose de aula.
+     * @param {object} dependencies.CourseModel Modelo de cursos da instalação.
+     * @param {object} dependencies.courseValidator Validação da associação.
      */
-    constructor({ LessonModel = Lesson } = {}) {
+    constructor({
+        LessonModel = Lesson,
+        CourseModel = Course,
+        courseValidator,
+    } = {}) {
         LessonService.validateLessonModel(LessonModel);
 
+        if (
+            !CourseModel
+            || typeof CourseModel.find !== 'function'
+            || typeof CourseModel.findById !== 'function'
+        ) {
+            throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_COURSE_MODEL);
+        }
+        const selectedValidator = courseValidator === undefined
+            ? new LessonCourseValidator({ CourseModel }) : courseValidator;
+        if (
+            !selectedValidator
+            || typeof selectedValidator.validateForCreation !== 'function'
+            || typeof selectedValidator.validateForUpdate !== 'function'
+        ) {
+            throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_COURSE_VALIDATOR);
+        }
+
         this.#LessonModel = LessonModel;
+        this.#CourseModel = CourseModel;
+        this.#courseValidator = selectedValidator;
 
         /**
          * Modelos Mongoose expõem em `base` a instância que os criou. Quando
@@ -234,7 +305,9 @@ class LessonService {
     }
 
     /**
-     * Mantém somente os oito campos funcionais autorizados.
+     * Mantém somente os campos funcionais de um dos dois contratos.
+     * course atende temporariamente ao fluxo anterior. courseId seleciona o
+     * contrato do catálogo, sem aceitar sigla ou estado ativo enviados à parte.
      *
      * A validação detalhada de valores permanece no schema `Lesson`, que é a
      * fonte única das regras de data, curso, tipo, tamanho e URL. Nesta etapa,
@@ -245,13 +318,18 @@ class LessonService {
      * @throws {AppError} Quando a estrutura contém campos não autorizados.
      */
     static prepareLessonData(lessonData) {
-        if (!isInputObject(lessonData)) {
+        if (
+            !isInputObject(lessonData)
+            || ![Object.prototype, null].includes(Object.getPrototypeOf(lessonData))
+        ) {
             throw createInvalidLessonDataError();
         }
 
-        const receivedFields = Object.keys(lessonData);
+        const fields = Object.hasOwn(lessonData, 'courseId')
+            ? LESSON_CATALOG_FIELDS : LESSON_CREATION_FIELDS;
+        const receivedFields = Reflect.ownKeys(lessonData);
         const hasUnknownField = receivedFields.some(
-            (field) => !LESSON_CREATION_FIELDS.includes(field),
+            (field) => !fields.includes(field),
         );
 
         if (hasUnknownField) {
@@ -260,10 +338,20 @@ class LessonService {
 
         const preparedData = {};
 
-        for (const field of LESSON_CREATION_FIELDS) {
+        for (const field of fields) {
             if (Object.hasOwn(lessonData, field)) {
                 preparedData[field] = lessonData[field];
             }
+        }
+
+        if (fields === LESSON_CATALOG_FIELDS) {
+            if (
+                typeof preparedData.courseId !== 'string'
+                || !LESSON_ID_PATTERN.test(preparedData.courseId)
+            ) {
+                throw createInvalidLessonDataError();
+            }
+            preparedData.courseId = preparedData.courseId.toLowerCase();
         }
 
         return Object.freeze(preparedData);
@@ -301,7 +389,9 @@ class LessonService {
     static prepareLessonUpdateData(lessonData) {
         const preparedData =
             LessonService.prepareLessonData(lessonData);
-        const hasEveryField = LESSON_UPDATE_FIELDS.every(
+        const fields = Object.hasOwn(preparedData, 'courseId')
+            ? LESSON_CATALOG_FIELDS : LESSON_UPDATE_FIELDS;
+        const hasEveryField = fields.every(
             (field) => Object.hasOwn(preparedData, field),
         );
 
@@ -355,17 +445,29 @@ class LessonService {
 
         const {
             course,
+            courseId,
             month,
             fromDate,
         } = filters;
 
         const hasCourse = course !== undefined;
+        const hasCourseId = courseId !== undefined;
         const hasMonth = month !== undefined;
         const hasFromDate = fromDate !== undefined;
 
         if (
             hasCourse
             && !Object.values(LESSON_COURSES).includes(course)
+        ) {
+            throw createInvalidLessonFiltersError();
+        }
+
+        if (
+            (hasCourse && hasCourseId)
+            || (hasCourseId && (
+                typeof courseId !== 'string'
+                || !LESSON_ID_PATTERN.test(courseId)
+            ))
         ) {
             throw createInvalidLessonFiltersError();
         }
@@ -388,6 +490,9 @@ class LessonService {
 
         if (hasCourse) {
             queryFilter.course = course;
+        }
+        if (hasCourseId) {
+            queryFilter.courseId = courseId.toLowerCase();
         }
 
         if (hasMonth || hasFromDate) {
@@ -458,13 +563,21 @@ class LessonService {
      * @returns {Readonly<object>} Aula pública e imutável.
      * @throws {TypeError} Quando o modelo retorna um documento inconsistente.
      */
-    static createLessonRepresentation(lesson) {
+    static createLessonRepresentation(lesson, course = null) {
+        const courseId = readStoredCourseId(lesson);
+        let linkedCourse = null;
+        if (courseId !== null) {
+            linkedCourse = LessonService.validateCourseResponse(course, courseId);
+            if (!LESSON_ID_PATTERN.test(String(lesson._id))) {
+                throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_LESSON_DOCUMENT);
+            }
+        }
         const hasValidDocument =
             lesson
             && lesson._id !== undefined
             && lesson._id !== null
             && typeof lesson.date === 'string'
-            && typeof lesson.course === 'string'
+            && (linkedCourse !== null || typeof lesson.course === 'string')
             && typeof lesson.curricularUnit === 'string'
             && typeof lesson.type === 'string'
             && (
@@ -490,7 +603,8 @@ class LessonService {
         return Object.freeze({
             id: String(lesson._id),
             date: lesson.date,
-            course: lesson.course,
+            course: linkedCourse === null ? lesson.course : linkedCourse.code,
+            ...(linkedCourse === null ? {} : { courseId: linkedCourse.id }),
             curricularUnit: lesson.curricularUnit,
             type: lesson.type,
             lessonNumber: lesson.lessonNumber,
@@ -498,6 +612,65 @@ class LessonService {
             lessonPlanUrl: lesson.lessonPlanUrl,
             studentGuideUrl: lesson.studentGuideUrl,
         });
+    }
+
+    /** Confirma a identidade e o contrato público devolvidos por uma dependência. */
+    static validateCourseResponse(course, expectedId) {
+        if (!isInputObject(course)) {
+            throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_COURSE_RESPONSE);
+        }
+        const representation = CourseService.createCourseRepresentation({
+            ...course,
+            _id: course.id,
+        });
+        if (representation.id !== expectedId) {
+            throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_COURSE_RESPONSE);
+        }
+        return representation;
+    }
+
+    /**
+     * Resolve o catálogo uma vez por operação, inclusive para uma lista grande.
+     * A sigla exibida é a atual: nunca é utilizada como chave da associação.
+     * Cursos desativados também participam da consulta para manter o histórico.
+     * Uma referência ausente ou inconsistente no banco não vira aula vazia.
+     */
+    async #createRepresentations(lessons) {
+        const requestedIds = new Set(lessons.map(readStoredCourseId).filter(
+            (id) => id !== null,
+        ));
+        const coursesById = new Map();
+
+        if (requestedIds.size > 0) {
+            let selector = { $in: [...requestedIds] };
+            const base = this.#CourseModel.base;
+            if (base && typeof base.trusted === 'function') {
+                // Apenas o seletor interno recebe confiança; nenhum operador
+                // recebido do navegador é repassado à consulta.
+                selector = base.trusted(selector);
+            }
+            const courses = await this.#CourseModel.find({ _id: selector });
+            if (!Array.isArray(courses)) {
+                throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_COURSE_RESPONSE);
+            }
+            for (const document of courses) {
+                const course = CourseService.createCourseRepresentation(document);
+                if (!requestedIds.has(course.id) || coursesById.has(course.id)) {
+                    throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_COURSE_RESPONSE);
+                }
+                coursesById.set(course.id, course);
+            }
+            if (coursesById.size !== requestedIds.size) {
+                throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_COURSE_RESPONSE);
+            }
+        }
+
+        return Object.freeze(lessons.map((lesson) => (
+            LessonService.createLessonRepresentation(
+                lesson,
+                coursesById.get(readStoredCourseId(lesson)),
+            )
+        )));
     }
 
     /**
@@ -543,6 +716,18 @@ class LessonService {
         const preparedData =
             LessonService.prepareLessonData(lessonData);
 
+        if (Object.hasOwn(preparedData, 'courseId')) {
+            const selected = await this.#courseValidator.validateForCreation(
+                preparedData.courseId,
+            );
+            const course = LessonService.validateCourseResponse(
+                selected, preparedData.courseId,
+            );
+            if (!course.active) {
+                throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_COURSE_RESPONSE);
+            }
+        }
+
         let createdLesson;
 
         try {
@@ -557,9 +742,11 @@ class LessonService {
             throw error;
         }
 
-        return LessonService.createLessonRepresentation(
-            createdLesson,
-        );
+        if (Object.hasOwn(preparedData, 'courseId')
+            && readStoredCourseId(createdLesson) !== preparedData.courseId) {
+            throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_LESSON_DOCUMENT);
+        }
+        return (await this.#createRepresentations([createdLesson]))[0];
     }
 
     /**
@@ -578,6 +765,9 @@ class LessonService {
             LessonService.prepareLessonId(lessonId);
         const preparedData =
             LessonService.prepareLessonUpdateData(lessonData);
+        if (Object.hasOwn(preparedData, 'courseId')) {
+            return this.#updateCatalogLesson(preparedId, preparedData);
+        }
         const update = Object.freeze({
             $set: preparedData,
         });
@@ -585,11 +775,21 @@ class LessonService {
         let updatedLesson;
 
         try {
-            updatedLesson = await this.#LessonModel.findByIdAndUpdate(
-                preparedId,
-                update,
-                LESSON_UPDATE_OPTIONS,
-            );
+            if (typeof this.#LessonModel.findOneAndUpdate === 'function') {
+                // O formulário antigo não pode sobrescrever uma aula que já
+                // foi convertida ao vínculo por identidade. null também
+                // encontra documentos legados em que courseId não existe.
+                updatedLesson = await this.#LessonModel.findOneAndUpdate(
+                    { _id: preparedId, courseId: null }, update,
+                    LESSON_CATALOG_UPDATE_OPTIONS,
+                );
+            } else {
+                // Adaptadores do contrato anterior continuam válidos durante
+                // a transição. O novo contrato exige atualização condicional.
+                updatedLesson = await this.#LessonModel.findByIdAndUpdate(
+                    preparedId, update, LESSON_UPDATE_OPTIONS,
+                );
+            }
         } catch (error) {
             if (
                 LessonService.isModelValidationError(error)
@@ -605,9 +805,60 @@ class LessonService {
             return null;
         }
 
-        return LessonService.createLessonRepresentation(
-            updatedLesson,
+        return (await this.#createRepresentations([updatedLesson]))[0];
+    }
+
+    /**
+     * Lê o vínculo anterior do banco e mantém essa condição na escrita.
+     * Se outro pedido trocar o curso nesse intervalo, esta edição recebe 409
+     * em vez de reutilizar a permissão de manter um curso desativado.
+     * Essa condição protege o vínculo; não constitui transação com o curso.
+     */
+    async #updateCatalogLesson(preparedId, data) {
+        if (
+            typeof this.#LessonModel.findById !== 'function'
+            || typeof this.#LessonModel.findOneAndUpdate !== 'function'
+        ) {
+            throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_CATALOG_LESSON_MODEL);
+        }
+        const previous = await this.#LessonModel.findById(preparedId);
+        if (previous === null) return null;
+        const previousCourseId = readStoredCourseId(previous);
+        if (String(previous._id).toLowerCase() !== preparedId.toLowerCase()) {
+            throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_LESSON_DOCUMENT);
+        }
+        const selected = await this.#courseValidator.validateForUpdate(
+            data.courseId, previousCourseId,
         );
+        const course = LessonService.validateCourseResponse(selected, data.courseId);
+        if (!course.active && course.id !== previousCourseId) {
+            throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_COURSE_RESPONSE);
+        }
+
+        let updated;
+        try {
+            updated = await this.#LessonModel.findOneAndUpdate(
+                { _id: preparedId, courseId: previousCourseId },
+                { $set: data, $unset: { course: 1 } },
+                LESSON_CATALOG_UPDATE_OPTIONS,
+            );
+        } catch (error) {
+            if (LessonService.isModelValidationError(error)
+                || LessonService.isModelCastError(error)) {
+                throw createInvalidLessonDataError();
+            }
+            throw error;
+        }
+        if (updated === null) {
+            throw new AppError(LESSON_SERVICE_MESSAGES.LESSON_CHANGED, {
+                statusCode: 409, code: LESSON_SERVICE_CODES.LESSON_CHANGED,
+            });
+        }
+        if (readStoredCourseId(updated) !== data.courseId
+            || String(updated._id).toLowerCase() !== preparedId.toLowerCase()) {
+            throw new TypeError(LESSON_SERVICE_MESSAGES.INVALID_LESSON_DOCUMENT);
+        }
+        return (await this.#createRepresentations([updated]))[0];
     }
 
     /**
@@ -647,9 +898,7 @@ class LessonService {
             return null;
         }
 
-        return LessonService.createLessonRepresentation(
-            deletedLesson,
-        );
+        return (await this.#createRepresentations([deletedLesson]))[0];
     }
 
     /**
@@ -676,11 +925,7 @@ class LessonService {
             );
         }
 
-        const representations = lessons.map(
-            LessonService.createLessonRepresentation,
-        );
-
-        return Object.freeze(representations);
+        return this.#createRepresentations(lessons);
     }
 }
 
@@ -690,6 +935,8 @@ class LessonService {
 const lessonService = new LessonService();
 
 module.exports = {
+    LESSON_CATALOG_FIELDS,
+    LESSON_CATALOG_UPDATE_OPTIONS,
     LESSON_CREATION_FIELDS,
     LESSON_ID_PATTERN,
     LESSON_LIST_FILTER_FIELDS,

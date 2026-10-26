@@ -17,8 +17,20 @@ const {
     createAdministrativeLessonRouter,
     createAdministrativeMonthlyMaterialRouter,
     resolvePort,
-    startServer,
+    startServer: startServerWithRealDependencies,
 } = require('../src/server');
+
+/**
+ * Os cenários do ciclo recebem um roteador neutro por padrão para não criar
+ * índices em um MongoDB externo. Cenários de índices substituem explicitamente
+ * essa fábrica; todos continuam executando o startServer real.
+ */
+function startServer(options) {
+    return startServerWithRealDependencies({
+        lessonRouterFactory: createTestInitialSetupRouter,
+        ...options,
+    });
+}
 
 /**
  * Variáveis necessárias para testar startServer sem depender do .env local.
@@ -243,8 +255,14 @@ describe('createAdminBootstrapper', () => {
 });
 
 describe('createAdministrativeLessonRouter', () => {
-    test('compõe um roteador válido sem abrir conexão com o banco', () => {
-        const router = createAdministrativeLessonRouter();
+    test('compõe um roteador válido com modelos injetados sem abrir conexão', async () => {
+        const router = await createAdministrativeLessonRouter({
+            LessonModel: {
+                async createIndexes() {}, create() {}, find() {}, findById() {},
+                findByIdAndUpdate() {}, findOneAndUpdate() {}, findByIdAndDelete() {},
+            },
+            CourseModel: { find() {}, findById() {} },
+        });
 
         assert.equal(typeof router, 'function');
         assert.equal(typeof router.get, 'function');
@@ -2105,6 +2123,189 @@ describe('catálogo de cursos no ciclo do servidor', () => {
             }
             assert.strictEqual(ctx.suppliedRouter, router);
             assert.deepEqual(ctx.calls, [['connect', true], ['native'], ['lessons'], ['app'], ['disconnect']]);
+        });
+    });
+});
+
+describe('índices de aulas e vínculo com o catálogo na inicialização', () => {
+    function lessonModel(createIndexes = async () => {}) {
+        return {
+            createIndexes, create() {}, find() {}, findById() {},
+            findByIdAndUpdate() {}, findOneAndUpdate() {}, findByIdAndDelete() {},
+        };
+    }
+
+    function courseModel() {
+        return { find() {}, findById() {} };
+    }
+
+    /** A composição chega ao app, mas para antes de abrir qualquer porta. */
+    function setup(lessonRouterFactory) {
+        const calls = [];
+        const stop = new Error('Parada controlada antes do HTTP.');
+        let suppliedRouter;
+        const options = {
+            database: {
+                async connect(_uri, config) { calls.push(['connect', config.autoIndex]); },
+                async disconnect() { calls.push(['disconnect']); },
+                getNativeClient() { calls.push(['native']); return { db() {} }; },
+            },
+            frontendAssetsMiddlewareFactory: createTestFrontendAssetsMiddleware,
+            administrativeIndexInitializerFactory: createTestAdministrativeIndexInitializer,
+            adminBootstrapperFactory: () => ({ async ensureAdmin() {} }),
+            administrativeStartupServiceFactory: () => ({
+                async initialize() { return { status: 'existing_admin' }; },
+            }),
+            initialSetupRouterFactory: createTestInitialSetupRouter,
+            sessionStoreFactory: () => ({ on() {} }),
+            sessionMiddlewareFactory: createTestInitialSetupRouter,
+            authenticationRouterFactory: createTestInitialSetupRouter,
+            courseRouterFactory() { calls.push(['courses-ready']); return createTestInitialSetupRouter(); },
+            lessonRouterFactory,
+            monthlyMaterialRouterFactory() {
+                calls.push(['monthly']);
+                return createTestInitialSetupRouter();
+            },
+            appFactory(config) {
+                suppliedRouter = config.lessonRouter;
+                calls.push(['app']);
+                throw stop;
+            },
+            logger: createFakeLogger().logger,
+        };
+        return { options, calls, stop, get suppliedRouter() { return suppliedRouter; } };
+    }
+
+    test('a composição não entrega o roteador enquanto os índices estão pendentes', async () => {
+        let release;
+        let completed = false;
+        const indexes = new Promise((resolve) => { release = resolve; });
+        const pending = createAdministrativeLessonRouter({
+            LessonModel: lessonModel(() => indexes), CourseModel: courseModel(),
+        });
+        pending.then(() => { completed = true; });
+        try {
+            await new Promise((resolve) => setImmediate(resolve));
+            assert.equal(completed, false);
+        } finally { release(); }
+        const router = await pending;
+        assert.equal(typeof router, 'function');
+        assert.equal(typeof router.put, 'function');
+        assert.equal(typeof router.delete, 'function');
+    });
+
+    test('recusa modelo sem preparação explícita dos índices', async () => {
+        await assert.rejects(createAdministrativeLessonRouter({ LessonModel: {} }), {
+            name: 'TypeError', message: SERVER_ERROR_MESSAGES.INVALID_LESSON_INDEX_MODEL,
+        });
+    });
+
+    test('recusa operações básicas incompletas antes de criar índices', async () => {
+        let indexCalls = 0;
+        await assert.rejects(createAdministrativeLessonRouter({
+            LessonModel: { async createIndexes() { indexCalls += 1; } },
+            CourseModel: courseModel(),
+        }), TypeError);
+        assert.equal(indexCalls, 0);
+    });
+
+    test('recusa ausência de leitura ou atualização condicional antes de criar índices', async () => {
+        for (const missing of ['findById', 'findOneAndUpdate']) {
+            let indexCalls = 0;
+            const model = lessonModel(async () => { indexCalls += 1; });
+            delete model[missing];
+            await assert.rejects(createAdministrativeLessonRouter({
+                LessonModel: model, CourseModel: courseModel(),
+            }), {
+                name: 'TypeError', message: SERVER_ERROR_MESSAGES.INVALID_LESSON_CATALOG_MODEL,
+            });
+            assert.equal(indexCalls, 0);
+        }
+    });
+
+    test('recusa catálogo inválido antes de preparar os índices de aulas', async () => {
+        let indexCalls = 0;
+        await assert.rejects(createAdministrativeLessonRouter({
+            LessonModel: lessonModel(async () => { indexCalls += 1; }),
+            CourseModel: {},
+        }), TypeError);
+        assert.equal(indexCalls, 0);
+    });
+
+    test('preserva a falha dos índices sem devolver um roteador utilizável', async () => {
+        const failure = new Error('Falha controlada no índice de consulta.');
+        await assert.rejects(createAdministrativeLessonRouter({
+            LessonModel: lessonModel(async () => { throw failure; }),
+            CourseModel: courseModel(),
+        }), (error) => error === failure);
+    });
+
+    for (const nodeEnv of ['test', 'production']) {
+        test(`falha dos índices de aulas impede o app e encerra o banco em ${nodeEnv}`, async () => {
+            await withTestEnvironment(async () => {
+                const failure = new Error('Índice de aulas indisponível.');
+                const ctx = setup(() => createAdministrativeLessonRouter({
+                    LessonModel: lessonModel(async () => { throw failure; }),
+                    CourseModel: courseModel(),
+                }));
+                await assert.rejects(startServer(ctx.options), (error) => error === failure);
+                assert.deepEqual(ctx.calls, [
+                    ['connect', nodeEnv !== 'production'], ['native'],
+                    ['courses-ready'], ['disconnect'],
+                ]);
+            }, { NODE_ENV: nodeEnv });
+        });
+
+        test(`índices de aulas são aguardados antes do app em ${nodeEnv}`, async () => {
+            await withTestEnvironment(async () => {
+                let router;
+                const ctx = setup(async () => {
+                    router = await createAdministrativeLessonRouter({
+                        LessonModel: lessonModel(async () => { ctx.calls.push(['lesson-index-ready']); }),
+                        CourseModel: courseModel(),
+                    });
+                    return router;
+                });
+                await assert.rejects(startServer(ctx.options), (error) => error === ctx.stop);
+                assert.strictEqual(ctx.suppliedRouter, router);
+                assert.deepEqual(ctx.calls, [
+                    ['connect', nodeEnv !== 'production'], ['native'], ['courses-ready'],
+                    ['lesson-index-ready'], ['monthly'], ['app'], ['disconnect'],
+                ]);
+            }, { NODE_ENV: nodeEnv });
+        });
+    }
+
+    test('a espera da fábrica de aulas impede a composição dos materiais e do app', async () => {
+        await withTestEnvironment(async () => {
+            let release;
+            const gate = new Promise((resolve) => { release = resolve; });
+            const router = createTestInitialSetupRouter();
+            const ctx = setup(async () => { await gate; return router; });
+            const pending = assert.rejects(startServer(ctx.options), (error) => error === ctx.stop);
+            try {
+                await new Promise((resolve) => setImmediate(resolve));
+                assert.deepEqual(ctx.calls, [['connect', true], ['native'], ['courses-ready']]);
+            } finally {
+                release();
+                await pending;
+            }
+            assert.strictEqual(ctx.suppliedRouter, router);
+            assert.deepEqual(ctx.calls, [
+                ['connect', true], ['native'], ['courses-ready'], ['monthly'], ['app'], ['disconnect'],
+            ]);
+        });
+    });
+
+    test('retorno assíncrono inválido da fábrica de aulas interrompe a inicialização', async () => {
+        await withTestEnvironment(async () => {
+            const ctx = setup(async () => ({}));
+            await assert.rejects(startServer(ctx.options), {
+                name: 'TypeError', message: SERVER_ERROR_MESSAGES.INVALID_LESSON_ROUTER,
+            });
+            assert.deepEqual(ctx.calls, [
+                ['connect', true], ['native'], ['courses-ready'], ['disconnect'],
+            ]);
         });
     });
 });

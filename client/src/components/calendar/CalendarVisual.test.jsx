@@ -23,7 +23,7 @@ import {
     CALENDAR_VISUAL_IDS,
     CALENDAR_VISUAL_MESSAGES,
     CALENDAR_WEEKDAYS,
-    CalendarVisual,
+    CalendarVisual as RealCalendarVisual,
     createCalendarCells,
     createCalendarPeriodFromDate,
     formatCalendarPeriod,
@@ -32,6 +32,20 @@ import {
     readCalendarToday,
     shiftCalendarPeriod,
 } from './CalendarVisual.jsx';
+
+const COURSE_IDS = Object.freeze({
+    CD: '507f1f77bcf86cd7994390ab', RC: '507f1f77bcf86cd7994390ac',
+    ADM: '507f1f77bcf86cd7994390ad',
+});
+const TEST_COURSES = Object.freeze([
+    { id: COURSE_IDS.CD, name: 'Ciência de Dados', code: 'CD', active: true },
+    { id: COURSE_IDS.RC, name: 'Redes de Computadores', code: 'RC', active: true },
+    { id: COURSE_IDS.ADM, name: 'Administração', code: 'ADM', active: false },
+]);
+const TEST_COURSE_SERVICE = { async listCourses() { return TEST_COURSES; } };
+function CalendarVisual(props) {
+    return <RealCalendarVisual courseService={TEST_COURSE_SERVICE} {...props} />;
+}
 
 afterEach(() => {
     cleanup();
@@ -45,9 +59,10 @@ afterEach(() => {
  */
 function createLesson(overrides = {}) {
     return Object.freeze({
-        id: 'lesson-1',
+        id: '507f1f77bcf86cd799439011',
         date: '2026-09-22',
-        course: 'APQSA',
+        course: 'CD',
+        courseId: COURSE_IDS[overrides.course ?? 'CD'],
         curricularUnit: 'Qualidade de Software',
         type: 'Aula',
         lessonNumber: '12',
@@ -107,12 +122,14 @@ function renderCalendar({
     materials = [],
     lessonService = createLessonService(lessons),
     monthlyMaterialService = createMonthlyMaterialService(materials),
+    courseService = TEST_COURSE_SERVICE,
     todayProvider = () => '2026-09-22',
 } = {}) {
     const view = render(
         <CalendarVisual
             lessonService={lessonService}
             monthlyMaterialService={monthlyMaterialService}
+            courseService={courseService}
             todayProvider={todayProvider}
         />,
     );
@@ -120,6 +137,7 @@ function renderCalendar({
     return {
         lessonService,
         monthlyMaterialService,
+        courseService,
         todayProvider,
         view,
     };
@@ -288,12 +306,12 @@ describe('preparação civil da grade mensal', () => {
         const lessons = Object.freeze([
             createLesson(),
             createLesson({
-                id: 'lesson-2',
+                id: '507f1f77bcf86cd799439012',
                 date: '2026-09-05',
-                course: 'TECMKT',
+                course: 'RC',
             }),
             createLesson({
-                id: 'outside',
+                id: '507f1f77bcf86cd799439013',
                 date: '2026-10-01',
             }),
         ]);
@@ -326,12 +344,12 @@ describe('preparação civil da grade mensal', () => {
     test('filtra os registros pelo curso sem alterar a grade', () => {
         const lessons = [
             createLesson(),
-            createLesson({ id: 'lesson-2', course: 'TECMKT' }),
+            createLesson({ id: '507f1f77bcf86cd799439012', course: 'RC' }),
         ];
         const cells = createCalendarCells(
             { year: 2026, month: 8 },
             lessons,
-            'TECMKT',
+            COURSE_IDS.RC,
             '2026-09-22',
         );
         const day = cells.find((cell) => cell.day === 22);
@@ -389,7 +407,7 @@ describe('consulta e apresentação do calendário visual', () => {
         const legend = screen.getByLabelText('Legenda do calendário');
         expect(within(legend).getByText('Hoje')).toBeTruthy();
         expect(within(legend).getByText('Marcada para revisão')).toBeTruthy();
-        for (const code of ['APQSA', 'TECMKT', 'TECADM']) {
+        for (const code of ['CD', 'RC', 'ADM']) {
             expect(within(legend).queryByText(code)).toBeNull();
         }
     });
@@ -432,31 +450,31 @@ describe('consulta e apresentação do calendário visual', () => {
                 lessons: [
                     createLesson(),
                     createLesson({
-                        id: 'lesson-2',
-                        course: 'TECMKT',
+                        id: '507f1f77bcf86cd799439012',
+                        course: 'RC',
                         curricularUnit: 'Marketing Digital',
                     }),
                 ],
             });
 
         const apqsaEvent = await screen.findByRole('button', {
-            name: /Ver detalhes: APQSA, Qualidade de Software/,
+            name: /Ver detalhes: CD, Qualidade de Software/,
         });
         expect(apqsaEvent).toBeTruthy();
         expect(screen.getByRole('button', {
-            name: /Ver detalhes: TECMKT, Marketing Digital/,
+            name: /Ver detalhes: RC, Marketing Digital/,
         })).toBeTruthy();
 
         await user.selectOptions(
             screen.getByLabelText('Curso'),
-            'TECMKT',
+            COURSE_IDS.RC,
         );
 
         expect(screen.queryByRole('button', {
-            name: /Ver detalhes: APQSA, Qualidade de Software/,
+            name: /Ver detalhes: CD, Qualidade de Software/,
         })).toBeNull();
         expect(screen.getByRole('button', {
-            name: /Ver detalhes: TECMKT, Marketing Digital/,
+            name: /Ver detalhes: RC, Marketing Digital/,
         })).toBeTruthy();
         expect(lessonService.listLessons).toHaveBeenCalledOnce();
         expect(monthlyMaterialService.listMonthlyMaterials)
@@ -465,7 +483,7 @@ describe('consulta e apresentação do calendário visual', () => {
 
     test('representa curso, tipo, número e marcação para revisão', async () => {
         const lesson = createLesson({
-            course: 'TECADM',
+            course: 'ADM',
             type: 'Avaliação',
             lessonNumber: '2',
             needsReview: true,
@@ -475,14 +493,14 @@ describe('consulta e apresentação do calendário visual', () => {
 
         const event = await screen.findByRole('button', {
             name:
-                'Ver detalhes: TECADM, Qualidade de Software, '
+                'Ver detalhes: ADM, Qualidade de Software, '
                 + 'Avaliação Aula 2, marcada para revisão',
         });
 
         expect([...event.classList].some(
             (className) => className.startsWith('course-'),
         )).toBe(false);
-        expect(within(event).getByText('TECADM ★')).toBeTruthy();
+        expect(within(event).getByText('ADM ★')).toBeTruthy();
         expect(event.classList.contains('needs-review')).toBe(true);
         expect(event.title).toContain('★ Revisão');
         expect(event.textContent).toContain(
@@ -499,7 +517,7 @@ describe('consulta e apresentação do calendário visual', () => {
         });
 
         await user.click(await screen.findByRole('button', {
-            name: /Ver detalhes: APQSA, Qualidade de Software/,
+            name: /Ver detalhes: CD, Qualidade de Software/,
         }));
 
         const dialog = screen.getByRole('dialog', {
@@ -507,7 +525,7 @@ describe('consulta e apresentação do calendário visual', () => {
         });
 
         expect(within(dialog).getByText('22/09/2026')).toBeTruthy();
-        expect(within(dialog).getByText('APQSA')).toBeTruthy();
+        expect(within(dialog).getByText('CD')).toBeTruthy();
         expect(within(dialog).getByText('Qualidade de Software'))
             .toBeTruthy();
         expect(within(dialog).getByText('Aula 12')).toBeTruthy();
@@ -540,7 +558,7 @@ describe('consulta e apresentação do calendário visual', () => {
         });
 
         await user.click(await screen.findByRole('button', {
-            name: /Ver detalhes: APQSA, Qualidade de Software/,
+            name: /Ver detalhes: CD, Qualidade de Software/,
         }));
 
         const dialog = screen.getByRole('dialog');
@@ -581,7 +599,7 @@ describe('consulta e apresentação do calendário visual', () => {
         }));
 
         expect(await screen.findByRole('button', {
-            name: /Ver detalhes: APQSA, Qualidade de Software/,
+            name: /Ver detalhes: CD, Qualidade de Software/,
         })).toBeTruthy();
         expect(lessonService.listLessons).toHaveBeenCalledTimes(2);
         expect(monthlyMaterialService.listMonthlyMaterials)
@@ -628,7 +646,7 @@ describe('consulta e apresentação do calendário visual', () => {
         };
         const secondLessonService = createLessonService([
             createLesson({
-                id: 'current',
+                id: '507f1f77bcf86cd799439014',
                 curricularUnit: 'Estado atual',
             }),
         ]);
@@ -655,7 +673,7 @@ describe('consulta e apresentação do calendário visual', () => {
 
         firstRequest.resolve(Object.freeze([
             createLesson({
-                id: 'old',
+                id: '507f1f77bcf86cd799439015',
                 curricularUnit: 'Estado antigo',
             }),
         ]));
@@ -691,5 +709,89 @@ describe('consulta e apresentação do calendário visual', () => {
         await Promise.resolve();
 
         expect(screen.queryByText('Qualidade de Software')).toBeNull();
+    });
+});
+
+
+describe('catálogo personalizado no calendário mensal', () => {
+    test('filtro apresenta nome e sigla por identidade e trocar a seleção não repete consultas', async () => {
+        const user = userEvent.setup();
+        const courseService = { listCourses: vi.fn().mockResolvedValue(TEST_COURSES) };
+        const { lessonService, monthlyMaterialService } = renderCalendar({
+            courseService, lessons: [createLesson()],
+        });
+        await screen.findByRole('button', { name: /Ver detalhes: CD, Qualidade de Software/ });
+        await waitFor(() => expect(screen.getByRole('option', { name: 'CD — Ciência de Dados' }).value).toBe(COURSE_IDS.CD));
+        await user.selectOptions(screen.getByLabelText('Curso'), COURSE_IDS.CD);
+        expect(screen.getByRole('button', { name: /Ver detalhes: CD, Qualidade de Software/ })).toBeTruthy();
+        expect(courseService.listCourses).toHaveBeenCalledExactlyOnceWith({});
+        expect(lessonService.listLessons).toHaveBeenCalledOnce();
+        expect(monthlyMaterialService.listMonthlyMaterials).toHaveBeenCalledOnce();
+    });
+
+    test('curso desativado permanece disponível para consultar as aulas antigas', async () => {
+        const user = userEvent.setup();
+        renderCalendar({ lessons: [createLesson({ course: 'ADM' }), createLesson({
+            id: '507f1f77bcf86cd799439012', course: 'RC',
+        })] });
+        await screen.findByRole('button', { name: /Ver detalhes: ADM,/ });
+        expect(screen.getByRole('option', { name: /ADM — Administração.*desativado/ })).toBeTruthy();
+        await user.selectOptions(screen.getByLabelText('Curso'), COURSE_IDS.ADM);
+        expect(screen.getByRole('button', { name: /Ver detalhes: ADM,/ })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: /Ver detalhes: RC,/ })).toBeNull();
+    });
+
+    test('sigla renomeada no catálogo não rompe a seleção das aulas pelo ID', async () => {
+        const user = userEvent.setup();
+        const renamed = TEST_COURSES.map((course) => course.id === COURSE_IDS.CD
+            ? { ...course, name: 'Análise de Dados', code: 'AD' } : course);
+        renderCalendar({ lessons: [createLesson()],
+            courseService: { listCourses: vi.fn().mockResolvedValue(renamed) } });
+        await screen.findByRole('option', { name: 'AD — Análise de Dados' });
+        await user.selectOptions(screen.getByLabelText('Curso'), COURSE_IDS.CD);
+        // As fontes podem ter sido lidas em instantes diferentes. A identidade
+        // selecionada continua encontrando a aula, sem associar cursos por sigla.
+        expect(screen.getByRole('button', { name: /Ver detalhes: CD,/ })).toBeTruthy();
+    });
+
+    test('falha do catálogo não oculta o mês e a nova tentativa consulta somente os cursos', async () => {
+        const user = userEvent.setup();
+        const courseService = { listCourses: vi.fn()
+            .mockRejectedValueOnce(new Error('detalhe privado'))
+            .mockResolvedValueOnce(TEST_COURSES) };
+        const { lessonService, monthlyMaterialService } = renderCalendar({
+            courseService, lessons: [createLesson()],
+        });
+        expect(await screen.findByRole('button', { name: /Ver detalhes: CD,/ })).toBeTruthy();
+        const retry = await screen.findByRole('button', { name: 'Tentar carregar cursos novamente' });
+        expect(screen.getByRole('alert').textContent).not.toContain('detalhe privado');
+        await user.click(retry);
+        await screen.findByRole('option', { name: 'CD — Ciência de Dados' });
+        expect(courseService.listCourses).toHaveBeenCalledTimes(2);
+        expect(lessonService.listLessons).toHaveBeenCalledOnce();
+        expect(monthlyMaterialService.listMonthlyMaterials).toHaveBeenCalledOnce();
+    });
+
+    test('atualização do catálogo não transforma uma seleção ausente em Todos silenciosamente', async () => {
+        const user = userEvent.setup();
+        const first = { listCourses: vi.fn().mockResolvedValue(TEST_COURSES) };
+        const second = { listCourses: vi.fn().mockResolvedValue([]) };
+        const ctx = renderCalendar({ courseService: first, lessons: [createLesson()] });
+        await screen.findByRole('option', { name: 'CD — Ciência de Dados' });
+        await user.selectOptions(screen.getByLabelText('Curso'), COURSE_IDS.CD);
+        ctx.view.rerender(<CalendarVisual lessonService={ctx.lessonService}
+            monthlyMaterialService={ctx.monthlyMaterialService}
+            todayProvider={ctx.todayProvider} courseService={second} />);
+        await waitFor(() => expect(second.listCourses).toHaveBeenCalledOnce());
+        await waitFor(() => expect(screen.getByLabelText('Curso').disabled).toBe(false));
+        expect(screen.getByLabelText('Curso').value).toBe(COURSE_IDS.CD);
+        expect(screen.getByRole('option', { name: 'Curso selecionado indisponível' }).disabled).toBe(true);
+        expect(ctx.lessonService.listLessons).toHaveBeenCalledOnce();
+    });
+
+    test('lista de aulas inválida é mostrada como falha antes de preparar a grade', async () => {
+        renderCalendar({ lessonService: { listLessons: vi.fn().mockResolvedValue(null) } });
+        expect(await screen.findByRole('alert')).toBeTruthy();
+        expect(screen.queryByLabelText('Calendário de Setembro 2026')).toBeNull();
     });
 });

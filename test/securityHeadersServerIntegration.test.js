@@ -75,6 +75,7 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
                 await assert.rejects(
                     startServer({
                         courseRouterFactory: () => (_request, _response, next) => next(),
+                        lessonRouterFactory: () => (_request, _response, next) => next(),
                         database,
                         securityHeadersMiddlewareFactory: null,
                     }),
@@ -106,6 +107,7 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
                 await assert.rejects(
                     startServer({
                         courseRouterFactory: () => (_request, _response, next) => next(),
+                        lessonRouterFactory: () => (_request, _response, next) => next(),
                         database,
                         securityHeadersMiddlewareFactory() {
                             return {};
@@ -287,6 +289,7 @@ describe('cabeçalhos de segurança no ciclo do servidor', () => {
                     await assert.rejects(
                         startServer({
                             courseRouterFactory: () => (_request, _response, next) => next(),
+                            lessonRouterFactory: () => (_request, _response, next) => next(),
                             // O banco simulado exige preparação de índices simulada.
                             administrativeIndexInitializerFactory() {
                                 order.push('indexes.factory');

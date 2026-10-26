@@ -1,3 +1,5 @@
+import { COURSE_API_FIELD_LIMITS } from './CourseApi.js';
+
 /**
  * Caminho público da API administrativa de aulas.
  */
@@ -46,13 +48,23 @@ const LESSON_API_MESSAGES = Object.freeze({
         'O servidor devolveu uma resposta inválida.',
     REQUEST_FAILED:
         'Não foi possível concluir a operação.',
+    INVALID_COURSE_ID:
+        'Selecione um curso válido para a aula.',
+    COURSE_NOT_FOUND:
+        'O curso selecionado não foi encontrado. Atualize a lista de cursos.',
+    COURSE_INACTIVE:
+        'O curso selecionado está desativado. Escolha um curso ativo.',
+    LESSON_CHANGED:
+        'A aula foi alterada durante a edição. Atualize a lista e tente novamente.',
 });
 
 /**
- * Cursos e tipos públicos pertencentes ao protótipo original.
+ * Cursos legados mantidos somente enquanto os componentes são atualizados.
  *
  * O frontend não importa o modelo CommonJS do backend. Estas coleções formam
- * o contrato público utilizado para preparar filtros e dados do formulário.
+ * o contrato anterior. O novo fluxo usa courseId e cursos do catálogo; esta
+ * lista será retirada quando formulários, filtros e calendário forem ligados
+ * ao catálogo. Tipos de registro continuam compartilhados pelos dois fluxos.
  */
 const LESSON_API_COURSES = Object.freeze([
     'APQSA',
@@ -68,6 +80,7 @@ const LESSON_API_TYPES = Object.freeze([
 
 const LESSON_FILTER_FIELDS = Object.freeze([
     'course',
+    'courseId',
     'month',
     'fromDate',
 ]);
@@ -88,6 +101,27 @@ const LESSON_DATA_FIELDS = Object.freeze([
  */
 const LESSON_UPDATE_FIELDS = LESSON_DATA_FIELDS;
 
+/** No novo contrato, a identidade substitui a sigla recebida do formulário. */
+const LESSON_CATALOG_FIELDS = Object.freeze(LESSON_DATA_FIELDS.map(
+    (field) => field === 'course' ? 'courseId' : field,
+));
+
+/** Mensagens locais para os novos erros de associação, sem copiar o servidor. */
+const CATALOG_PUBLIC_ERRORS = Object.freeze({
+    INVALID_LESSON_COURSE_ID: Object.freeze({
+        status: 400, methods: ['POST', 'PUT'], message: LESSON_API_MESSAGES.INVALID_COURSE_ID,
+    }),
+    LESSON_COURSE_NOT_FOUND: Object.freeze({
+        status: 404, methods: ['POST', 'PUT'], message: LESSON_API_MESSAGES.COURSE_NOT_FOUND,
+    }),
+    LESSON_COURSE_INACTIVE: Object.freeze({
+        status: 409, methods: ['POST', 'PUT'], message: LESSON_API_MESSAGES.COURSE_INACTIVE,
+    }),
+    LESSON_CHANGED: Object.freeze({
+        status: 409, methods: ['PUT'], message: LESSON_API_MESSAGES.LESSON_CHANGED,
+    }),
+});
+
 const ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9_]*$/;
 const LESSON_ID_PATTERN = /^[a-fA-F0-9]{24}$/;
 const CALENDAR_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -105,6 +139,19 @@ function isObject(value) {
         && typeof value === 'object'
         && !Array.isArray(value)
     );
+}
+
+function isInputObject(value) {
+    return isObject(value)
+        && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+}
+
+/** Valida o texto de exibição; a sigla não determina a identidade do curso. */
+function isValidCatalogCode(value) {
+    return typeof value === 'string'
+        && value.length >= COURSE_API_FIELD_LIMITS.MIN_CODE_LENGTH
+        && value.length <= COURSE_API_FIELD_LIMITS.MAX_CODE_LENGTH
+        && value === value.normalize('NFC').trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
 /**
@@ -284,7 +331,7 @@ class LessonApi {
     }
 
     /**
-     * Prepara somente os três filtros públicos autorizados.
+     * Prepara os filtros autorizados de um dos contratos, sem misturá-los.
      *
      * Campos desconhecidos e valores indefinidos explicitamente são
      * recusados. A ordem fixa dos campos produz URLs determinísticas.
@@ -293,24 +340,33 @@ class LessonApi {
      * @returns {Readonly<object>} Filtros normalizados e imutáveis.
      */
     static createFilters(filters = {}) {
-        if (!isObject(filters)) {
+        if (!isInputObject(filters)) {
             throw new TypeError(
                 LESSON_API_MESSAGES.INVALID_FILTERS,
             );
         }
 
-        const receivedFields = Object.keys(filters);
+        const receivedFields = Reflect.ownKeys(filters);
         const hasUnknownField = receivedFields.some(
             (field) => !LESSON_FILTER_FIELDS.includes(field),
         );
 
-        if (hasUnknownField) {
+        if (hasUnknownField || (Object.hasOwn(filters, 'course')
+            && Object.hasOwn(filters, 'courseId'))) {
             throw new TypeError(
                 LESSON_API_MESSAGES.INVALID_FILTERS,
             );
         }
 
         const preparedFilters = {};
+
+        if (Object.hasOwn(filters, 'courseId')) {
+            if (typeof filters.courseId !== 'string'
+                || !LESSON_ID_PATTERN.test(filters.courseId)) {
+                throw new TypeError(LESSON_API_MESSAGES.INVALID_FILTERS);
+            }
+            preparedFilters.courseId = filters.courseId.toLowerCase();
+        }
 
         if (Object.hasOwn(filters, 'course')) {
             const course = hasText(filters.course)
@@ -361,22 +417,24 @@ class LessonApi {
      * @returns {Readonly<object>} Dados autorizados e imutáveis.
      */
     static createLessonData(lessonData) {
-        if (!isObject(lessonData)) {
+        if (!isInputObject(lessonData)) {
             throw new TypeError(
                 LESSON_API_MESSAGES.INVALID_LESSON_DATA,
             );
         }
 
-        const receivedFields = Object.keys(lessonData);
+        const usesCatalog = Object.hasOwn(lessonData, 'courseId');
+        const fields = usesCatalog ? LESSON_CATALOG_FIELDS : LESSON_DATA_FIELDS;
+        const receivedFields = Reflect.ownKeys(lessonData);
         const hasUnknownField = receivedFields.some(
-            (field) => !LESSON_DATA_FIELDS.includes(field),
+            (field) => !fields.includes(field),
         );
+        const hasValidCourse = usesCatalog
+            ? typeof lessonData.courseId === 'string' && LESSON_ID_PATTERN.test(lessonData.courseId)
+            : hasText(lessonData.course) && LESSON_API_COURSES.includes(lessonData.course.trim());
         const hasRequiredFields =
             isValidCalendarDate(lessonData.date)
-            && hasText(lessonData.course)
-            && LESSON_API_COURSES.includes(
-                lessonData.course.trim(),
-            )
+            && hasValidCourse
             && hasText(lessonData.curricularUnit);
 
         if (hasUnknownField || !hasRequiredFields) {
@@ -387,7 +445,8 @@ class LessonApi {
 
         const preparedData = {
             date: lessonData.date.trim(),
-            course: lessonData.course.trim(),
+            ...(usesCatalog ? { courseId: lessonData.courseId.toLowerCase() }
+                : { course: lessonData.course.trim() }),
             curricularUnit: lessonData.curricularUnit.trim(),
         };
 
@@ -472,11 +531,12 @@ class LessonApi {
      * @returns {Readonly<object>} Dados normalizados e imutáveis.
      */
     static createLessonUpdateData(lessonData) {
+        const fields = isObject(lessonData) && Object.hasOwn(lessonData, 'courseId')
+            ? LESSON_CATALOG_FIELDS : LESSON_UPDATE_FIELDS;
         const hasCompleteStructure =
-            isObject(lessonData)
-            && Object.keys(lessonData).length
-                === LESSON_UPDATE_FIELDS.length
-            && LESSON_UPDATE_FIELDS.every(
+            isInputObject(lessonData)
+            && Reflect.ownKeys(lessonData).length === fields.length
+            && fields.every(
                 (field) => Object.hasOwn(lessonData, field),
             );
 
@@ -504,12 +564,19 @@ class LessonApi {
     }
 
     /**
-     * Seleciona somente os nove campos públicos de uma aula.
+     * Seleciona os campos públicos e mantém courseId nas aulas do catálogo.
+     * Uma sigla personalizada é válida quando acompanhada de identidade válida.
      *
      * @param {unknown} lesson Candidato recebido do backend.
      * @returns {Readonly<object>} Aula pública imutável.
      */
     static createPublicLesson(lesson) {
+        const usesCatalog = isObject(lesson) && Object.hasOwn(lesson, 'courseId');
+        const hasValidCourse = usesCatalog
+            ? typeof lesson.courseId === 'string' && LESSON_ID_PATTERN.test(lesson.courseId)
+                && typeof lesson.id === 'string' && LESSON_ID_PATTERN.test(lesson.id)
+                && isValidCatalogCode(lesson.course)
+            : isObject(lesson) && LESSON_API_COURSES.includes(lesson.course);
         const hasValidNullableText = (value) => (
             value === null || hasText(value)
         );
@@ -517,7 +584,7 @@ class LessonApi {
             isObject(lesson)
             && hasText(lesson.id)
             && isValidCalendarDate(lesson.date)
-            && LESSON_API_COURSES.includes(lesson.course)
+            && hasValidCourse
             && hasText(lesson.curricularUnit)
             && LESSON_API_TYPES.includes(lesson.type)
             && hasValidNullableText(lesson.lessonNumber)
@@ -530,9 +597,10 @@ class LessonApi {
         }
 
         return Object.freeze({
-            id: lesson.id.trim(),
+            id: usesCatalog ? lesson.id.toLowerCase() : lesson.id.trim(),
             date: lesson.date.trim(),
             course: lesson.course,
+            ...(usesCatalog ? { courseId: lesson.courseId.toLowerCase() } : {}),
             curricularUnit: lesson.curricularUnit.trim(),
             type: lesson.type,
             lessonNumber: lesson.lessonNumber === null
@@ -613,9 +681,10 @@ class LessonApi {
      *
      * @param {number} statusCode Estado HTTP recebido.
      * @param {unknown} payload Corpo interpretado, quando disponível.
+     * @param {string} method Método HTTP usado na operação.
      * @returns {LessonApiError} Erro seguro.
      */
-    static createRequestError(statusCode, payload) {
+    static createRequestError(statusCode, payload, method) {
         const responseError = isObject(payload)
             ? payload.error
             : null;
@@ -624,6 +693,17 @@ class LessonApi {
             && hasText(responseError.message)
             && hasText(responseError.code)
             && ERROR_CODE_PATTERN.test(responseError.code);
+
+        if (isObject(responseError)
+            && Object.hasOwn(CATALOG_PUBLIC_ERRORS, responseError.code)) {
+            const known = CATALOG_PUBLIC_ERRORS[responseError.code];
+            const recognized = hasValidPublicError
+                && statusCode === known.status && known.methods.includes(method);
+            return new LessonApiError(recognized ? known.message : LESSON_API_MESSAGES.REQUEST_FAILED, {
+                statusCode,
+                code: recognized ? responseError.code : LESSON_API_CODES.REQUEST_FAILED,
+            });
+        }
 
         return new LessonApiError(
             hasValidPublicError
@@ -687,7 +767,8 @@ class LessonApi {
             && Number.isInteger(response.status)
             && response.status >= 100
             && response.status <= 599
-            && typeof response.ok === 'boolean';
+            && typeof response.ok === 'boolean'
+            && response.ok === (response.status >= 200 && response.status <= 299);
 
         if (!hasValidResponse) {
             throw LessonApi.createInvalidResponseError();
@@ -710,6 +791,7 @@ class LessonApi {
             throw LessonApi.createRequestError(
                 response.status,
                 errorPayload,
+                method,
             );
         }
 
@@ -783,7 +865,12 @@ class LessonApi {
             body: preparedData,
         });
 
-        return LessonApi.createPublicCreatedLesson(payload);
+        const lesson = LessonApi.createPublicCreatedLesson(payload);
+        if (Object.hasOwn(preparedData, 'courseId')
+            && lesson.courseId !== preparedData.courseId) {
+            throw LessonApi.createInvalidResponseError(201);
+        }
+        return lesson;
     }
 
     /**
@@ -804,7 +891,14 @@ class LessonApi {
             body: preparedData,
         });
 
-        return LessonApi.createPublicCreatedLesson(payload);
+        const lesson = LessonApi.createPublicCreatedLesson(payload);
+        if (Object.hasOwn(preparedData, 'courseId') && (
+            lesson.courseId !== preparedData.courseId
+            || lesson.id !== preparedId.toLowerCase()
+        )) {
+            throw LessonApi.createInvalidResponseError(200);
+        }
+        return lesson;
     }
 
     /**
@@ -834,6 +928,7 @@ class LessonApi {
 const lessonApi = new LessonApi();
 
 export {
+    LESSON_CATALOG_FIELDS,
     LESSON_API_CODES,
     LESSON_API_COURSES,
     LESSON_API_MESSAGES,

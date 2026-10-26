@@ -13,7 +13,7 @@ administrativa próprios. O projeto não disponibiliza hospedagem compartilhada
 para terceiros. A instalação simplificada para usuários sem conhecimento de
 programação ainda está em preparação.
 
-> Última atualização desta documentação: 23 de outubro de 2026.
+> Última atualização desta documentação: 26 de outubro de 2026.
 
 ## Documentos e materiais remotos
 
@@ -47,7 +47,7 @@ em português. O formulário administrativo consome a API real, restaura a
 sessão depois de uma atualização da página e permite encerrá-la com segurança.
 Os clientes HTTP de aulas e materiais mensais encapsulam seus contratos
 com validações defensivas. A seção de aulas consulta, filtra, cadastra e edita
-aulas, atividades e avaliações pelos oito campos originais. A seção de materiais
+aulas, atividades e avaliações por oito campos, com seleção de curso pelo catálogo personalizado. A seção de materiais
 permite organizar links específicos por aula e links aplicáveis ao mês inteiro,
 com cadastro e exclusão mensal. Carregamento, ausência, erro, sucesso e
 resultados possuem estados acessíveis. O painel geral consulta aulas e
@@ -193,15 +193,46 @@ sigla e identificador. Confirmação, cancelamento, erros públicos e operaçõe
 pendentes têm estados próprios. A interface bloqueia envios repetidos e ignora
 respostas concluídas após desmontagem ou substituição do serviço.
 
-**Limite deste marco:** o catálogo ainda não alimenta os formulários, filtros,
-painel e calendário de aulas. Esses componentes continuam usando as opções
-fixas do contrato anterior. Criar ou editar um curso em **Cursos** ainda não
-altera essas opções. O vínculo das aulas por identificador será o próximo marco,
-para que mudanças de nome ou sigla preservem a associação dos registros.
+### Vínculo das aulas ao catálogo
+
+Os formulários e filtros de aulas, materiais e calendário utilizam o catálogo
+personalizado. O painel agrupa os cursos presentes nas aulas pela identidade,
+sem uma lista fixa. Nome e sigla podem mudar sem romper o vínculo dos registros.
+As novas aulas criadas pela interface persistem somente `courseId` como vínculo;
+a sigla apresentada é resolvida a partir do catálogo na consulta. A API devolve
+`courseId` e a sigla atual em `course`, sem gravar uma cópia antiga dessa sigla.
+
+Para criar uma aula ou transferi-la para outro curso, o destino deve existir e
+estar ativo. Uma aula já vinculada pode manter seu curso desativado durante a
+edição. Cursos desativados permanecem nos filtros de histórico. Editar uma aula
+não reativa o curso. A edição lê o vínculo persistido e utiliza atualização
+condicional; se esse vínculo mudar antes da escrita, a operação retorna conflito
+em vez de confirmar uma alteração baseada no curso anterior.
+
+`LessonCourseValidator` concentra a decisão de seleção. Na listagem, o serviço
+resolve os cursos por uma consulta em lote, incluindo desativados, sem uma
+consulta por aula. O servidor aguarda os índices de aulas antes de abrir o HTTP,
+inclusive com `autoIndex` desativado; o índice `lessons_course_id_date` por curso
+e data não impõe unicidade e não impede aulas na mesma data.
+
+O hook `useCourseCatalog` trata carregamento, falha e nova consulta do catálogo.
+Na seção de aulas, formulário e filtro compartilham uma leitura. Materiais e
+calendário filtram pelo ID no navegador, sem repetir as consultas ao trocar a
+seleção. Falhas do catálogo não escondem as aulas ou o mês já consultados.
+Respostas de fontes anteriores são ignoradas. Reabrir a seção consulta os dados
+atuais; mudanças de nome ou sigla preservam a seleção pelo mesmo ID. O filtro
+“A partir de hoje” dos materiais considera o dia local do navegador.
+
+**Compatibilidade temporária:** o modelo e os clientes de API ainda aceitam
+parte do contrato legado com sigla e leem registros antigos sem `courseId`.
+Não há migração automática nem associação por coincidência de texto. Ao editar
+um registro antigo pela interface, é necessário escolher explicitamente um
+curso ativo; a gravação passa a usar o ID e remove a sigla persistida anterior.
+A retirada completa desse contrato legado permanece uma tarefa técnica.
 
 Turno diurno ou noturno, turmas, salas e capacidade de alunos ainda não fazem
-parte desse cadastro. A modelagem dessas informações será tratada depois do
-vínculo entre cursos e aulas, mantendo uma cópia independente por professor.
+parte desse cadastro. A próxima modelagem deverá distinguir curso, turma e
+horário, mantendo uma cópia independente por professor.
 
 ### Funcionalidades concluídas
 
@@ -226,6 +257,10 @@ vínculo entre cursos e aulas, mantendo uma cópia independente por professor.
 - cliente HTTP de cursos com validações e mensagens locais seguras;
 - formulário acessível para criação e edição de cursos;
 - tela de cursos com filtros, confirmação de desativação e preservação dos registros;
+- vínculo persistente de aulas com o identificador estável do curso;
+- seleção de cursos ativos e preservação do curso desativado em aulas existentes;
+- resolução em lote da sigla atual e edição condicional do vínculo;
+- catálogo compartilhado pelo formulário e filtro de aulas;
 - modelo Mongoose para aulas, atividades e avaliações do calendário;
 - modelo Mongoose para os materiais aplicáveis a um mês inteiro;
 - serviço isolado para criação, edição, exclusão e consulta de aulas;
@@ -247,10 +282,10 @@ vínculo entre cursos e aulas, mantendo uma cópia independente por professor.
 - controlador mensal com representações públicas defensivas;
 - rotas protegidas `GET /api/monthly-materials`, `GET`, `PUT` e `DELETE /api/monthly-materials/:month`;
 - composição da API mensal no ciclo real do servidor;
-- tipos de aula e opções do campo de curso ainda limitados ao contrato anterior;
+- tipos de aula preservados e seleção de cursos personalizados por identificador;
 - datas civis preservadas sem conversão dependente de fuso horário;
 - links de materiais limitados a HTTP e HTTPS sem credenciais incorporadas;
-- índice de consulta das aulas por data e curso;
+- índices de consulta das aulas, incluindo curso por ID e data, preparados antes do HTTP;
 - um único conjunto determinístico de materiais para cada mês;
 - normalização e índice único para o e-mail;
 - ocultação do hash da senha em consultas e serializações;
@@ -350,7 +385,7 @@ vínculo entre cursos e aulas, mantendo uma cópia independente por professor.
 - calendário visual mensal ligado às aulas e aos materiais persistidos;
 - navegação civil pelo mês anterior, próximo mês e retorno à data atual;
 - grade semanal iniciada no domingo com destaque para hoje e fins de semana;
-- filtro local pelas opções de curso do contrato anterior, ainda sem ligação com o catálogo;
+- filtro local pelo ID do curso personalizado, incluindo cursos desativados;
 - aparência uniforme dos registros, identificação textual do curso e estrela de revisão;
 - legenda restrita ao dia atual e à marcação para revisão, sem lista fixa de cursos;
 - diálogo acessível com os dados públicos e materiais efetivos da aula;
@@ -365,8 +400,7 @@ vínculo entre cursos e aulas, mantendo uma cópia independente por professor.
 
 ### Ainda não implementado
 
-- vínculo entre o catálogo de cursos e as aulas por identificador estável;
-- substituição das opções fixas em formulários, filtros, painel e calendário;
+- retirada completa do contrato legado de aulas por sigla e definição de eventual migração explícita;
 - turmas com turno, salas e capacidade de alunos;
 - instalação simplificada, incluindo preparação com Docker e guia para iniciantes;
 - revisão dos textos e opções ainda específicos do protótipo original;
@@ -694,8 +728,10 @@ Depois de entrar, abra **Cursos**:
 A sigla de um curso desativado permanece ocupada. Editar o nome ou a sigla
 mantém sua identidade e não reativa o registro. Os dados são persistidos no
 MongoDB; após atualizar a página, volte à seção **Cursos** para consultá-los.
-O vínculo com aulas ainda está pendente, conforme o limite descrito em
-**Catálogo de cursos personalizados**.
+O curso cadastrado fica disponível para novas aulas enquanto estiver ativo.
+Alterar nome ou sigla mantém as aulas associadas; reabra as seções para consultar
+os dados atuais. Depois de desativado, continua nos filtros de histórico e pode
+ser mantido na edição de uma aula já vinculada, mas não escolhido para uma nova.
 
 ## Scripts disponíveis
 
@@ -710,7 +746,8 @@ O vínculo com aulas ainda está pendente, conforme o limite descrito em
 | `npm --prefix client test` | Executa os testes do frontend |
 | `npm --prefix client run build` | Compila o frontend para produção |
 | `npm --prefix client run preview` | Serve localmente a compilação produzida |
-| `node scripts/previewInitialSetup.js` | Abre uma instalação temporária para verificar primeiro cadastro e cursos |
+| `node scripts/previewInitialSetup.js` | Abre uma instalação temporária para verificar cadastro, cursos e aulas no navegador |
+| `node scripts/verifyLessonCoursesHttp.js` | Verifica por HTTP os vínculos de cursos e aulas com MongoDB local |
 
 ## Testes automatizados
 
@@ -721,24 +758,22 @@ npm test
 npm --prefix client test
 ```
 
-Resultados registrados em 23 de outubro de 2026:
+Últimos resultados completos registrados na máquina de desenvolvimento:
 
-| Camada | Testes aprovados | Organização |
-| --- | ---: | --- |
-| Backend | 995 | 162 suítes |
-| Frontend | 540 | 21 arquivos |
-| Total | 1535 | 183 suítes/conjuntos |
+| Camada | Data | Testes aprovados | Organização |
+| --- | --- | ---: | --- |
+| Backend | 25/10/2026 | 1.066 | 170 suítes |
+| Frontend | 26/10/2026 | 608 | 22 arquivos |
+| Total | Último resultado de cada camada | 1.674 | 192 suítes/conjuntos |
 
 Zero falhas, testes ignorados ou cancelados nos resultados registrados. O
-backend foi executado na máquina de desenvolvimento. O frontend completo foi
-executado no ambiente de verificação; os arquivos novos e alterados também
-foram testados por etapas na máquina de desenvolvimento. Após a correção da
-origem do primeiro cadastro, a suíte completa do frontend foi executada
-novamente, mantendo 540 testes aprovados.
+frontend completo também passou no ambiente de verificação. O backend não foi
+alterado desde a execução completa registrada em 25 de outubro.
 
-A compilação de produção passou com 36 módulos. A validação manual com MongoDB
-e navegador não entra na contagem automatizada. Não foi executada nova auditoria
-de dependências neste marco.
+A compilação de produção passou em 26 de outubro com 37 módulos. As verificações
+por scripts com MongoDB e a verificação manual no navegador são adicionais e
+não entram nessa contagem. Nenhuma dependência foi adicionada ou atualizada
+neste marco; não foi executada nova auditoria de dependências.
 
 Os testes verificam, entre outros comportamentos:
 
@@ -749,6 +784,12 @@ Os testes verificam, entre outros comportamentos:
 - cliente HTTP, formulário e tela de cursos, incluindo recusas e respostas inconsistentes;
 - preservação dos filtros e descarte de respostas antigas do catálogo;
 - acesso a Cursos pela navegação e pela área autenticada;
+- vínculo por ID, consulta da sigla atual e seleção de cursos ativos;
+- preservação do curso desativado e recusa de transferência para outro desativado;
+- conflito de edição quando o vínculo muda entre leitura e escrita;
+- resolução em lote, respostas inconsistentes e filtros internos do Mongoose;
+- catálogo compartilhado, filtros por ID e atualização independente de cada fonte;
+- preservação do vínculo após renomear cursos e do dia local nos materiais;
 - fundação HTTP, erros e limites do corpo JSON;
 - controlador e roteador de primeiro cadastro com respostas mínimas e
   bloqueio antes do serviço; origem autorizada, JSON e limitação de tentativas
@@ -839,7 +880,7 @@ Os testes verificam, entre outros comportamentos:
 - bloqueio dos filtros durante requisições em andamento;
 - descarte de respostas assíncronas antigas ou posteriores à desmontagem;
 - contrato visual dos oito campos aceitos na criação de aulas;
-- opções de curso e tipo limitadas aos valores públicos do calendário;
+- cursos ativos vindos do catálogo e manutenção do curso desativado original na edição;
 - envio integral dos dados do cadastro ao cliente HTTP de aulas;
 - bloqueio de todos os controles durante uma criação pendente;
 - preservação dos campos diante de recusas e falhas inesperadas;
@@ -943,7 +984,31 @@ Somente o middleware do frontend é substituído, pois essa verificação não
 avalia a interface visual nem exige sua compilação. Os oito cenários são
 adicionais às suítes automatizadas e aos outros scripts de verificação.
 
-### Verificação manual do primeiro cadastro e dos cursos
+### Verificação HTTP dos vínculos entre cursos e aulas
+
+Em 25 de outubro de 2026, `scripts/verifyLessonCoursesHttp.js` passou nos
+14 cenários com servidor e MongoDB reais: preparação explícita do índice com
+`autoIndex` desativado; autorização; criação da conta e sessão; dois cursos
+personalizados; recusas sem gravação; persistência somente por ID e filtros;
+renomeação; desativação preservando histórico; manutenção do curso desativado;
+recusa de transferência para outro desativado; troca para curso ativo;
+conflito de vínculo concorrente; reinício preservando dados e sessão; e
+exclusão idempotente seguida de logout.
+
+```bash
+mongosh --quiet --eval 'db.adminCommand({ ping: 1 })' &&
+node scripts/verifyLessonCoursesHttp.js
+```
+
+O script não carrega o `.env` do projeto. Usa configuração fictícia, porta
+local disponível e um banco temporário identificado pelo prefixo
+`lesson_courses_http_check_`. Ao terminar, remove esse banco e encerra os
+recursos. A concorrência é provocada de forma controlada pelo adaptador de teste,
+com atualização condicional executada no MongoDB real. Não exige replica set
+nem utiliza transação entre curso e aula; a situação do curso é verificada na
+leitura anterior à gravação, sem prometer atomicidade entre as coleções.
+
+### Verificação manual do primeiro cadastro, dos cursos e das aulas
 
 Em 21 de outubro, a interface compilada foi servida pelo Express com MongoDB
 local usando `scripts/previewInitialSetup.js`. Foram confirmados manualmente:
@@ -968,10 +1033,17 @@ de **Cursos**. Também foram conferidos:
 - recusa de cadastro com a mesma sigla de um curso desativado;
 - encerramento com `Ctrl+C` e remoção confirmada do banco temporário.
 
-Essas verificações ocorreram no navegador em computador. A tela de cursos e o
-primeiro cadastro ainda precisam de uma verificação manual dedicada em largura
-de celular. Não foi validada nesta etapa a preservação de vínculos entre cursos
-e aulas, pois essa integração ainda não existe.
+Em 26 de outubro, o usuário confirmou o fluxo visual proposto com a integração
+por ID: criação da conta, curso e aula; consulta no painel, materiais e
+calendário; renomeação do curso; e desativação preservando o histórico e as
+regras de seleção. O terminal confirmou o encerramento por `Ctrl+C` e a remoção
+do banco temporário. O primeiro ping após iniciar o MongoDB encontrou o serviço
+ainda indisponível; uma nova consulta confirmou `active` e `{ ok: 1 }` antes
+de abrir o preview.
+
+Essas verificações ocorreram no navegador em computador. O primeiro cadastro,
+a tela de cursos e a integração das aulas ainda precisam de uma verificação
+manual dedicada em largura de celular.
 
 Para repetir, inicie o MongoDB local, confirme o ping e execute:
 
@@ -1064,7 +1136,7 @@ found 0 vulnerabilities
 ```
 
 Esse resultado representa o momento da verificação, não uma nova auditoria
-em 23 de outubro. Nenhuma dependência foi adicionada ou atualizada neste
+em 26 de outubro. Nenhuma dependência foi adicionada ou atualizada neste
 marco. A auditoria deve ser executada novamente após alterações nas
 dependências e antes da implantação.
 
@@ -1111,6 +1183,9 @@ sistema-gerenciamento-aulas/
 │   │   │       ├── MonthlyMaterialForm.test.jsx
 │   │   │       ├── MonthlyMaterialManagement.jsx
 │   │   │       └── MonthlyMaterialManagement.test.jsx
+│   │   ├── hooks/
+│   │   │   ├── useCourseCatalog.js
+│   │   │   └── useCourseCatalog.test.jsx
 │   │   ├── services/
 │   │   │   ├── AuthenticationApi.js
 │   │   │   ├── AuthenticationApi.test.js
@@ -1137,6 +1212,7 @@ sistema-gerenciamento-aulas/
 │   ├── previewInitialSetup.js
 │   ├── verifyInitialSetup.js
 │   ├── verifyInitialSetupHttp.js
+│   ├── verifyLessonCoursesHttp.js
 │   └── verifySingleAdminIndex.js
 ├── src/
 │   ├── config/
@@ -1179,6 +1255,7 @@ sistema-gerenciamento-aulas/
 │   │   ├── CourseService.js
 │   │   ├── InitialSetupRecoveryService.js
 │   │   ├── InitialSetupService.js
+│   │   ├── LessonCourseValidator.js
 │   │   ├── LessonService.js
 │   │   ├── MonthlyMaterialService.js
 │   │   ├── PasswordHasher.js
@@ -1218,6 +1295,7 @@ sistema-gerenciamento-aulas/
 │   ├── initialSetupService.test.js
 │   ├── initialSetupState.test.js
 │   ├── lesson.test.js
+│   ├── lessonCourseValidator.test.js
 │   ├── LessonController.test.js
 │   ├── lessonIntegration.test.js
 │   ├── lessonRoutes.test.js
@@ -2055,8 +2133,8 @@ recursos da futura interface e implantação segura ainda serão implementados.
 
 ## Próximos marcos
 
-1. vincular as aulas ao identificador dos cursos e substituir as opções fixas
-   em formulários, filtros, painel, materiais e calendário visual;
+1. consolidar a transição do contrato legado por sigla para o vínculo por ID,
+   definindo a retirada da compatibilidade e eventual migração explícita;
 2. validar manualmente o primeiro cadastro e a tela de cursos em largura de
    celular;
 3. modelar turmas com turno diurno ou noturno, salas e capacidade de alunos;

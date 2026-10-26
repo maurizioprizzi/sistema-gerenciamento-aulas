@@ -157,6 +157,18 @@ function isValidOptionalMaterialUrl(value) {
  * numero/lessonNumber, revisao/needsReview, linkPA/lessonPlanUrl e
  * linkGD/studentGuideUrl.
  *
+ * Durante a integração com o catálogo, courseId recebe a identidade estável
+ * do curso. O campo course ainda atende ao contrato anterior. A referência
+ * permanece opcional nesta etapa para não interromper a aplicação antes da
+ * atualização do serviço, da API e dos formulários. Quando courseId é informado,
+ * a sigla antiga deixa de ser obrigatória: ela será lida do catálogo pelo
+ * serviço. Ao concluir a integração, novas aulas deverão exigir courseId.
+ *
+ * O ref informa qual modelo poderá ser usado para carregar o curso; ele não
+ * verifica sua existência nem sua situação ativa. Essas regras pertencem ao
+ * serviço de aulas e serão aplicadas antes das gravações. Nenhuma consulta ou
+ * alteração de banco ocorre apenas ao importar este arquivo.
+ *
  * @param {typeof mongoose} mongooseClient Instância compatível com Mongoose.
  * @returns {mongoose.Schema} Schema configurado para o calendário.
  */
@@ -164,6 +176,8 @@ function createLessonSchema(mongooseClient = mongoose) {
     if (
         !mongooseClient
         || typeof mongooseClient.Schema !== 'function'
+        || !mongooseClient.Schema.Types
+        || !mongooseClient.Schema.Types.ObjectId
     ) {
         throw new TypeError(
             'Uma instância válida do Mongoose é necessária para criar o schema de aula.',
@@ -183,11 +197,37 @@ function createLessonSchema(mongooseClient = mongoose) {
 
             course: {
                 type: String,
-                required: [true, 'O curso da aula é obrigatório.'],
+                required: [
+                    function requiresLegacyCourse() {
+                        /**
+                         * Document e Query oferecem get(). Na atualização,
+                         * ele lê courseId do $set; na criação, do documento.
+                         * Assim, remover a sigla antiga exige um vínculo por
+                         * identidade no estado novo enviado pelo serviço.
+                         */
+                        const courseId = this.get('courseId');
+                        return courseId === undefined || courseId === null;
+                    },
+                    'O curso da aula é obrigatório.',
+                ],
                 enum: {
                     values: Object.values(LESSON_COURSES),
                     message: 'O curso informado não pertence ao calendário.',
                 },
+            },
+
+            /**
+             * Identidade do curso no catálogo da própria instalação.
+             *
+             * ObjectId pode receber sua representação hexadecimal textual.
+             * Uma sigla não deve ser convertida em um curso automaticamente:
+             * somente o identificador escolhido no catálogo poderá ser usado.
+             * Editar nome ou sigla do curso preserva este vínculo; desativá-lo
+             * também não remove nem modifica as aulas já registradas.
+             */
+            courseId: {
+                type: mongooseClient.Schema.Types.ObjectId,
+                ref: 'Course',
             },
 
             curricularUnit: {
@@ -270,6 +310,22 @@ function createLessonSchema(mongooseClient = mongoose) {
         },
         {
             name: 'lessons_date_course',
+        },
+    );
+
+    /**
+     * Prepara a consulta das aulas de um curso por identidade e data.
+     * O índice não é único: podem existir várias aulas do curso no mesmo dia.
+     * Sua criação real no MongoDB será integrada ao ciclo do servidor; esta
+     * declaração, isoladamente, não confirma que o índice já existe no banco.
+     */
+    lessonSchema.index(
+        {
+            courseId: 1,
+            date: 1,
+        },
+        {
+            name: 'lessons_course_id_date',
         },
     );
 

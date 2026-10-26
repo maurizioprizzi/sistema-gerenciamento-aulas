@@ -1,8 +1,10 @@
 import {
     cleanup,
+    fireEvent,
     render,
     screen,
     waitFor,
+    within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
@@ -71,7 +73,7 @@ function createMonthlyMaterialService(overrides = {}) {
     };
 }
 
-/** CursoService simulado: o catálogo só é consultado ao abrir sua seção. */
+/** Serviço simulado para o catálogo e os filtros de todas as seções. */
 function createCourseService(overrides = {}) {
     return {
         listCourses: vi.fn().mockResolvedValue([]),
@@ -465,7 +467,7 @@ describe('navegação da área autenticada', () => {
         ).toHaveBeenCalledTimes(3);
     });
 
-    test('consulta as duas fontes somente ao abrir o calendário visual', async () => {
+    test('consulta aulas e materiais novamente ao abrir o calendário visual', async () => {
         const user = userEvent.setup();
         const {
             lessonService,
@@ -552,7 +554,7 @@ describe('catálogo de cursos dentro da área autenticada', () => {
         }
     });
 
-    test('consulta o catálogo somente ao abrir Cursos e novamente ao retornar à seção', async () => {
+    test('consulta o catálogo ao abrir Cursos e novamente ao retornar à seção', async () => {
         const user = userEvent.setup();
         const { courseService } = renderWorkspace();
         expect(await screen.findByRole('heading', { name: 'Próximas aulas' })).toBeTruthy();
@@ -582,4 +584,118 @@ describe('catálogo de cursos dentro da área autenticada', () => {
         expect(await screen.findByRole('article', { name: 'Ciência de Dados' })).toBeTruthy();
         expect(courseService.createCourse).toHaveBeenCalledExactlyOnceWith({ name: 'Ciência de Dados', code: 'CD' });
     });
+});
+
+
+describe('catálogo entregue pelo workspace à seção de aulas', () => {
+    test('abrir aulas consulta o serviço recebido uma vez para o formulário e o filtro', async () => {
+        const user = userEvent.setup();
+        const course = { id: '507f1f77bcf86cd7994390ab', name: 'Ciência de Dados', code: 'CD', active: true };
+        const courseService = createCourseService({ listCourses: vi.fn().mockResolvedValue([course]) });
+        renderWorkspace({ courseService });
+        await screen.findByRole('heading', { name: 'Próximas aulas' });
+        expect(courseService.listCourses).not.toHaveBeenCalled();
+        await user.click(screen.getByRole('button', { name: 'Gerenciar aulas' }));
+        const creation = screen.getByRole('form', { name: 'Cadastro de aula' });
+        const filters = screen.getByRole('form', { name: 'Filtros de aulas' });
+        await waitFor(() => {
+            expect(within(creation).getByRole('option', { name: 'CD — Ciência de Dados' }).value).toBe(course.id);
+            expect(within(filters).getByRole('option', { name: 'CD — Ciência de Dados' }).value).toBe(course.id);
+        });
+        expect(courseService.listCourses).toHaveBeenCalledExactlyOnceWith({});
+        await user.click(screen.getByRole('button', { name: 'Painel geral' }));
+        expect(courseService.listCourses).toHaveBeenCalledOnce();
+        await user.click(screen.getByRole('button', { name: 'Gerenciar aulas' }));
+        await waitFor(() => expect(courseService.listCourses).toHaveBeenCalledTimes(2));
+    });
+
+    test('curso criado pela seção Cursos fica disponível no cadastro de uma aula pelo seu ID', async () => {
+        const user = userEvent.setup();
+        const courses = [];
+        const courseId = '507f1f77bcf86cd7994390ab';
+        const courseService = createCourseService({
+            listCourses: vi.fn(async () => [...courses]),
+            createCourse: vi.fn(async (data) => {
+                const course = { id: courseId, ...data, active: true };
+                courses.push(course);
+                return course;
+            }),
+        });
+        const lessonService = createLessonService({
+            createLesson: vi.fn(async (data) => ({ id: '507f1f77bcf86cd799439011',
+                ...data, course: 'CD' })),
+        });
+        renderWorkspace({ courseService, lessonService });
+        await user.click(screen.getByRole('button', { name: 'Cursos', exact: true }));
+        await screen.findByText('0 de 0 cursos');
+        await user.click(screen.getByRole('button', { name: 'Novo curso' }));
+        await user.type(screen.getByLabelText('Nome do curso'), 'Ciência de Dados');
+        await user.type(screen.getByLabelText('Sigla'), 'cd');
+        await user.click(screen.getByRole('button', { name: 'Cadastrar curso' }));
+        await screen.findByRole('article', { name: 'Ciência de Dados' });
+        await user.click(screen.getByRole('button', { name: 'Gerenciar aulas' }));
+        const form = screen.getByRole('form', { name: 'Cadastro de aula' });
+        await waitFor(() => expect(within(form).getByRole('option', { name: 'CD — Ciência de Dados' })).toBeTruthy());
+        fireEvent.change(within(form).getByLabelText('Data'), { target: { value: '2026-10-25' } });
+        await user.selectOptions(within(form).getByLabelText('Curso'), courseId);
+        await user.type(within(form).getByLabelText('Unidade curricular'), 'Introdução aos dados');
+        await user.click(within(form).getByRole('button', { name: 'Cadastrar registro' }));
+        await waitFor(() => expect(lessonService.listLessons).toHaveBeenCalledTimes(3));
+        expect(lessonService.createLesson).toHaveBeenCalledExactlyOnceWith({
+            date: '2026-10-25', courseId, curricularUnit: 'Introdução aos dados',
+            type: 'Aula', lessonNumber: null, needsReview: false,
+            lessonPlanUrl: null, studentGuideUrl: null,
+        });
+        expect(courseService.listCourses).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('catálogo entregue pelo workspace aos materiais e ao calendário', () => {
+    // As seções reais devem receber a mesma fonte configurada no workspace.
+    // Consultar uma API padrão por engano deixaria estas opções indisponíveis.
+    test.each(['Materiais', 'Calendário visual'])(
+        '%s usa o catálogo recebido e filtra por identidade sem repetir consultas',
+        async (sectionName) => {
+            const user = userEvent.setup();
+            const course = {
+                id: '507f1f77bcf86cd7994390ab',
+                name: 'Ciência de Dados',
+                code: 'CD',
+                active: false,
+            };
+            const courseService = createCourseService({
+                listCourses: vi.fn().mockResolvedValue([course]),
+            });
+            const { lessonService, monthlyMaterialService } = renderWorkspace({ courseService });
+
+            await screen.findByRole('heading', { name: 'Próximas aulas' });
+            expect(courseService.listCourses).not.toHaveBeenCalled();
+            await user.click(screen.getByRole('button', { name: sectionName }));
+
+            const courseFilter = screen.getByRole('combobox', { name: 'Curso', exact: true });
+            await waitFor(() => {
+                expect(courseFilter.disabled).toBe(false);
+                expect(within(courseFilter).getByRole('option', {
+                    name: 'CD — Ciência de Dados (desativado)',
+                }).value).toBe(course.id);
+            });
+            expect(courseService.listCourses).toHaveBeenCalledExactlyOnceWith({});
+
+            const lessonReadCount = lessonService.listLessons.mock.calls.length;
+            const monthlyReadCount = monthlyMaterialService.listMonthlyMaterials.mock.calls.length;
+            await user.selectOptions(courseFilter, course.id);
+            expect(courseFilter.value).toBe(course.id);
+            expect(lessonService.listLessons).toHaveBeenCalledTimes(lessonReadCount);
+            expect(monthlyMaterialService.listMonthlyMaterials).toHaveBeenCalledTimes(monthlyReadCount);
+            expect(courseService.listCourses).toHaveBeenCalledOnce();
+
+            // Voltar à seção deve obter uma fotografia atual do catálogo.
+            await user.click(screen.getByRole('button', { name: 'Painel geral' }));
+            await user.click(screen.getByRole('button', { name: sectionName }));
+            await waitFor(() => expect(courseService.listCourses).toHaveBeenCalledTimes(2));
+            expect(courseService.createCourse).not.toHaveBeenCalled();
+            expect(courseService.updateCourse).not.toHaveBeenCalled();
+            expect(courseService.deactivateCourse).not.toHaveBeenCalled();
+        },
+    );
 });

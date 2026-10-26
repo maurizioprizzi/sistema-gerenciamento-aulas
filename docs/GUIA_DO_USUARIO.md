@@ -1,6 +1,6 @@
 # Guia de uso do Sistema de Gerenciamento de Aulas
 
-> Guia atualizado em 23 de outubro de 2026.
+> Guia atualizado em 26 de outubro de 2026.
 >
 > Este documento foi escrito para explicar o uso da aplicação sem exigir
 > conhecimento de programação.
@@ -12,7 +12,7 @@ O Sistema de Gerenciamento de Aulas permite:
 - criar sua conta na própria instalação;
 - cadastrar cursos com nome e sigla personalizados;
 - editar e desativar cursos, mantendo seus registros no catálogo;
-- cadastrar aulas, atividades e avaliações;
+- cadastrar aulas, atividades e avaliações vinculadas aos seus cursos;
 - editar registros já cadastrados;
 - consultar registros já cadastrados;
 - localizar registros por curso, mês ou data;
@@ -27,10 +27,11 @@ As gravações confirmadas ficam no banco da instalação, mesmo depois de atual
 a página ou sair da conta. O projeto não fornece hospedagem compartilhada para
 terceiros.
 
-Esta versão está em desenvolvimento. O catálogo personalizado de **Cursos** já
-funciona, mas ainda não fornece as opções dos formulários e filtros de aulas.
-Use dados fictícios nas verificações enquanto essa integração e as instruções
-de instalação para iniciantes estiverem em preparação.
+Esta versão está em desenvolvimento. Os cursos personalizados já alimentam o
+cadastro e os filtros de aulas, materiais e calendário. O painel também utiliza
+os cursos das aulas cadastradas. Use dados fictícios nas verificações enquanto
+a instalação simplificada, o backup e os procedimentos de recuperação de acesso
+estiverem em preparação.
 
 ## 2. Antes do primeiro acesso
 
@@ -160,7 +161,9 @@ Ele mostra três grupos de informações.
 ### 5.1 Total de aulas registradas
 
 Apresenta a quantidade total de registros existentes no sistema. Quando houver
-registros, também serão mostradas as quantidades separadas por curso.
+registros, também serão mostradas as quantidades separadas por curso, incluindo
+as aulas de cursos desativados. Um curso sem aulas ainda não aparece nessa
+contagem. Alterar a sigla do curso não separa suas aulas em dois grupos.
 
 ### 5.2 Próximas aulas
 
@@ -213,6 +216,10 @@ permanecem preenchidos para você conferir e corrigir.
 A alteração mantém o mesmo registro. Um curso desativado continua desativado
 mesmo depois de editar seu nome ou sua sigla.
 
+As aulas vinculadas continuam pertencendo ao mesmo curso. Ao reabrir as seções
+de aulas, painel, materiais e calendário, a sigla atual será apresentada. Não
+é necessário editar cada aula para acompanhar a mudança de nome ou sigla.
+
 ### 6.3 Desativar um curso
 
 1. No curso ativo, clique em **Desativar**.
@@ -225,12 +232,28 @@ selecione **Desativados** ou **Todos** no filtro. Sua sigla continua ocupada e
 não pode ser usada em outro cadastro. A tela não oferece exclusão definitiva
 nem reativação de cursos nesta versão.
 
-### 6.4 Relação com as aulas nesta etapa
+O curso desativado deixa de ser oferecido no cadastro de novas aulas. Suas aulas
+continuam no painel, nos materiais e no calendário. Os filtros dessas áreas
+permitem escolher esse curso, identificado com **(desativado)**, para consultar
+o histórico.
 
-O catálogo personalizado ainda não fornece as opções dos campos de curso em
-**Gerenciar aulas**, **Materiais**, **Painel geral** e **Calendário visual**.
-Cadastrar um curso em **Cursos** ainda não faz com que ele apareça nessas áreas.
-Essa ligação será implementada no próximo marco.
+Ao editar uma aula que já pertence a ele, você pode manter o mesmo curso ou
+escolher outro que esteja ativo. Não é possível transferir uma aula de outro
+curso para esse curso desativado.
+
+### 6.4 Usar os cursos nas aulas
+
+Cadastre primeiro um curso em **Cursos**. Depois abra **Gerenciar aulas** e
+escolha esse curso no formulário. A opção mostra sigla e nome, por exemplo:
+**CD — Ciência de Dados**. Somente cursos ativos são oferecidos para uma nova
+aula.
+
+O sistema mantém a associação mesmo quando você muda o nome ou a sigla do
+curso. Os filtros de aulas, materiais e calendário utilizam essa mesma
+associação. Reabra a seção para consultar as informações atuais depois de
+alterar o catálogo.
+
+Cada professor mantém apenas os cursos da sua própria instalação.
 
 Turnos diurno ou noturno, turmas, salas e capacidade de alunos ainda não possuem
 campos de cadastro. Essas informações serão tratadas em uma etapa posterior.
@@ -254,11 +277,15 @@ Escolha o dia da aula, atividade ou avaliação. Esse campo é obrigatório.
 
 #### Curso
 
-Escolha uma das opções disponíveis no formulário. Esse campo é obrigatório.
+Escolha um curso ativo cadastrado na seção **Cursos**. Esse campo é obrigatório.
+Confira o nome e a sigla apresentados antes de salvar.
 
-As opções ainda pertencem à versão anterior do cadastro de aulas e não são
-alimentadas pelo catálogo personalizado. Consulte o limite descrito em
-**Relação com as aulas nesta etapa**.
+Se não houver curso ativo, abra **Cursos**, cadastre um e volte a **Gerenciar
+aulas**. Enquanto os cursos estiverem sendo carregados, a seleção e o envio
+ficam bloqueados. Se a consulta falhar, use **Tentar carregar cursos novamente**;
+os demais campos preenchidos serão preservados.
+
+O nome e a sigla do curso são alterados em **Cursos**, não no formulário da aula.
 
 #### Unidade curricular
 
@@ -327,8 +354,21 @@ na próxima seção em vez de criar outro registro igual.
 
 Durante a gravação, o botão mostrará **Salvando...**. Não clique novamente.
 
-Depois da confirmação, a alteração também será refletida no painel geral, nos
-materiais por aula e no calendário visual quando for aplicável.
+Depois da confirmação, reabra o painel geral, os materiais por aula ou o
+calendário visual para consultar a alteração nessas áreas.
+
+Se o curso original estiver desativado, ele continuará disponível nessa edição,
+com a indicação **(desativado)**. Você pode mantê-lo ou escolher outro curso
+ativo. Salvar a aula não reativa o curso.
+
+Se aparecer a orientação de que o registro usa um curso antigo, escolha
+explicitamente um curso ativo antes de salvar. O sistema não escolhe por você
+com base na semelhança entre as siglas.
+
+Se o curso vinculado não for encontrado, escolha um curso ativo para continuar.
+Se a aplicação informar que a aula foi alterada durante a edição, anote suas
+correções, cancele a edição, consulte novamente a lista e reabra o registro para
+conferir os dados atuais antes de tentar salvar.
 
 ### 8.1 Cancelar uma edição
 
@@ -364,7 +404,9 @@ Você pode usar:
 - **Mês**: mostra registros do mês escolhido;
 - **A partir de**: mostra registros a partir da data escolhida.
 
-Os filtros podem ser combinados.
+Os filtros podem ser combinados. O filtro **Curso** mostra o nome e a sigla dos
+cursos ativos e desativados. Uma opção marcada como **(desativado)** permite
+consultar aulas antigas; ela não libera esse curso para novos cadastros.
 
 Exemplo: para localizar registros de um curso em outubro de 2026:
 
@@ -422,6 +464,13 @@ Quando aparecer um traço (`—`), não existe link disponível para aquele camp
 
 Os links são abertos em outra aba do navegador.
 
+O filtro de curso inclui os cursos desativados para manter o acesso ao
+histórico. Trocar o nome ou a sigla não rompe essa seleção. A opção **Mostrar
+a partir de hoje** utiliza a data local do seu navegador.
+
+Salvar ou excluir um material mensal atualiza os links herdados pelas aulas,
+preservando o curso selecionado no filtro.
+
 ## 13. Cadastrar materiais para um mês inteiro
 
 1. Na área **Materiais**, localize **Materiais por mês**.
@@ -468,7 +517,13 @@ Na parte superior estão os botões:
 - **Hoje**: retorna ao mês da data atual;
 - **Próximo**: mostra o mês seguinte.
 
-O campo **Curso** permite mostrar todos os cursos ou somente um curso.
+O campo **Curso** permite mostrar todos os cursos ou somente um curso do seu
+catálogo, incluindo os desativados para consulta do histórico. As opções mostram
+sigla e nome; os registros dentro dos dias mostram a sigla atual.
+
+Trocar o curso filtra as aulas já carregadas. Alterar o nome ou a sigla do curso
+não muda quais aulas pertencem a ele. Reabra o calendário depois de uma alteração
+no catálogo para consultar os dados atuais.
 
 ### 15.1 Identificação e destaques
 
@@ -511,6 +566,12 @@ Nesse caso:
 5. entre novamente, caso a sessão tenha terminado;
 6. se ainda não funcionar, anote a mensagem exibida e avise a pessoa
    responsável pelo sistema.
+
+Se a mensagem for sobre carregar os cursos, use **Tentar carregar cursos
+novamente**. Nos materiais e no calendário, uma falha dessa consulta não apaga
+os registros já carregados. Aguarde uma consulta bem-sucedida antes de usar o
+filtro ou cadastrar uma aula. Se aparecer **Curso selecionado indisponível**,
+confira o catálogo em **Cursos** e escolha outra opção ou **Todos os cursos**.
 
 Ao pedir ajuda, informe:
 
@@ -563,12 +624,15 @@ colar o código de primeiro acesso → **Criar minha conta** → entrar pelo log
 **Cursos** → localizar o curso → **Editar** → **Salvar alterações**; ou
 **Desativar** → conferir → **Confirmar desativação**.
 
-O curso desativado permanece disponível no filtro **Desativados**.
+O curso desativado permanece disponível no filtro **Desativados** do catálogo
+e nos filtros de histórico das aulas, dos materiais e do calendário.
 
 ### Para cadastrar um registro
 
-**Gerenciar aulas** → preencher **Cadastrar registro** → conferir →
-**Cadastrar registro**.
+Cadastre um curso ativo em **Cursos**, se ainda não houver um. Depois:
+
+**Gerenciar aulas** → preencher **Cadastrar registro** → escolher o curso →
+conferir → **Cadastrar registro**.
 
 ### Para editar um registro
 

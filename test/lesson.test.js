@@ -203,7 +203,7 @@ describe('createLessonSchema', () => {
         );
     });
 
-    test('define somente os oito campos funcionais do protótipo', () => {
+    test('preserva os campos atuais e acrescenta a identidade do curso durante a transição', () => {
         const mongooseClient = new mongoose.Mongoose();
         const schema = createLessonSchema(mongooseClient);
 
@@ -217,6 +217,7 @@ describe('createLessonSchema', () => {
         assert.deepEqual(functionalPaths, [
             'date',
             'course',
+            'courseId',
             'curricularUnit',
             'type',
             'lessonNumber',
@@ -248,6 +249,123 @@ describe('createLessonSchema', () => {
 
         assert.equal(schema.options.timestamps, true);
         assert.equal(schema.options.versionKey, false);
+    });
+});
+
+describe('identidade do curso durante a integração do catálogo', () => {
+    test('declara referência opcional e índice por curso e data sem unicidade', () => {
+        const schema = createLessonSchema(new mongoose.Mongoose());
+        const courseIdPath = schema.path('courseId');
+
+        assert.equal(courseIdPath.instance, 'ObjectId');
+        assert.equal(courseIdPath.options.ref, 'Course');
+        assert.notEqual(courseIdPath.isRequired, true);
+
+        const index = schema.indexes().find(
+            ([, options]) => options.name === 'lessons_course_id_date',
+        );
+        assert.ok(index);
+        assert.deepEqual(index[0], { courseId: 1, date: 1 });
+        assert.notEqual(index[1].unique, true);
+    });
+
+    test('aceita ObjectId e texto hexadecimal sem abrir conexão para consultar o curso', async () => {
+        const { mongooseClient, LessonModel } = createIsolatedLessonModel();
+        const courseId = new mongoose.Types.ObjectId();
+
+        for (const value of [courseId, courseId.toHexString().toUpperCase()]) {
+            const lesson = new LessonModel(
+                createValidLessonData({ courseId: value }),
+            );
+            await assert.doesNotReject(lesson.validate());
+            assert.equal(lesson.courseId.toHexString(), courseId.toHexString());
+            assert.equal(lesson.toJSON().courseId.toString(), courseId.toString());
+        }
+
+        assert.equal(mongooseClient.connection.readyState, 0);
+    });
+
+    test('recusa siglas e identificadores malformados no campo de identidade', async () => {
+        const { LessonModel } = createIsolatedLessonModel();
+
+        for (const courseId of [
+            'CURSO-NOVO', '', 'a'.repeat(23), 'z'.repeat(24), 42, {}, [],
+        ]) {
+            const lesson = new LessonModel(createValidLessonData({ courseId }));
+            const error = await captureValidationError(lesson);
+            assert.equal(error.errors.courseId.name, 'CastError');
+        }
+    });
+
+    test('não inventa vínculo para registros que ainda usam somente a sigla', async () => {
+        const { LessonModel } = createIsolatedLessonModel();
+        const lesson = new LessonModel(createValidLessonData());
+
+        await assert.doesNotReject(lesson.validate());
+        assert.equal(lesson.courseId, undefined);
+        assert.equal(Object.hasOwn(lesson.toObject(), 'courseId'), false);
+        assert.equal(lesson.course, LESSON_COURSES.APQSA);
+    });
+
+    test('aceita aula vinculada somente por identidade sem exigir nem inventar uma sigla', async () => {
+        const { LessonModel, mongooseClient } = createIsolatedLessonModel();
+        const data = createValidLessonData({ courseId: new mongoose.Types.ObjectId() });
+        delete data.course;
+        const lesson = new LessonModel(data);
+
+        await assert.doesNotReject(lesson.validate());
+        assert.equal(lesson.courseId.toString(), data.courseId.toString());
+        assert.equal(lesson.course, undefined);
+        assert.equal(Object.hasOwn(lesson.toObject(), 'course'), false);
+        assert.equal(mongooseClient.connection.readyState, 0);
+    });
+
+    test('ausência das duas formas de vínculo continua sendo inválida', async () => {
+        const { LessonModel } = createIsolatedLessonModel();
+        const lesson = new LessonModel({ date: '2026-09-15', curricularUnit: 'UC 1' });
+        const error = await captureValidationError(lesson);
+        assert.equal(error.errors.course.message, 'O curso da aula é obrigatório.');
+    });
+
+    test('atualização com courseId pode remover a sigla antiga antes da escrita', async () => {
+        const { LessonModel, mongooseClient } = createIsolatedLessonModel();
+        const courseId = new mongoose.Types.ObjectId();
+        const lessonId = new mongoose.Types.ObjectId();
+        const writes = [];
+        // Apenas a chamada final ao driver é substituída. Conversão e validação
+        // da consulta Mongoose permanecem reais, sem conectar ao MongoDB.
+        LessonModel.collection.findOneAndUpdate = async (filter, update) => {
+            writes.push({ filter, update });
+            return { _id: lessonId, ...update.$set };
+        };
+        const lesson = await LessonModel.findOneAndUpdate(
+            { _id: lessonId, courseId: null },
+            {
+                $set: { courseId, date: '2026-09-15', curricularUnit: 'UC 1' },
+                $unset: { course: 1 },
+            },
+            { returnDocument: 'after', runValidators: true, context: 'query', upsert: false },
+        );
+        assert.equal(writes.length, 1);
+        assert.equal(lesson.courseId.toString(), courseId.toString());
+        assert.equal(lesson.course, undefined);
+        assert.equal(mongooseClient.connection.readyState, 0);
+    });
+
+    test('atualização não pode remover a sigla sem fornecer o vínculo por identidade', async () => {
+        const { LessonModel } = createIsolatedLessonModel();
+        let writes = 0;
+        LessonModel.collection.findOneAndUpdate = async () => { writes += 1; };
+        await assert.rejects(LessonModel.findOneAndUpdate(
+            { _id: new mongoose.Types.ObjectId() },
+            { $unset: { course: 1 } },
+            { runValidators: true, context: 'query' },
+        ), (error) => {
+            assert.ok(error instanceof mongoose.Error.ValidationError);
+            assert.ok(error.errors.course);
+            return true;
+        });
+        assert.equal(writes, 0);
     });
 });
 

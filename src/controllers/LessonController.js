@@ -2,6 +2,9 @@
 
 const { AppError } = require('../errors/AppError');
 
+/** Formato público de uma identidade MongoDB, sem depender do Mongoose. */
+const HTTP_OBJECT_ID_PATTERN = /^[a-fA-F0-9]{24}$/;
+
 /**
  * Códigos públicos produzidos diretamente pela fronteira HTTP de aulas.
  */
@@ -102,13 +105,17 @@ class LessonController {
      *
      * Mesmo que uma implementação incorreta do serviço acrescente campos
      * internos, o controlador seleciona novamente somente o identificador e
-     * os oito campos funcionais autorizados pelo calendário.
+     * os campos funcionais autorizados pelo calendário. Aulas do catálogo
+     * também devolvem courseId; course continua sendo a sigla de apresentação
+     * consultada no catálogo pelo serviço, não a identidade do vínculo.
+     * Durante a transição, aulas legadas podem não possuir courseId.
      *
      * @param {unknown} lesson Aula recebida do serviço.
      * @returns {Readonly<object>} Aula segura para a resposta HTTP.
      * @throws {TypeError} Quando a representação estiver inconsistente.
      */
     static createPublicLesson(lesson) {
+        const hasCourseId = isObject(lesson) && Object.hasOwn(lesson, 'courseId');
         const hasRequiredStrings =
             isObject(lesson)
             && typeof lesson.id === 'string'
@@ -138,7 +145,14 @@ class LessonController {
                 || typeof lesson.studentGuideUrl === 'string'
             );
 
-        if (!hasValidOptionalFields) {
+        const hasValidCourseIdentity = !hasCourseId || (
+            typeof lesson.courseId === 'string'
+            && HTTP_OBJECT_ID_PATTERN.test(lesson.courseId)
+            && typeof lesson.id === 'string'
+            && HTTP_OBJECT_ID_PATTERN.test(lesson.id)
+        );
+
+        if (!hasValidOptionalFields || !hasValidCourseIdentity) {
             throw new TypeError(
                 LESSON_CONTROLLER_ERRORS.INVALID_LESSON_RESPONSE,
             );
@@ -148,6 +162,7 @@ class LessonController {
             id: lesson.id,
             date: lesson.date,
             course: lesson.course,
+            ...(hasCourseId ? { courseId: lesson.courseId.toLowerCase() } : {}),
             curricularUnit: lesson.curricularUnit,
             type: lesson.type,
             lessonNumber: lesson.lessonNumber,
@@ -311,7 +326,10 @@ class LessonController {
      *
      * O serviço continua responsável por reconhecer os nomes e validar os
      * valores dos filtros. O controlador apenas encaminha a estrutura recebida
-     * e apresenta o resultado sob o envelope HTTP padronizado.
+     * e apresenta o resultado sob o envelope HTTP padronizado. Isso inclui
+     * courseId: o serviço recusa identificadores malformados e a combinação
+     * ambígua de courseId com a sigla legada course. Nenhum filtro é descartado
+     * silenciosamente pelo controlador.
      *
      * @param {import('express').Request} request Requisição HTTP.
      * @param {import('express').Response} response Resposta HTTP.

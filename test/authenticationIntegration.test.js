@@ -267,6 +267,7 @@ describe('integração da autenticação no ciclo de abertura', () => {
             await assert.rejects(
                 startServer({
                     courseRouterFactory: () => (_request, _response, next) => next(),
+                    lessonRouterFactory: () => (_request, _response, next) => next(),
                     database,
                     authenticationRouterFactory: {},
                     frontendAssetsMiddlewareFactory:
@@ -418,6 +419,7 @@ describe('integração da autenticação no ciclo de abertura', () => {
                 await assert.rejects(
                     startServer({
                         courseRouterFactory: () => (_request, _response, next) => next(),
+                        lessonRouterFactory: () => (_request, _response, next) => next(),
                         // O banco é simulado; a preparação dos índices também.
                         administrativeIndexInitializerFactory() {
                             order.push('indexes.factory');

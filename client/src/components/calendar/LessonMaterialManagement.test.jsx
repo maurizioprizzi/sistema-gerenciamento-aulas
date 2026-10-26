@@ -22,14 +22,27 @@ import {
     EMPTY_MATERIAL_FILTERS,
     LESSON_MATERIAL_MANAGEMENT_IDS,
     LESSON_MATERIAL_MANAGEMENT_MESSAGES,
-    LessonMaterialManagement,
+    LessonMaterialManagement as RealLessonMaterialManagement,
     createAvailableMonths,
     createEmptyMaterialFilters,
+    defaultTodayProvider,
     filterMaterialLessons,
     formatCivilDate,
     formatLessonRecord,
     resolveLessonMaterials,
 } from './LessonMaterialManagement.jsx';
+
+const COURSE_IDS = Object.freeze({
+    CD: '507f1f77bcf86cd7994390ab', RC: '507f1f77bcf86cd7994390ac',
+});
+const TEST_COURSES = Object.freeze([
+    { id: COURSE_IDS.CD, name: 'Ciência de Dados', code: 'CD', active: true },
+    { id: COURSE_IDS.RC, name: 'Redes de Computadores', code: 'RC', active: false },
+]);
+const TEST_COURSE_SERVICE = { async listCourses() { return TEST_COURSES; } };
+function LessonMaterialManagement(props) {
+    return <RealLessonMaterialManagement courseService={TEST_COURSE_SERVICE} {...props} />;
+}
 
 afterEach(() => {
     cleanup();
@@ -37,9 +50,10 @@ afterEach(() => {
 
 function createLesson(overrides = {}) {
     return Object.freeze({
-        id: 'lesson-1',
+        id: '507f1f77bcf86cd799439011',
         date: '2026-09-18',
-        course: 'APQSA',
+        course: 'CD',
+        courseId: COURSE_IDS[overrides.course ?? 'CD'],
         curricularUnit: 'Qualidade de Software',
         type: 'Aula',
         lessonNumber: '12',
@@ -93,6 +107,7 @@ function renderManagement({
     materials = [],
     lessonService = createLessonService(lessons),
     monthlyMaterialService = createMonthlyMaterialService(materials),
+    courseService = TEST_COURSE_SERVICE,
     todayProvider = () => '2026-09-18',
     refreshKey = 0,
 } = {}) {
@@ -100,12 +115,13 @@ function renderManagement({
         <LessonMaterialManagement
             lessonService={lessonService}
             monthlyMaterialService={monthlyMaterialService}
+            courseService={courseService}
             todayProvider={todayProvider}
             refreshKey={refreshKey}
         />,
     );
 
-    return { lessonService, monthlyMaterialService, view };
+    return { lessonService, monthlyMaterialService, courseService, view };
 }
 
 describe('configuracao dos materiais por aula', () => {
@@ -126,7 +142,7 @@ describe('configuracao dos materiais por aula', () => {
         const secondFilters = createEmptyMaterialFilters();
 
         expect(firstFilters).toEqual({
-            course: '',
+            courseId: '',
             month: '',
             fromToday: false,
         });
@@ -198,8 +214,8 @@ describe('preparacao dos materiais por aula', () => {
     test('organiza os meses disponiveis sem duplicacoes', () => {
         const months = createAvailableMonths([
             createLesson({ date: '2026-09-18' }),
-            createLesson({ id: 'lesson-2', date: '2026-10-02' }),
-            createLesson({ id: 'lesson-3', date: '2026-09-25' }),
+            createLesson({ id: '000000000000000000000002', date: '2026-10-02' }),
+            createLesson({ id: '000000000000000000000003', date: '2026-09-25' }),
         ]);
 
         expect(months).toEqual(['2026-10', '2026-09']);
@@ -208,20 +224,20 @@ describe('preparacao dos materiais por aula', () => {
 
     test('combina curso, mes e data atual somente no navegador', () => {
         const lessons = [
-            createLesson({ id: 'past', date: '2026-09-17' }),
-            createLesson({ id: 'today', date: '2026-09-18' }),
+            createLesson({ id: '000000000000000000000004', date: '2026-09-17' }),
+            createLesson({ id: '000000000000000000000005', date: '2026-09-18' }),
             createLesson({
-                id: 'other-course',
+                id: '000000000000000000000006',
                 date: '2026-09-20',
-                course: 'TECMKT',
+                course: 'RC',
             }),
-            createLesson({ id: 'other-month', date: '2026-10-01' }),
+            createLesson({ id: '000000000000000000000007', date: '2026-10-01' }),
         ];
 
         const filteredLessons = filterMaterialLessons(
             lessons,
             {
-                course: 'APQSA',
+                courseId: COURSE_IDS.CD,
                 month: '2026-09',
                 fromToday: true,
             },
@@ -229,12 +245,12 @@ describe('preparacao dos materiais por aula', () => {
         );
 
         expect(filteredLessons.map((lesson) => lesson.id)).toEqual([
-            'today',
+            '000000000000000000000005',
         ]);
         expect(Object.isFrozen(filteredLessons)).toBe(true);
         expect(() => filterMaterialLessons(
             lessons,
-            { course: '', month: '', fromToday: true },
+            { courseId: '', month: '', fromToday: true },
             () => '2026-02-30',
         )).toThrowError(
             LESSON_MATERIAL_MANAGEMENT_MESSAGES.INVALID_TODAY,
@@ -326,7 +342,7 @@ describe('consulta visual dos materiais por aula', () => {
         const row = within(table).getAllByRole('row')[1];
 
         expect(within(row).getByText('18/09/2026')).toBeTruthy();
-        expect(within(row).getByText('APQSA')).toBeTruthy();
+        expect(within(row).getByText('CD')).toBeTruthy();
         expect(within(row).getByText('Qualidade de Software')).toBeTruthy();
         expect(within(row).getByText('Aula 12')).toBeTruthy();
 
@@ -376,16 +392,16 @@ describe('consulta visual dos materiais por aula', () => {
 
         renderManagement({
             lessons: [
-                createLesson({ id: 'past', date: '2026-09-17' }),
-                createLesson({ id: 'today', date: '2026-09-18' }),
+                createLesson({ id: '000000000000000000000004', date: '2026-09-17' }),
+                createLesson({ id: '000000000000000000000005', date: '2026-09-18' }),
                 createLesson({
-                    id: 'marketing',
+                    id: '000000000000000000000008',
                     date: '2026-09-20',
-                    course: 'TECMKT',
+                    course: 'RC',
                     curricularUnit: 'Marketing Digital',
                 }),
                 createLesson({
-                    id: 'october',
+                    id: '000000000000000000000009',
                     date: '2026-10-02',
                     curricularUnit: 'Processos',
                 }),
@@ -403,7 +419,7 @@ describe('consulta visual dos materiais por aula', () => {
             'Setembro 2026',
         ]);
 
-        await user.selectOptions(screen.getByLabelText('Curso'), 'APQSA');
+        await user.selectOptions(screen.getByLabelText('Curso'), COURSE_IDS.CD);
         await user.selectOptions(monthSelect, '2026-09');
         await user.click(screen.getByRole('checkbox', {
             name: 'Mostrar a partir de hoje',
@@ -468,7 +484,7 @@ describe('consulta visual dos materiais por aula', () => {
             .mockReturnValueOnce(firstRequest.promise)
             .mockResolvedValueOnce(Object.freeze([
                 createLesson({
-                    id: 'new',
+                    id: '00000000000000000000000a',
                     curricularUnit: 'Estado atual',
                 }),
             ]));
@@ -491,7 +507,7 @@ describe('consulta visual dos materiais por aula', () => {
 
         firstRequest.resolve(Object.freeze([
             createLesson({
-                id: 'old',
+                id: '00000000000000000000000b',
                 curricularUnit: 'Estado antigo',
             }),
         ]));
@@ -519,5 +535,103 @@ describe('consulta visual dos materiais por aula', () => {
         expect((await screen.findByRole('alert')).textContent).toBe(
             publicMessage,
         );
+    });
+});
+
+
+describe('cursos personalizados nos materiais por aula', () => {
+    test('relógio padrão usa o dia local, mesmo quando o dia UTC seria outro', () => {
+        class LocalClock {
+            getFullYear() { return 2026; }
+            getMonth() { return 9; }
+            getDate() { return 25; }
+            toISOString() { return '2026-10-26T01:30:00.000Z'; }
+        }
+        vi.stubGlobal('Date', LocalClock);
+        try { expect(defaultTodayProvider()).toBe('2026-10-25'); }
+        finally { vi.unstubAllGlobals(); }
+    });
+
+    test('recusa siglas, operadores e campos desconhecidos no filtro por identidade', () => {
+        for (const extra of [
+            { courseId: 'CD' }, { courseId: { $ne: null } }, { course: 'CD' },
+            { fromToday: 'true' }, { month: '2026-99' },
+        ]) {
+            expect(() => filterMaterialLessons([], { ...EMPTY_MATERIAL_FILTERS, ...extra },
+                () => '2026-10-25')).toThrowError(LESSON_MATERIAL_MANAGEMENT_MESSAGES.INVALID_FILTERS);
+        }
+    });
+
+    test('consulta o catálogo uma vez e aplica filtros por ID sem repetir as fontes', async () => {
+        const user = userEvent.setup();
+        const courseService = { listCourses: vi.fn().mockResolvedValue(TEST_COURSES) };
+        const ctx = renderManagement({ courseService, lessons: [createLesson()] });
+        await screen.findByRole('table');
+        await screen.findByRole('option', { name: 'CD — Ciência de Dados' });
+        await user.selectOptions(screen.getByLabelText('Curso'), COURSE_IDS.CD);
+        expect(screen.getByText('Qualidade de Software')).toBeTruthy();
+        expect(courseService.listCourses).toHaveBeenCalledExactlyOnceWith({});
+        expect(ctx.lessonService.listLessons).toHaveBeenCalledOnce();
+        expect(ctx.monthlyMaterialService.listMonthlyMaterials).toHaveBeenCalledOnce();
+    });
+
+    test('curso desativado continua no filtro e mantém acesso aos materiais históricos', async () => {
+        const user = userEvent.setup();
+        renderManagement({ lessons: [createLesson({ course: 'RC' })], materials: [createMonthlyMaterial()] });
+        await screen.findByRole('table');
+        expect(screen.getByRole('option', { name: /RC — Redes de Computadores.*desativado/ })).toBeTruthy();
+        await user.selectOptions(screen.getByLabelText('Curso'), COURSE_IDS.RC);
+        expect(screen.getByRole('link', { name: 'Abrir PA' }).getAttribute('href'))
+            .toBe('https://example.com/pa-mensal');
+        expect(screen.getByRole('link', { name: 'Abrir GD+AD' }).getAttribute('href'))
+            .toBe('https://example.com/gd-ad-mensal');
+    });
+
+    test('nome e sigla atualizados no catálogo não rompem a seleção pelo vínculo salvo', async () => {
+        const user = userEvent.setup();
+        const renamed = TEST_COURSES.map((course) => course.id === COURSE_IDS.CD
+            ? { ...course, code: 'AD', name: 'Análise de Dados' } : course);
+        renderManagement({ lessons: [createLesson()],
+            courseService: { listCourses: vi.fn().mockResolvedValue(renamed) } });
+        await screen.findByRole('option', { name: 'AD — Análise de Dados' });
+        await user.selectOptions(screen.getByLabelText('Curso'), COURSE_IDS.CD);
+        expect(screen.getByText('Qualidade de Software')).toBeTruthy();
+    });
+
+    test('falha do catálogo permite nova tentativa sem ocultar dados nem reler aulas e materiais', async () => {
+        const user = userEvent.setup();
+        const courseService = { listCourses: vi.fn().mockRejectedValueOnce(new Error('detalhe privado'))
+            .mockResolvedValueOnce(TEST_COURSES) };
+        const ctx = renderManagement({ lessons: [createLesson()], courseService });
+        await screen.findByRole('table');
+        const retry = await screen.findByRole('button', { name: 'Tentar carregar cursos novamente' });
+        expect(screen.getByRole('alert').textContent).not.toContain('detalhe privado');
+        await user.click(retry);
+        await screen.findByRole('option', { name: 'CD — Ciência de Dados' });
+        expect(courseService.listCourses).toHaveBeenCalledTimes(2);
+        expect(ctx.lessonService.listLessons).toHaveBeenCalledOnce();
+        expect(ctx.monthlyMaterialService.listMonthlyMaterials).toHaveBeenCalledOnce();
+    });
+
+    test('atualização dos materiais preserva o curso selecionado e não repete o catálogo', async () => {
+        const user = userEvent.setup();
+        const courseService = { listCourses: vi.fn().mockResolvedValue(TEST_COURSES) };
+        const clock = () => '2026-09-18';
+        const ctx = renderManagement({ lessons: [createLesson()], courseService, todayProvider: clock });
+        await screen.findByRole('table');
+        await user.selectOptions(screen.getByLabelText('Curso'), COURSE_IDS.CD);
+        ctx.view.rerender(<LessonMaterialManagement lessonService={ctx.lessonService}
+            monthlyMaterialService={ctx.monthlyMaterialService} courseService={courseService}
+            todayProvider={clock} refreshKey={1} />);
+        await waitFor(() => expect(ctx.lessonService.listLessons).toHaveBeenCalledTimes(2));
+        expect(screen.getByLabelText('Curso').value).toBe(COURSE_IDS.CD);
+        expect(courseService.listCourses).toHaveBeenCalledOnce();
+        expect(ctx.monthlyMaterialService.listMonthlyMaterials).toHaveBeenCalledTimes(2);
+    });
+
+    test('lista inválida de aulas gera falha sem apresentar falso estado vazio', async () => {
+        renderManagement({ lessonService: { listLessons: vi.fn().mockResolvedValue(null) } });
+        expect(await screen.findByRole('alert')).toBeTruthy();
+        expect(screen.queryByText(LESSON_MATERIAL_MANAGEMENT_MESSAGES.EMPTY)).toBeNull();
     });
 });

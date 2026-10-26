@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { lessonApi } from '../../services/LessonApi.js';
+import { courseApi } from '../../services/CourseApi.js';
 import {
     monthlyMaterialApi,
 } from '../../services/MonthlyMaterialApi.js';
@@ -22,6 +23,8 @@ const MATERIAL_MANAGEMENT_MESSAGES = Object.freeze({
         'A área de materiais exige um serviço de aulas válido.',
     INVALID_MONTHLY_MATERIAL_SERVICE:
         'A área de materiais exige um serviço mensal completo válido.',
+    INVALID_COURSE_SERVICE:
+        'A área de materiais exige um serviço de cursos válido.',
     INVALID_CONFIRMATION:
         'A área de materiais exige uma confirmação de exclusão válida.',
     INVALID_TODAY_PROVIDER:
@@ -43,6 +46,8 @@ const MATERIAL_MANAGEMENT_MESSAGES = Object.freeze({
  * saveMonthlyMaterial: Function, deleteMonthlyMaterial: Function }}
  * [props.monthlyMaterialService=monthlyMaterialApi]
  * Serviço utilizado para consultar e alterar materiais mensais.
+ * @param {{ listCourses: Function }} [props.courseService=courseApi]
+ * Serviço do catálogo utilizado no filtro de materiais por aula.
  * @param {Function} [props.confirmDeletion=defaultConfirmDeletion]
  * Confirmação de exclusão substituível nos testes.
  * @param {Function} [props.todayProvider=defaultTodayProvider]
@@ -52,6 +57,7 @@ const MATERIAL_MANAGEMENT_MESSAGES = Object.freeze({
 function MaterialManagement({
     lessonService = lessonApi,
     monthlyMaterialService = monthlyMaterialApi,
+    courseService = courseApi,
     confirmDeletion = defaultConfirmDeletion,
     todayProvider = defaultTodayProvider,
 } = {}) {
@@ -83,6 +89,11 @@ function MaterialManagement({
             MATERIAL_MANAGEMENT_MESSAGES
                 .INVALID_MONTHLY_MATERIAL_SERVICE,
         );
+    }
+
+    if (!courseService || typeof courseService !== 'object' || Array.isArray(courseService)
+        || typeof courseService.listCourses !== 'function') {
+        throw new TypeError(MATERIAL_MANAGEMENT_MESSAGES.INVALID_COURSE_SERVICE);
     }
 
     if (typeof confirmDeletion !== 'function') {
@@ -133,6 +144,7 @@ function MaterialManagement({
             <LessonMaterialManagement
                 lessonService={lessonService}
                 monthlyMaterialService={monthlyMaterialService}
+                courseService={courseService}
                 todayProvider={todayProvider}
                 refreshKey={monthlyMaterialRevision}
             />

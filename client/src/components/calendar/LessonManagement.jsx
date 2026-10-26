@@ -6,10 +6,12 @@ import {
 } from 'react';
 
 import {
-    LESSON_API_COURSES,
+    LessonApi,
     LessonApiError,
     lessonApi,
 } from '../../services/LessonApi.js';
+import { courseApi } from '../../services/CourseApi.js';
+import { useCourseCatalog } from '../../hooks/useCourseCatalog.js';
 import { LessonForm } from './LessonForm.jsx';
 
 /**
@@ -41,7 +43,7 @@ const LESSON_MANAGEMENT_MESSAGES = Object.freeze({
  * Estado inicial editável dos três filtros públicos da API.
  */
 const EMPTY_LESSON_FILTERS = Object.freeze({
-    course: '',
+    courseId: '',
     month: '',
     fromDate: '',
 });
@@ -49,7 +51,7 @@ const EMPTY_LESSON_FILTERS = Object.freeze({
 /**
  * Cria uma nova cópia do estado vazio para uso pelos controles React.
  *
- * @returns {{ course: string, month: string, fromDate: string }} Filtros vazios.
+ * @returns {{ courseId: string, month: string, fromDate: string }} Filtros vazios.
  */
 function createEmptyFilters() {
     return { ...EMPTY_LESSON_FILTERS };
@@ -60,15 +62,15 @@ function createEmptyFilters() {
  *
  * A ordem explícita corresponde ao contrato determinístico do LessonApi.
  *
- * @param {{ course: string, month: string, fromDate: string }} filters
+ * @param {{ courseId: string, month: string, fromDate: string }} filters
  * Estado atual do formulário.
  * @returns {Readonly<object>} Filtros prontos para consulta.
  */
 function createSubmittedFilters(filters) {
     const submittedFilters = {};
 
-    if (filters.course.length > 0) {
-        submittedFilters.course = filters.course;
+    if (filters.courseId.length > 0) {
+        submittedFilters.courseId = filters.courseId;
     }
 
     if (filters.month.length > 0) {
@@ -79,7 +81,7 @@ function createSubmittedFilters(filters) {
         submittedFilters.fromDate = filters.fromDate;
     }
 
-    return Object.freeze(submittedFilters);
+    return LessonApi.createFilters(submittedFilters);
 }
 
 /**
@@ -138,9 +140,11 @@ function LessonMaterialLink({ label, url }) {
  *     deleteLesson: Function,
  * }} [props.lessonService=lessonApi]
  * Serviço substituível nos testes.
+ * @param {{ listCourses: Function }} [props.courseService=courseApi]
+ * Serviço do catálogo compartilhado pelo filtro e pelo formulário.
  * @returns {import('react').ReactElement} Consulta visual das aulas.
  */
-function LessonManagement({ lessonService = lessonApi } = {}) {
+function LessonManagement({ lessonService = lessonApi, courseService = courseApi } = {}) {
     const isValidLessonService =
         lessonService !== null
         && typeof lessonService === 'object'
@@ -155,6 +159,8 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
             LESSON_MANAGEMENT_MESSAGES.INVALID_LESSON_SERVICE,
         );
     }
+
+    const courseCatalog = useCourseCatalog({ courseService });
 
     const [filters, setFilters] = useState(createEmptyFilters);
     const [appliedFilters, setAppliedFilters] = useState(
@@ -187,7 +193,7 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
                 await lessonService.listLessons(requestedFilters);
 
             if (requestSequence.current === requestId) {
-                setLessons(receivedLessons);
+                setLessons(LessonApi.createPublicLessonList({ data: { lessons: receivedLessons } }));
             }
         } catch (error) {
             if (requestSequence.current === requestId) {
@@ -401,6 +407,8 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
 
             <LessonForm
                 lessonService={lessonService}
+                courseService={courseService}
+                courseCatalog={courseCatalog}
                 lessonToEdit={lessonToEdit}
                 onLessonCreated={handleLessonCreated}
                 onLessonUpdated={handleLessonUpdated}
@@ -419,15 +427,21 @@ function LessonManagement({ lessonService = lessonApi } = {}) {
                     </label>
                     <select
                         id="lesson-filter-course"
-                        name="course"
-                        value={filters.course}
-                        disabled={isLoading}
+                        name="courseId"
+                        value={filters.courseId}
+                        disabled={isLoading || courseCatalog.isLoading || Boolean(courseCatalog.errorMessage)}
                         onChange={handleFilterChange}
                     >
                         <option value="">Todos os cursos</option>
-                        {LESSON_API_COURSES.map((course) => (
-                            <option key={course} value={course}>
-                                {course}
+                        {filters.courseId && !courseCatalog.courses.some(
+                            (course) => course.id === filters.courseId,
+                        ) && (
+                            <option value={filters.courseId} disabled>Curso selecionado indisponível</option>
+                        )}
+                        {courseCatalog.courses.map((course) => (
+                            <option key={course.id} value={course.id}>
+                                {course.code} — {course.name}
+                                {!course.active ? ' (desativado)' : ''}
                             </option>
                         ))}
                     </select>

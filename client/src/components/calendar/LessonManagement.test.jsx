@@ -20,11 +20,26 @@ import {
     EMPTY_LESSON_FILTERS,
     LESSON_MANAGEMENT_IDS,
     LESSON_MANAGEMENT_MESSAGES,
-    LessonManagement,
+    LessonManagement as RealLessonManagement,
     createSubmittedFilters,
     formatCivilDate,
 } from './LessonManagement.jsx';
 import { LessonApiError } from '../../services/LessonApi.js';
+
+/** Dependência de leitura explícita: os testes não acessam a rede. */
+const COURSE_IDS = Object.freeze({
+    CD: '507f1f77bcf86cd7994390ab', RC: '507f1f77bcf86cd7994390ac',
+    ADM: '507f1f77bcf86cd7994390ad',
+});
+const TEST_COURSES = Object.freeze([
+    { id: COURSE_IDS.CD, code: 'CD', name: 'Ciência de Dados', active: true },
+    { id: COURSE_IDS.RC, code: 'RC', name: 'Redes de Computadores', active: true },
+    { id: COURSE_IDS.ADM, code: 'ADM', name: 'Administração', active: false },
+]);
+const TEST_COURSE_SERVICE = { async listCourses() { return TEST_COURSES; } };
+function LessonManagement(props) {
+    return <RealLessonManagement courseService={TEST_COURSE_SERVICE} {...props} />;
+}
 
 afterEach(() => {
     cleanup();
@@ -40,7 +55,8 @@ function createLesson(overrides = {}) {
     return Object.freeze({
         id: '64f000000000000000000123',
         date: '2026-09-18',
-        course: 'APQSA',
+        course: 'CD',
+        courseId: COURSE_IDS[overrides.course ?? 'CD'],
         curricularUnit: 'Qualidade de Software',
         type: 'Aula',
         lessonNumber: '12',
@@ -97,7 +113,7 @@ describe('configuração do gerenciamento de aulas', () => {
             RESULTS: 'lesson-management-results',
         });
         expect(EMPTY_LESSON_FILTERS).toEqual({
-            course: '',
+            courseId: '',
             month: '',
             fromDate: '',
         });
@@ -143,17 +159,17 @@ describe('configuração do gerenciamento de aulas', () => {
 describe('preparação visual dos filtros e datas', () => {
     test('remove filtros vazios e preserva a ordem pública', () => {
         const filters = createSubmittedFilters({
-            course: 'APQSA',
+            courseId: COURSE_IDS.CD,
             month: '',
             fromDate: '2026-09-18',
         });
 
         expect(filters).toEqual({
-            course: 'APQSA',
+            courseId: COURSE_IDS.CD,
             fromDate: '2026-09-18',
         });
         expect(Object.keys(filters)).toEqual([
-            'course',
+            'courseId',
             'fromDate',
         ]);
         expect(Object.isFrozen(filters)).toBe(true);
@@ -211,7 +227,7 @@ describe('consulta inicial de aulas', () => {
             name: 'Aulas encontradas',
         });
 
-        expect(within(lessonList).getByText('APQSA')).toBeTruthy();
+        expect(within(lessonList).getByText('CD')).toBeTruthy();
         expect(within(lessonList).getByText('Aula')).toBeTruthy();
         expect(within(lessonList).getByText('12')).toBeTruthy();
         expect(
@@ -276,7 +292,7 @@ describe('interação com os filtros', () => {
 
         await user.selectOptions(
             within(filterForm).getByLabelText('Curso'),
-            'TECMKT',
+            COURSE_IDS.RC,
         );
         fireEvent.change(within(filterForm).getByLabelText('Mês'), {
             target: { value: '2026-09' },
@@ -293,7 +309,7 @@ describe('interação com os filtros', () => {
             expect(lessonService.listLessons).toHaveBeenCalledTimes(2);
         });
         expect(lessonService.listLessons).toHaveBeenLastCalledWith({
-            course: 'TECMKT',
+            courseId: COURSE_IDS.RC,
             month: '2026-09',
             fromDate: '2026-09-18',
         });
@@ -315,7 +331,7 @@ describe('interação com os filtros', () => {
 
         await user.selectOptions(
             within(filterForm).getByLabelText('Curso'),
-            'TECADM',
+            COURSE_IDS.ADM,
         );
         await user.click(
             screen.getByRole('button', { name: 'Aplicar filtros' }),
@@ -344,8 +360,8 @@ describe('integração do cadastro com a consulta', () => {
     test('atualiza a lista preservando os filtros aplicados', async () => {
         const user = userEvent.setup();
         const createdLesson = createLesson({
-            id: 'lesson-created',
-            course: 'TECMKT',
+            id: '64f000000000000000000125',
+            course: 'RC',
             curricularUnit: 'Marketing Digital',
         });
         const lessonService = createLessonService({
@@ -371,7 +387,7 @@ describe('integração do cadastro com a consulta', () => {
 
         await user.selectOptions(
             within(filterForm).getByLabelText('Curso'),
-            'TECMKT',
+            COURSE_IDS.RC,
         );
         await user.click(
             screen.getByRole('button', { name: 'Aplicar filtros' }),
@@ -385,7 +401,7 @@ describe('integração do cadastro com a consulta', () => {
         });
         await user.selectOptions(
             within(creationForm).getByLabelText('Curso'),
-            'TECMKT',
+            COURSE_IDS.RC,
         );
         await user.type(
             within(creationForm).getByLabelText('Unidade curricular'),
@@ -402,7 +418,7 @@ describe('integração do cadastro com a consulta', () => {
         expect(lessonService.createLesson).toHaveBeenCalledTimes(1);
         expect(lessonService.listLessons).toHaveBeenCalledTimes(3);
         expect(lessonService.listLessons).toHaveBeenLastCalledWith({
-            course: 'TECMKT',
+            courseId: COURSE_IDS.RC,
         });
     });
 });
@@ -425,7 +441,7 @@ describe('integração da edição com a consulta', () => {
         });
 
         const editButton = screen.getByRole('button', {
-            name: 'Editar Aula de APQSA em 18/09/2026',
+            name: 'Editar Aula de CD em 18/09/2026',
         });
 
         await user.click(editButton);
@@ -439,7 +455,7 @@ describe('integração da edição com a consulta', () => {
         ).toBe('2026-09-18');
         expect(
             within(editingForm).getByLabelText('Curso').value,
-        ).toBe('APQSA');
+        ).toBe(COURSE_IDS.CD);
         expect(
             within(editingForm).getByLabelText('Unidade curricular').value,
         ).toBe('Qualidade de Software');
@@ -464,7 +480,7 @@ describe('integração da edição com a consulta', () => {
         const secondLesson = createLesson({
             id: '64f000000000000000000124',
             date: '2026-09-19',
-            course: 'TECMKT',
+            course: 'RC',
             curricularUnit: 'Marketing Digital',
             type: 'Atividade',
             lessonNumber: '4',
@@ -486,10 +502,10 @@ describe('integração da edição com a consulta', () => {
         });
 
         await user.click(screen.getByRole('button', {
-            name: 'Editar Aula de APQSA em 18/09/2026',
+            name: 'Editar Aula de CD em 18/09/2026',
         }));
         await user.click(screen.getByRole('button', {
-            name: 'Editar Atividade de TECMKT em 19/09/2026',
+            name: 'Editar Atividade de RC em 19/09/2026',
         }));
 
         const editingForm = screen.getByRole('form', {
@@ -501,7 +517,7 @@ describe('integração da edição com a consulta', () => {
         ).toBe('2026-09-19');
         expect(
             within(editingForm).getByLabelText('Curso').value,
-        ).toBe('TECMKT');
+        ).toBe(COURSE_IDS.RC);
         expect(
             within(editingForm).getByLabelText('Unidade curricular').value,
         ).toBe('Marketing Digital');
@@ -513,11 +529,11 @@ describe('integração da edição com a consulta', () => {
     test('salva a edição e atualiza o recorte aplicado', async () => {
         const user = userEvent.setup();
         const lesson = createLesson({
-            course: 'TECMKT',
+            course: 'RC',
             curricularUnit: 'Marketing Digital',
         });
         const updatedLesson = createLesson({
-            course: 'TECMKT',
+            course: 'RC',
             curricularUnit: 'Marketing Digital Aplicado',
         });
         const lessonService = createLessonService({
@@ -543,7 +559,7 @@ describe('integração da edição com a consulta', () => {
 
         await user.selectOptions(
             within(filterForm).getByLabelText('Curso'),
-            'TECMKT',
+            COURSE_IDS.RC,
         );
         await user.click(screen.getByRole('button', {
             name: 'Aplicar filtros',
@@ -553,7 +569,7 @@ describe('integração da edição com a consulta', () => {
         });
 
         await user.click(screen.getByRole('button', {
-            name: 'Editar Aula de TECMKT em 18/09/2026',
+            name: 'Editar Aula de RC em 18/09/2026',
         }));
 
         const editingForm = screen.getByRole('form', {
@@ -580,7 +596,7 @@ describe('integração da edição com a consulta', () => {
             '64f000000000000000000123',
             {
                 date: '2026-09-18',
-                course: 'TECMKT',
+                courseId: COURSE_IDS.RC,
                 curricularUnit: 'Marketing Digital Aplicado',
                 type: 'Aula',
                 lessonNumber: '12',
@@ -591,7 +607,7 @@ describe('integração da edição com a consulta', () => {
         );
         expect(lessonService.listLessons).toHaveBeenCalledTimes(3);
         expect(lessonService.listLessons).toHaveBeenLastCalledWith({
-            course: 'TECMKT',
+            courseId: COURSE_IDS.RC,
         });
         expect(screen.getByRole('form', {
             name: 'Cadastro de aula',
@@ -617,7 +633,7 @@ describe('integração da exclusão com a consulta', () => {
         });
 
         const deleteButton = screen.getByRole('button', {
-            name: 'Excluir Aula de APQSA em 18/09/2026',
+            name: 'Excluir Aula de CD em 18/09/2026',
         });
 
         await user.click(deleteButton);
@@ -663,11 +679,11 @@ describe('integração da exclusão com a consulta', () => {
         });
 
         await user.click(screen.getByRole('button', {
-            name: 'Editar Aula de APQSA em 18/09/2026',
+            name: 'Editar Aula de CD em 18/09/2026',
         }));
 
         const deleteButton = screen.getByRole('button', {
-            name: 'Excluir Aula de APQSA em 18/09/2026',
+            name: 'Excluir Aula de CD em 18/09/2026',
         });
 
         expect(deleteButton.disabled).toBe(true);
@@ -677,7 +693,7 @@ describe('integração da exclusão com a consulta', () => {
 
     test('exclui e atualiza a lista preservando os filtros', async () => {
         const user = userEvent.setup();
-        const lesson = createLesson({ course: 'TECMKT' });
+        const lesson = createLesson({ course: 'RC' });
         const lessonService = createLessonService({
             listLessons: vi.fn()
                 .mockResolvedValueOnce([lesson])
@@ -700,7 +716,7 @@ describe('integração da exclusão com a consulta', () => {
 
         await user.selectOptions(
             within(filterForm).getByLabelText('Curso'),
-            'TECMKT',
+            COURSE_IDS.RC,
         );
         await user.click(screen.getByRole('button', {
             name: 'Aplicar filtros',
@@ -710,7 +726,7 @@ describe('integração da exclusão com a consulta', () => {
         });
 
         await user.click(screen.getByRole('button', {
-            name: 'Excluir Aula de TECMKT em 18/09/2026',
+            name: 'Excluir Aula de RC em 18/09/2026',
         }));
         await user.click(screen.getByRole('button', {
             name: 'Confirmar exclusão',
@@ -725,7 +741,7 @@ describe('integração da exclusão com a consulta', () => {
         );
         expect(lessonService.listLessons).toHaveBeenCalledTimes(3);
         expect(lessonService.listLessons).toHaveBeenLastCalledWith({
-            course: 'TECMKT',
+            courseId: COURSE_IDS.RC,
         });
         expect(screen.queryByRole('alertdialog')).toBeNull();
     });
@@ -748,7 +764,7 @@ describe('integração da exclusão com a consulta', () => {
             name: 'Qualidade de Software',
         });
         await user.click(screen.getByRole('button', {
-            name: 'Excluir Aula de APQSA em 18/09/2026',
+            name: 'Excluir Aula de CD em 18/09/2026',
         }));
         await user.click(screen.getByRole('button', {
             name: 'Confirmar exclusão',
@@ -806,7 +822,7 @@ describe('integração da exclusão com a consulta', () => {
             name: 'Qualidade de Software',
         });
         await user.click(screen.getByRole('button', {
-            name: 'Excluir Aula de APQSA em 18/09/2026',
+            name: 'Excluir Aula de CD em 18/09/2026',
         }));
         await user.click(screen.getByRole('button', {
             name: 'Confirmar exclusão',
@@ -850,7 +866,7 @@ describe('integração da exclusão com a consulta', () => {
             name: 'Qualidade de Software',
         });
         await user.click(screen.getByRole('button', {
-            name: 'Excluir Aula de APQSA em 18/09/2026',
+            name: 'Excluir Aula de CD em 18/09/2026',
         }));
         await user.click(screen.getByRole('button', {
             name: 'Confirmar exclusão',
@@ -933,8 +949,8 @@ describe('concorrência e ciclo de vida da consulta', () => {
         const currentService = createLessonService({
             listLessons: vi.fn().mockResolvedValue([
                 createLesson({
-                    id: 'lesson-current',
-                    course: 'TECMKT',
+                    id: '64f000000000000000000126',
+                    course: 'RC',
                     curricularUnit: 'Resultado mais recente',
                 }),
             ]),
@@ -955,7 +971,7 @@ describe('concorrência e ciclo de vida da consulta', () => {
 
         await act(async () => {
             previousRequest.resolve([createLesson({
-                id: 'lesson-previous',
+                id: '64f000000000000000000127',
                 curricularUnit: 'Resultado anterior',
             })]);
             await previousRequest.promise;
@@ -1000,7 +1016,7 @@ describe('concorrência e ciclo de vida da consulta', () => {
             name: 'Qualidade de Software',
         });
         await user.click(screen.getByRole('button', {
-            name: 'Excluir Aula de APQSA em 18/09/2026',
+            name: 'Excluir Aula de CD em 18/09/2026',
         }));
         await user.click(screen.getByRole('button', {
             name: 'Confirmar exclusão',
@@ -1013,5 +1029,90 @@ describe('concorrência e ciclo de vida da consulta', () => {
 
         expect(lessonService.listLessons).toHaveBeenCalledTimes(1);
         expect(screen.queryByRole('alertdialog')).toBeNull();
+    });
+});
+
+
+describe('catálogo compartilhado na seção de aulas', () => {
+    test('formulário e filtro usam uma única consulta de cursos', async () => {
+        const courseService = { listCourses: vi.fn().mockResolvedValue(TEST_COURSES) };
+        const lessonService = createLessonService();
+        render(<LessonManagement lessonService={lessonService} courseService={courseService} />);
+        await screen.findByText(LESSON_MANAGEMENT_MESSAGES.EMPTY);
+        const filter = screen.getByRole('form', { name: 'Filtros de aulas' });
+        const creation = screen.getByRole('form', { name: 'Cadastro de aula' });
+        await waitFor(() => {
+            expect(within(filter).getByRole('option', { name: 'CD — Ciência de Dados' })).toBeTruthy();
+            expect(within(creation).getByRole('option', { name: 'CD — Ciência de Dados' })).toBeTruthy();
+        });
+        expect(courseService.listCourses).toHaveBeenCalledExactlyOnceWith({});
+        expect(lessonService.listLessons).toHaveBeenCalledExactlyOnceWith({});
+    });
+
+    test('filtro inclui curso desativado para consultar histórico, mas cadastro não o oferece', async () => {
+        const user = userEvent.setup();
+        const lessonService = createLessonService();
+        render(<LessonManagement lessonService={lessonService} />);
+        await screen.findByText(LESSON_MANAGEMENT_MESSAGES.EMPTY);
+        const filter = screen.getByRole('form', { name: 'Filtros de aulas' });
+        const creation = screen.getByRole('form', { name: 'Cadastro de aula' });
+        expect(within(filter).getByRole('option', { name: /ADM — Administração.*desativado/ })).toBeTruthy();
+        expect(within(creation).queryByRole('option', { name: /Administração/ })).toBeNull();
+        await user.selectOptions(within(filter).getByLabelText('Curso'), COURSE_IDS.ADM);
+        await user.click(within(filter).getByRole('button', { name: 'Aplicar filtros' }));
+        expect(lessonService.listLessons).toHaveBeenLastCalledWith({ courseId: COURSE_IDS.ADM });
+    });
+
+    test('falha do catálogo permite repetir somente essa consulta sem ocultar as aulas', async () => {
+        const user = userEvent.setup();
+        const courseService = { listCourses: vi.fn()
+            .mockRejectedValueOnce(new Error('detalhe privado'))
+            .mockResolvedValueOnce(TEST_COURSES) };
+        const lessonService = createLessonService({ listLessons: vi.fn().mockResolvedValue([createLesson()]) });
+        render(<LessonManagement lessonService={lessonService} courseService={courseService} />);
+        expect(await screen.findByRole('heading', { name: 'Qualidade de Software' })).toBeTruthy();
+        const retry = await screen.findByRole('button', { name: 'Tentar carregar cursos novamente' });
+        expect(screen.getByRole('alert').textContent).not.toContain('detalhe privado');
+        await user.click(retry);
+        await waitFor(() => expect(within(screen.getByRole('form', { name: 'Filtros de aulas' }))
+            .getByRole('option', { name: 'CD — Ciência de Dados' })).toBeTruthy());
+        expect(courseService.listCourses).toHaveBeenCalledTimes(2);
+        expect(lessonService.listLessons).toHaveBeenCalledOnce();
+    });
+
+    test('renomear o curso conserva o ID selecionado e o recorte aplicado', async () => {
+        const user = userEvent.setup();
+        const lessonService = createLessonService();
+        const first = { listCourses: vi.fn().mockResolvedValue(TEST_COURSES) };
+        const nextCourses = TEST_COURSES.map((course) => course.id === COURSE_IDS.CD
+            ? { ...course, name: 'Análise de Dados', code: 'AD' } : course);
+        const second = { listCourses: vi.fn().mockResolvedValue(nextCourses) };
+        const { rerender } = render(<LessonManagement lessonService={lessonService} courseService={first} />);
+        await screen.findByText(LESSON_MANAGEMENT_MESSAGES.EMPTY);
+        const filter = screen.getByRole('form', { name: 'Filtros de aulas' });
+        await user.selectOptions(within(filter).getByLabelText('Curso'), COURSE_IDS.CD);
+        await user.click(within(filter).getByRole('button', { name: 'Aplicar filtros' }));
+        await waitFor(() => expect(lessonService.listLessons).toHaveBeenCalledTimes(2));
+        rerender(<LessonManagement lessonService={lessonService} courseService={second} />);
+        await waitFor(() => expect(within(filter).getByRole('option', { name: 'AD — Análise de Dados' })).toBeTruthy());
+        expect(within(filter).getByLabelText('Curso').value).toBe(COURSE_IDS.CD);
+        expect(lessonService.listLessons).toHaveBeenLastCalledWith({ courseId: COURSE_IDS.CD });
+        expect(lessonService.listLessons).toHaveBeenCalledTimes(2);
+    });
+
+    test('sem cursos, aulas recebidas continuam visíveis e criação fica bloqueada', async () => {
+        const courseService = { listCourses: vi.fn().mockResolvedValue([]) };
+        const lessonService = createLessonService({ listLessons: vi.fn().mockResolvedValue([createLesson()]) });
+        render(<LessonManagement lessonService={lessonService} courseService={courseService} />);
+        expect(await screen.findByRole('heading', { name: 'Qualidade de Software' })).toBeTruthy();
+        await screen.findByText(/Cadastre um curso ativo na seção Cursos/);
+        expect(screen.getByRole('button', { name: 'Cadastrar registro' }).disabled).toBe(true);
+    });
+
+    test('lista de aulas inválida é apresentada como falha, sem falso estado vazio', async () => {
+        const lessonService = createLessonService({ listLessons: vi.fn().mockResolvedValue(null) });
+        render(<LessonManagement lessonService={lessonService} />);
+        expect(await screen.findByRole('alert')).toBeTruthy();
+        expect(screen.queryByText(LESSON_MANAGEMENT_MESSAGES.EMPTY)).toBeNull();
     });
 });

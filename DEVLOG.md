@@ -6,7 +6,7 @@ próximos passos do Sistema de Gerenciamento de Aulas.
 O README explica como utilizar o projeto. Este diário explica como e por que
 ele está sendo construído.
 
-> Revisão documental: 23 de outubro de 2026.
+> Revisão documental: 26 de outubro de 2026.
 > As referências pessoais e institucionais foram generalizadas.
 > As entradas anteriores preservam os acontecimentos e verificações de cada
 > marco. Seus próximos passos descrevem o planejamento da época; a orientação
@@ -4528,3 +4528,213 @@ O README e o guia do usuário passaram a descrever essa apresentação. Esta
 correção não altera os dados das aulas nem conclui sua ligação com o catálogo:
 a substituição das opções fixas dos formulários e filtros pelo identificador
 estável de cada curso continua sendo o próximo marco.
+
+## 25 e 26 de outubro de 2026 — Aulas vinculadas aos cursos personalizados
+
+### Objetivo
+
+Integrar o catálogo às aulas, formulários, filtros, painel, materiais e
+calendário. A identidade do curso deve permanecer estável quando nome ou sigla
+mudam. A desativação deve impedir novas associações sem apagar o histórico.
+A aplicação continua individual, com uma cópia e uma conta por professor.
+
+### Modelo e validação da escolha
+
+`Lesson.js` recebeu `courseId`, uma referência ao modelo `Course`, e o índice
+não único `lessons_course_id_date` por curso e data. O campo textual anterior
+permanece opcional quando existe o vínculo por ID, permitindo a transição sem
+inventar associações. Aula sem nenhuma forma de vínculo continua inválida.
+
+A primeira revisão apenas acrescentava a referência. Antes de integrar o
+serviço, o modelo foi ajustado para aceitar aulas somente por ID e atualizações
+que removem a sigla antiga. A validação considera tanto documentos quanto o
+contexto de atualização do Mongoose. Os 39 testes do modelo passaram.
+
+O novo `LessonCourseValidator` recebe o modelo de cursos por injeção e não
+consulta o banco durante a construção. Valida IDs antes da leitura, consulta o
+catálogo a cada operação e devolve somente os dados públicos conferidos.
+Uma aula nova exige curso existente e ativo. Na edição, o mesmo curso
+desativado pode ser mantido; a troca para outro desativado é recusada. Sem
+vínculo anterior, é necessária a seleção explícita de um curso ativo.
+
+Os 17 testes do validador passaram, incluindo dependências, IDs, cursos
+inexistentes ou desativados, mudança de sigla, falhas e espera das consultas.
+
+### Persistência e representação pública
+
+`LessonService` passou a receber o catálogo e o validador. O novo contrato de
+entrada contém oito campos, com `courseId` no lugar de `course`. A combinação
+dos dois campos e dados adicionais de vínculo são recusados. O vínculo anterior
+usado para autorizar a manutenção de um curso desativado vem do banco, nunca
+do corpo da requisição.
+
+A criação grava somente o ID como associação ao curso. A edição lê a aula e
+utiliza atualização condicional pelo ID da aula e pelo vínculo persistido.
+A escrita define os dados novos, remove a sigla antiga e não utiliza upsert.
+Se o vínculo mudar antes da atualização, o serviço retorna conflito
+`LESSON_CHANGED` em vez de confirmar uma gravação baseada na leitura anterior.
+Essa condição protege a associação; não constitui controle de versão completo
+de todos os campos de uma aula.
+
+A listagem reúne os IDs e resolve os cursos em uma consulta em lote, incluindo
+os desativados. Listas vazias ou somente legadas não exigem essa consulta.
+A representação pública utiliza `courseId` e a sigla atual em `course`, sem
+armazenar uma cópia desatualizada do texto na aula. Catálogo incompleto,
+identidades divergentes ou respostas inconsistentes não produzem sucesso.
+Os filtros internos preservam sua estrutura diante de `sanitizeFilter`.
+
+O contrato legado continua temporariamente disponível no modelo e nas APIs.
+Ele não associa cursos por igualdade de sigla. A atualização legada não pode
+sobrescrever uma aula já convertida para o catálogo. A retirada completa dessa
+compatibilidade ainda precisa de um passo próprio.
+
+Os 75 testes de `LessonService` e os 42 de `LessonController` passaram. O
+controlador preserva o vínculo nas respostas, seleciona os campos públicos e
+encaminha dados e filtros completos para a validação do serviço. Os caminhos
+HTTP e a autorização administrativa foram preservados.
+
+### Índices e inicialização
+
+`createAdministrativeLessonRouter` tornou-se assíncrona. A composição valida os
+modelos, aguarda `Lesson.createIndexes()` e só então entrega o roteador. O
+servidor aguarda essa fábrica depois dos cursos e antes dos materiais, do app
+e da abertura HTTP, inclusive em produção com `autoIndex` desativado.
+
+Uma falha na preparação dos índices impede o HTTP e encerra a conexão. Não
+foram utilizados `syncIndexes`, exclusão de índices nem remoção de documentos.
+O índice por curso e data não impede vários registros na mesma data.
+
+Os 72 testes de servidor passaram. As integrações de autenticação e cabeçalhos
+receberam fábricas de aulas controladas para continuar isoladas do MongoDB;
+seus 10 e 3 testes também passaram.
+
+### Verificação HTTP com MongoDB real
+
+O novo `scripts/verifyLessonCoursesHttp.js` foi executado na máquina de
+desenvolvimento em 25 de outubro, com 14 cenários aprovados:
+
+1. preparação explícita do índice com `autoIndex` desativado;
+2. recusa de operações sem sessão antes do acesso aos dados;
+3. primeira conta por convite, login e sessão persistente;
+4. criação de dois cursos personalizados com identidades independentes;
+5. recusa de curso ausente, ID inválido e sigla extra sem gravar aulas;
+6. persistência somente por ID e consulta por curso e mês;
+7. mudança de nome e sigla refletida sem trocar o vínculo das aulas;
+8. desativação preservando histórico e impedindo novas aulas naquele curso;
+9. edição mantendo o mesmo curso desativado;
+10. recusa de transferência de outra aula para um curso desativado;
+11. troca para curso ativo sem conservar a sigla antiga;
+12. recusa de conflito concorrente do vínculo;
+13. reinício preservando cursos, aulas, vínculos e sessão sem novo convite;
+14. exclusão idempotente preservando os cursos e logout encerrando o acesso.
+
+O cenário concorrente usa um adaptador para provocar a alteração entre leitura
+e escrita, com atualização condicional no MongoDB real. O script utiliza
+configuração fictícia, banco aleatório e porta local, não carrega o `.env` da
+instalação e confirmou a remoção do banco temporário ao terminar.
+
+A validação de curso ativo corresponde ao estado lido antes da gravação.
+Não há transação entre curso e aula, nem garantia de atomicidade contra uma
+desativação concorrente do curso. O fluxo funciona com MongoDB standalone.
+
+### Cliente HTTP e catálogo reutilizável
+
+`LessonApi` recebeu o contrato por ID, filtros exclusivos e as novas recusas
+públicas. As respostas de criação e edição precisam confirmar o vínculo
+solicitado; a edição também confere a identidade da aula. IDs malformados,
+corpos misturados e sucessos inconsistentes são recusados. Os 70 testes passaram.
+
+O novo hook `useCourseCatalog` consulta cursos ativos e desativados, seleciona
+campos públicos, verifica duplicações de identidade e ordena o catálogo. Seus
+estados distinguem carregamento, lista vazia válida e falha. Não há repetição
+automática; consultas anteriores não substituem os dados da fonte atual.
+Os 14 testes passaram.
+
+### Integração nas telas
+
+O formulário de aulas agora seleciona cursos por ID, mostrando sigla e nome.
+O cadastro oferece somente cursos ativos. A edição também oferece o curso
+desativado original, sem liberar outros desativados. Registros antigos exigem
+escolha explícita; não são associados automaticamente pelo texto. Curso
+vinculado ausente bloqueia a gravação até uma escolha válida.
+
+Carregamento ou falha do catálogo bloqueia seleção e envio, preservando os
+outros campos. Uma confirmação de outra aula ou de outro vínculo não limpa o
+formulário nem anuncia sucesso. Operações antigas são ignoradas após trocar a
+dependência ou desmontar o componente.
+
+Na seção de aulas, formulário e filtro compartilham uma leitura do catálogo.
+Os filtros incluem desativados para consulta do histórico. As gravações e a
+exclusão mantêm o recorte aplicado. O painel agrupa os cursos presentes por
+identidade, sem lista fixa, e recusa siglas divergentes para um mesmo ID na
+mesma consulta.
+
+Calendário e materiais por aula filtram pela identidade e mantêm opções de
+histórico. Uma falha do catálogo não oculta o mês ou as aulas já consultadas.
+A repetição dessa consulta não relê aulas e materiais. Salvar material mensal
+atualiza os links herdados sem perder o curso selecionado nem reler o catálogo.
+A opção “Mostrar a partir de hoje” passou a usar o dia local do navegador.
+
+`MaterialManagement` encaminha o serviço de cursos para sua seção por aula.
+`CalendarWorkspace` entrega o mesmo serviço às aulas, aos materiais e ao
+calendário, além da tela de cursos. A aparência neutra do calendário e a legenda
+restrita ao dia atual e à revisão foram preservadas.
+
+Os arquivos diretamente envolvidos passaram com os seguintes totais:
+
+| Arquivo de testes do frontend | Testes aprovados |
+| --- | ---: |
+| `LessonApi.test.js` | 70 |
+| `useCourseCatalog.test.jsx` | 14 |
+| `LessonForm.test.jsx` | 26 |
+| `LessonManagement.test.jsx` | 30 |
+| `CalendarWorkspace.test.jsx` | 25 |
+| `CalendarDashboard.test.jsx` | 20 |
+| `CalendarVisual.test.jsx` | 24 |
+| `LessonMaterialManagement.test.jsx` | 23 |
+| `MaterialManagement.test.jsx` | 7 |
+
+### Resultados completos e verificação visual
+
+| Camada | Data da execução completa na máquina de desenvolvimento | Testes aprovados | Organização |
+| --- | --- | ---: | --- |
+| Backend | 25/10/2026 | 1.066 | 170 suítes |
+| Frontend | 26/10/2026 | 608 | 22 arquivos |
+| Total dos últimos resultados | — | 1.674 | 192 suítes/conjuntos |
+
+Os resultados completos não apresentaram falhas, cancelamentos ou testes
+ignorados. A suíte completa do frontend também passou no ambiente de
+verificação. Os 14 cenários HTTP com MongoDB são adicionais a essas contagens.
+O backend não foi alterado desde sua última execução completa registrada.
+
+A compilação de produção passou em 26 de outubro com 37 módulos. Na máquina de
+desenvolvimento, o primeiro ping logo após iniciar o MongoDB encontrou a porta
+ainda indisponível. A nova verificação confirmou serviço ativo e ping válido;
+o preview então iniciou normalmente, sem alteração de configuração ou dados.
+
+O usuário confirmou que o fluxo visual proposto ocorreu corretamente: criação
+da conta, curso e aula; consulta no painel, nos materiais e no calendário;
+renomeação; e desativação preservando histórico e regras de seleção. O terminal
+confirmou o encerramento por `Ctrl+C` e a remoção do banco temporário. Essa
+verificação ocorreu em computador; a validação dedicada em largura de celular
+continua pendente.
+
+README e guia do usuário foram atualizados para explicar a integração,
+compatibilidade temporária e regras de cursos desativados. `git diff --check`
+passou após as alterações aplicadas. Nenhuma dependência foi adicionada ou
+atualizada; não foi executada nova auditoria de vulnerabilidades neste marco.
+
+### Próximos passos
+
+Consolidar a transição do contrato legado por sigla para o vínculo por ID,
+definindo sua retirada e eventual migração explícita. Não apagar registros nem
+atribuir vínculos por semelhança de texto.
+
+Validar as telas em largura de celular e continuar a modelagem de turmas,
+turnos diurno ou noturno, salas e capacidade. Essas funcionalidades ainda não
+foram implementadas. Permanecem também instalação simplificada em Linux, opção
+Docker Compose, backup, restauração e recuperação de acesso.
+
+Os documentos continuam remotos, com links copiados pelo professor; não houve
+integração OAuth nem envio de arquivos ao Google Drive. A instalação segue
+individual, sem cadastro institucional ou hospedagem compartilhada.

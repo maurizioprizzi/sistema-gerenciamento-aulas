@@ -10,6 +10,7 @@ const mongoose = require('mongoose');
 const { AppError } = require('../src/errors/AppError');
 const {
     LESSON_CREATION_FIELDS,
+    LESSON_CATALOG_FIELDS,
     LESSON_ID_PATTERN,
     LESSON_LIST_FILTER_FIELDS,
     LESSON_LIST_SORT,
@@ -198,6 +199,7 @@ describe('configuração do LessonService', () => {
             INVALID_LESSON_DATA: 'INVALID_LESSON_DATA',
             INVALID_LESSON_FILTERS: 'INVALID_LESSON_FILTERS',
             INVALID_LESSON_ID: 'INVALID_LESSON_ID',
+            LESSON_CHANGED: 'LESSON_CHANGED',
         });
 
         assert.deepEqual(LESSON_CREATION_FIELDS, [
@@ -213,6 +215,7 @@ describe('configuração do LessonService', () => {
 
         assert.deepEqual(LESSON_LIST_FILTER_FIELDS, [
             'course',
+            'courseId',
             'month',
             'fromDate',
         ]);
@@ -1359,5 +1362,364 @@ describe('consulta de aulas', () => {
                     LESSON_SERVICE_MESSAGES.INVALID_LESSON_DOCUMENT,
             },
         );
+    });
+});
+
+/**
+ * Simula a persistência por identidade sem abrir conexão. Os métodos permitem
+ * interromper a operação em cada fronteira e simular uma troca concorrente.
+ */
+function createCatalogFixture() {
+    const courseId = '507f1f77bcf86cd7994390ab';
+    const otherId = '507f1f77bcf86cd7994390ac';
+    const { course: ignoredCourse, ...baseData } = VALID_LESSON_DATA;
+    const data = { ...baseData, courseId };
+    const course = {
+        _id: new mongoose.Types.ObjectId(courseId),
+        name: 'Ciência de Dados', code: 'CD', active: true,
+    };
+    const document = {
+        _id: new mongoose.Types.ObjectId(VALID_LESSON_ID), ...data,
+    };
+    const state = {
+        course, previous: document, lessons: [document],
+    };
+    const calls = [];
+    const CourseModel = {
+        async findById(id) {
+            calls.push({ operation: 'courseById', id });
+            if (state.readError) throw state.readError;
+            return state.course;
+        },
+        async find(filter) {
+            calls.push({ operation: 'courses', filter });
+            if (state.catalogError) throw state.catalogError;
+            if (Object.hasOwn(state, 'rows')) return state.rows;
+            return state.course === null ? [] : [state.course];
+        },
+    };
+    const LessonModel = {
+        async create(input) {
+            calls.push({ operation: 'create', input });
+            if (state.writeError) throw state.writeError;
+            return Object.hasOwn(state, 'created') ? state.created
+                : { _id: new mongoose.Types.ObjectId(VALID_LESSON_ID), ...input };
+        },
+        async findById(id) {
+            calls.push({ operation: 'lessonById', id });
+            if (state.lessonReadError) throw state.lessonReadError;
+            return state.previous;
+        },
+        async findOneAndUpdate(filter, update, options) {
+            calls.push({ operation: 'update', filter, update, options });
+            if (state.writeError) throw state.writeError;
+            return Object.hasOwn(state, 'updated') ? state.updated
+                : { _id: new mongoose.Types.ObjectId(VALID_LESSON_ID), ...update.$set };
+        },
+        async findByIdAndUpdate() { assert.fail('Era esperada atualização condicional.'); },
+        async findByIdAndDelete(id) {
+            calls.push({ operation: 'delete', id });
+            return document;
+        },
+        find(filter) {
+            calls.push({ operation: 'lessons', filter });
+            return { async sort() { return state.lessons; } };
+        },
+    };
+    return {
+        courseId, otherId, data, course, document, state, calls,
+        LessonModel, CourseModel,
+        service: new LessonService({ LessonModel, CourseModel }),
+    };
+}
+
+describe('integração do serviço de aulas com o catálogo', () => {
+    test('constrói sem consultar e exige as dependências de leitura e validação', () => {
+        const fixture = createCatalogFixture();
+        const { LessonModel, CourseModel, calls } = fixture;
+        assert.deepEqual(calls, []);
+        for (const model of [null, {}, { find() {} }, { findById() {} }]) {
+            assert.throws(() => new LessonService({ LessonModel, CourseModel: model }),
+                { name: 'TypeError', message: LESSON_SERVICE_MESSAGES.INVALID_COURSE_MODEL });
+        }
+        for (const courseValidator of [null, {}, { validateForCreation() {} }]) {
+            assert.throws(() => new LessonService({ LessonModel, CourseModel, courseValidator }),
+                { name: 'TypeError', message: LESSON_SERVICE_MESSAGES.INVALID_COURSE_VALIDATOR });
+        }
+        assert.deepEqual(calls, []);
+    });
+
+    test('prepara courseId sem permitir sigla, vínculo anterior ou campos administrativos no corpo', () => {
+        const { data, courseId } = createCatalogFixture();
+        assert.equal(Object.isFrozen(LESSON_CATALOG_FIELDS), true);
+        const result = LessonService.prepareLessonData({
+            ...data, courseId: courseId.toUpperCase(),
+        });
+        assert.deepEqual(result, data);
+        assert.equal(Object.isFrozen(result), true);
+        for (const extra of [
+            { course: 'CD' }, { previousCourseId: courseId }, { active: true },
+            { _id: VALID_LESSON_ID }, { [Symbol('extra')]: true },
+        ]) {
+            assert.throws(() => LessonService.prepareLessonData({ ...data, ...extra }),
+                { code: LESSON_SERVICE_CODES.INVALID_LESSON_DATA });
+        }
+        for (const invalid of [null, 'CD', {}, ` ${courseId}`, 'z'.repeat(24)]) {
+            assert.throws(() => LessonService.prepareLessonData({ ...data, courseId: invalid }),
+                { code: LESSON_SERVICE_CODES.INVALID_LESSON_DATA });
+        }
+        for (const field of LESSON_CATALOG_FIELDS) {
+            const incomplete = { ...data };
+            delete incomplete[field];
+            assert.throws(() => LessonService.prepareLessonUpdateData(incomplete),
+                { code: LESSON_SERVICE_CODES.INVALID_LESSON_DATA });
+        }
+    });
+
+    test('cria após validar curso ativo e grava somente sua identidade', async () => {
+        const { service, calls, data, courseId } = createCatalogFixture();
+        const result = await service.createLesson(data);
+        assert.deepEqual(calls.map((call) => call.operation), ['courseById', 'create', 'courses']);
+        assert.deepEqual(calls[1].input, data);
+        assert.equal(Object.hasOwn(calls[1].input, 'course'), false);
+        assert.equal(result.courseId, courseId);
+        assert.equal(result.course, 'CD');
+        assert.equal(Object.hasOwn(result, 'internalValue'), false);
+        assert.equal(Object.isFrozen(result), true);
+    });
+
+    test('recusa curso ausente ou desativado antes de tentar gravar aula', async () => {
+        for (const missing of [true, false]) {
+            const { service, state, calls, data } = createCatalogFixture();
+            state.course = missing ? null : { ...state.course, active: false };
+            await assert.rejects(service.createLesson(data), {
+                code: missing ? 'LESSON_COURSE_NOT_FOUND' : 'LESSON_COURSE_INACTIVE',
+            });
+            assert.deepEqual(calls.map((call) => call.operation), ['courseById']);
+        }
+    });
+
+    test('falha de leitura do curso impede a escrita e mantém o erro original', async () => {
+        const { service, state, calls, data } = createCatalogFixture();
+        state.readError = new Error('falha controlada de leitura');
+        await assert.rejects(service.createLesson(data), (error) => error === state.readError);
+        assert.equal(calls.some((call) => call.operation === 'create'), false);
+    });
+
+    test('converte validação da escrita e preserva outras falhas sem consultar o catálogo de saída', async () => {
+        for (const name of ['ValidationError', 'Error']) {
+            const { service, state, calls, data } = createCatalogFixture();
+            state.writeError = new Error('falha controlada de escrita');
+            state.writeError.name = name;
+            await assert.rejects(service.createLesson(data), (error) => (
+                name === 'ValidationError' ? error.code === 'INVALID_LESSON_DATA'
+                    : error === state.writeError
+            ));
+            assert.equal(calls.some((call) => call.operation === 'courses'), false);
+        }
+    });
+
+    test('não confirma criação quando o documento volta sem vínculo ou com outra identidade', async () => {
+        for (const invalid of [undefined, 'outro', null]) {
+            const { service, state, document, data, calls } = createCatalogFixture();
+            state.created = { ...document, courseId: invalid };
+            await assert.rejects(service.createLesson(data), TypeError);
+            assert.equal(calls.some((call) => call.operation === 'courses'), false);
+        }
+    });
+
+    test('relê a sigla atual na consulta e inclui cursos desativados sem mudar a referência', async () => {
+        const { service, state, courseId, document } = createCatalogFixture();
+        const first = await service.listLessons();
+        state.course.name = 'Análise de Dados';
+        state.course.code = 'AD';
+        state.course.active = false;
+        const second = await service.listLessons();
+        assert.equal(first[0].course, 'CD');
+        assert.equal(second[0].course, 'AD');
+        assert.equal(second[0].courseId, courseId);
+        assert.equal(document.courseId, courseId);
+        assert.equal(Object.isFrozen(second), true);
+    });
+
+    test('resolve cursos repetidos e diferentes com uma única consulta para a lista', async () => {
+        const { service, state, calls, document, course, otherId, courseId } = createCatalogFixture();
+        state.lessons = [
+            document,
+            { ...document, _id: new mongoose.Types.ObjectId(), courseId: otherId },
+            { ...document, _id: new mongoose.Types.ObjectId() },
+            createLessonDocument(),
+        ];
+        state.rows = [course, { ...course, _id: otherId, name: 'Outro curso', code: 'OC' }];
+        const result = await service.listLessons();
+        const queries = calls.filter((call) => call.operation === 'courses');
+        assert.equal(queries.length, 1);
+        assert.deepEqual(queries[0].filter, { _id: { $in: [courseId, otherId] } });
+        assert.deepEqual(result.map((lesson) => lesson.course), ['CD', 'OC', 'CD', 'APQSA']);
+        assert.equal(calls.some((call) => call.operation === 'courseById'), false);
+    });
+
+    test('preserva o seletor interno de cursos quando sanitizeFilter está habilitado', async () => {
+        const { service, CourseModel, calls } = createCatalogFixture();
+        const client = new mongoose.Mongoose();
+        client.set('sanitizeFilter', true);
+        CourseModel.base = client;
+        await service.listLessons();
+        const { filter } = calls.find((call) => call.operation === 'courses');
+        client.sanitizeFilter(filter);
+        assert.ok(Array.isArray(filter._id.$in));
+        assert.equal(Object.hasOwn(filter._id, '$eq'), false);
+    });
+
+    test('não consulta o catálogo para listas vazias ou somente com aulas legadas', async () => {
+        const { service, state, calls } = createCatalogFixture();
+        for (const lessons of [[], [createLessonDocument()]]) {
+            state.lessons = lessons;
+            assert.equal((await service.listLessons()).length, lessons.length);
+        }
+        assert.equal(calls.some((call) => call.operation === 'courses'), false);
+    });
+
+    test('recusa catálogo incompleto, duplicado ou incompatível sem retornar falso sucesso', async () => {
+        const { service, state, course, otherId } = createCatalogFixture();
+        for (const rows of [
+            undefined, null, {}, [], [course, course],
+            [{ ...course, _id: otherId }], [{ ...course, active: 'false' }],
+        ]) {
+            state.rows = rows;
+            await assert.rejects(service.listLessons(), TypeError);
+        }
+        state.catalogError = new Error('falha na leitura conjunta');
+        await assert.rejects(service.listLessons(), (error) => error === state.catalogError);
+    });
+
+    test('aceita filtro por identidade e recusa combinação com sigla ou operadores', async () => {
+        const { service, courseId, calls } = createCatalogFixture();
+        await service.listLessons({ courseId: courseId.toUpperCase(), month: '2026-09' });
+        const query = calls.find((call) => call.operation === 'lessons');
+        assert.equal(query.filter.courseId, courseId);
+        for (const filter of [
+            { course: 'APQSA', courseId }, { courseId: { $ne: null } }, { courseId: 'CD' },
+        ]) {
+            assert.throws(() => LessonService.prepareListFilter(filter),
+                { code: LESSON_SERVICE_CODES.INVALID_LESSON_FILTERS });
+        }
+    });
+
+    test('mantém curso desativado usando o vínculo persistido e atualização condicional', async () => {
+        const { service, state, data, courseId, calls } = createCatalogFixture();
+        state.course.active = false;
+        const result = await service.updateLesson(VALID_LESSON_ID, data);
+        const write = calls.find((call) => call.operation === 'update');
+        assert.deepEqual(write.filter, { _id: VALID_LESSON_ID, courseId });
+        assert.deepEqual(write.update, { $set: data, $unset: { course: 1 } });
+        assert.equal(write.options.upsert, false);
+        assert.equal(write.options.runValidators, true);
+        assert.equal(result.courseId, courseId);
+        assert.equal(state.course.active, false);
+        assert.deepEqual(calls.map((call) => call.operation),
+            ['lessonById', 'courseById', 'update', 'courses']);
+    });
+
+    test('troca para curso ativo sem conservar a sigla antiga no documento', async () => {
+        const { service, state, data, otherId, calls } = createCatalogFixture();
+        state.previous = { ...state.previous, courseId: otherId, course: 'ANTIGO' };
+        await service.updateLesson(VALID_LESSON_ID, data);
+        const write = calls.find((call) => call.operation === 'update');
+        assert.equal(write.filter.courseId, otherId);
+        assert.equal(Object.hasOwn(write.update.$set, 'course'), false);
+        assert.deepEqual(write.update.$unset, { course: 1 });
+    });
+
+    test('curso inativo diferente do vínculo persistido impede a edição antes da escrita', async () => {
+        const { service, state, data, otherId, calls } = createCatalogFixture();
+        state.previous = { ...state.previous, courseId: otherId };
+        state.course.active = false;
+        await assert.rejects(service.updateLesson(VALID_LESSON_ID, data),
+            { code: 'LESSON_COURSE_INACTIVE' });
+        assert.equal(calls.some((call) => call.operation === 'update'), false);
+    });
+
+    test('converte aula legada com condição de ausência de vínculo e curso ativo', async () => {
+        const { service, state, data, calls } = createCatalogFixture();
+        state.previous = createLessonDocument({ _id: VALID_LESSON_ID });
+        await service.updateLesson(VALID_LESSON_ID, data);
+        const write = calls.find((call) => call.operation === 'update');
+        assert.equal(write.filter.courseId, null);
+        state.course.active = false;
+        await assert.rejects(service.updateLesson(VALID_LESSON_ID, data),
+            { code: 'LESSON_COURSE_INACTIVE' });
+    });
+
+    test('responde conflito se o vínculo mudar entre a leitura e a atualização', async () => {
+        const { service, state, data, calls } = createCatalogFixture();
+        state.updated = null;
+        await assert.rejects(service.updateLesson(VALID_LESSON_ID, data),
+            { code: 'LESSON_CHANGED', statusCode: 409 });
+        assert.equal(calls.some((call) => call.operation === 'courses'), false);
+    });
+
+    test('aula ausente retorna null antes de consultar o curso ou tentar escrever', async () => {
+        const { service, state, data, calls } = createCatalogFixture();
+        state.previous = null;
+        assert.equal(await service.updateLesson(VALID_LESSON_ID, data), null);
+        assert.deepEqual(calls.map((call) => call.operation), ['lessonById']);
+    });
+
+    test('recusa leitura inconsistente da aula e confirmações de outra identidade', async () => {
+        for (const previous of [undefined, {}, { _id: '507f1f77bcf86cd7994390ff' }]) {
+            const { service, state, data, calls } = createCatalogFixture();
+            state.previous = previous;
+            await assert.rejects(service.updateLesson(VALID_LESSON_ID, data), TypeError);
+            assert.equal(calls.some((call) => call.operation === 'update'), false);
+        }
+        const { service, state, document, data, otherId } = createCatalogFixture();
+        state.updated = { ...document, courseId: otherId };
+        await assert.rejects(service.updateLesson(VALID_LESSON_ID, data), TypeError);
+    });
+
+    test('falhas de leitura e escrita na edição não produzem confirmação', async () => {
+        const { service, state, data } = createCatalogFixture();
+        state.lessonReadError = new Error('falha na leitura da aula');
+        await assert.rejects(service.updateLesson(VALID_LESSON_ID, data),
+            (error) => error === state.lessonReadError);
+        delete state.lessonReadError;
+        state.writeError = new Error('falha na escrita da aula');
+        await assert.rejects(service.updateLesson(VALID_LESSON_ID, data),
+            (error) => error === state.writeError);
+        state.writeError.name = 'CastError';
+        await assert.rejects(service.updateLesson(VALID_LESSON_ID, data),
+            { code: 'INVALID_LESSON_DATA' });
+    });
+
+    test('resposta inválida do validador impede a gravação mesmo com dependência substituída', async () => {
+        const { LessonModel, CourseModel, data, calls, courseId } = createCatalogFixture();
+        const courseValidator = {
+            async validateForCreation() {
+                return { id: courseId, name: 'Curso', code: 'CD', active: false };
+            },
+            async validateForUpdate() { return null; },
+        };
+        const service = new LessonService({ LessonModel, CourseModel, courseValidator });
+        await assert.rejects(service.createLesson(data), TypeError);
+        await assert.rejects(service.updateLesson(VALID_LESSON_ID, data), TypeError);
+        assert.equal(calls.some((call) => ['create', 'update'].includes(call.operation)), false);
+    });
+
+    test('contrato antigo usa filtro sem vínculo para não sobrescrever aulas do catálogo', async () => {
+        const { service, state, calls } = createCatalogFixture();
+        state.updated = null;
+        assert.equal(await service.updateLesson(VALID_LESSON_ID, VALID_LESSON_DATA), null);
+        const write = calls.find((call) => call.operation === 'update');
+        assert.deepEqual(write.filter, { _id: VALID_LESSON_ID, courseId: null });
+        assert.equal(write.options.upsert, false);
+    });
+
+    test('exclusão de aula vinculada mantém sua representação pública com a sigla atual', async () => {
+        const { service, courseId, calls } = createCatalogFixture();
+        const deleted = await service.deleteLesson(VALID_LESSON_ID);
+        assert.equal(deleted.courseId, courseId);
+        assert.equal(deleted.course, 'CD');
+        assert.deepEqual(calls.map((call) => call.operation), ['delete', 'courses']);
     });
 });

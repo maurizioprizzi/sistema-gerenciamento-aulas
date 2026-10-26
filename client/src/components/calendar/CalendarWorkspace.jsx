@@ -67,7 +67,8 @@ const CALENDAR_WORKSPACE_MESSAGES = Object.freeze({
  * Serviço mensal substituível nos testes.
  * @param {{ listCourses: Function, createCourse: Function,
  * updateCourse: Function, deactivateCourse: Function }}
- * [props.courseService=courseApi] Serviço do catálogo de cursos.
+ * [props.courseService=courseApi]
+ * Serviço do catálogo e dos filtros de cursos nas aulas, materiais e calendário.
  * @returns {import('react').ReactElement} Área autenticada do calendário.
  */
 function CalendarWorkspace({
@@ -179,7 +180,10 @@ function CalendarWorkspace({
         activeContent = <CourseManagement courseService={courseService} />;
     } else if (activeSectionId === CALENDAR_SECTION_IDS.LESSONS) {
         activeContent = (
-            <LessonManagement lessonService={lessonService} />
+            <LessonManagement
+                lessonService={lessonService}
+                courseService={courseService}
+            />
         );
     } else if (
         activeSectionId === CALENDAR_SECTION_IDS.MATERIALS
@@ -188,6 +192,7 @@ function CalendarWorkspace({
             <MaterialManagement
                 lessonService={lessonService}
                 monthlyMaterialService={monthlyMaterialService}
+                courseService={courseService}
             />
         );
     } else if (
@@ -197,6 +202,7 @@ function CalendarWorkspace({
             <CalendarVisual
                 lessonService={lessonService}
                 monthlyMaterialService={monthlyMaterialService}
+                courseService={courseService}
             />
         );
     }

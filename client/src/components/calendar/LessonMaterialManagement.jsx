@@ -7,10 +7,12 @@ import {
 } from 'react';
 
 import {
-    LESSON_API_COURSES,
+    LessonApi,
     LessonApiError,
     lessonApi,
 } from '../../services/LessonApi.js';
+import { courseApi } from '../../services/CourseApi.js';
+import { useCourseCatalog } from '../../hooks/useCourseCatalog.js';
 import {
     MonthlyMaterialApiError,
     monthlyMaterialApi,
@@ -33,6 +35,8 @@ const LESSON_MATERIAL_MANAGEMENT_MESSAGES = Object.freeze({
         'A atualização dos materiais por aula deve ser um número inteiro não negativo.',
     INVALID_TODAY:
         'O relógio devolveu uma data civil inválida.',
+    INVALID_FILTERS:
+        'Os filtros dos materiais por aula são inválidos.',
     LOADING: 'Carregando materiais das aulas...',
     EMPTY: 'Nenhuma aula encontrada.',
     UNEXPECTED_ERROR:
@@ -40,7 +44,7 @@ const LESSON_MATERIAL_MANAGEMENT_MESSAGES = Object.freeze({
 });
 
 const EMPTY_MATERIAL_FILTERS = Object.freeze({
-    course: '',
+    courseId: '',
     month: '',
     fromToday: false,
 });
@@ -48,7 +52,11 @@ const EMPTY_MATERIAL_FILTERS = Object.freeze({
 const CALENDAR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function defaultTodayProvider() {
-    return new Date().toISOString().slice(0, 10);
+    // O filtro usa o dia local, como a grade e os campos de data das aulas.
+    const today = new Date();
+    return [String(today.getFullYear()).padStart(4, '0'),
+        String(today.getMonth() + 1).padStart(2, '0'),
+        String(today.getDate()).padStart(2, '0')].join('-');
 }
 
 function isValidCivilDate(date) {
@@ -85,6 +93,20 @@ function createAvailableMonths(lessons) {
 }
 
 function filterMaterialLessons(lessons, filters, todayProvider) {
+    let prepared;
+    try {
+        if (!filters || typeof filters.courseId !== 'string'
+            || typeof filters.month !== 'string' || typeof filters.fromToday !== 'boolean'
+            || Reflect.ownKeys(filters).some((field) => !Object.hasOwn(EMPTY_MATERIAL_FILTERS, field))) {
+            throw new TypeError();
+        }
+        prepared = LessonApi.createFilters({
+            ...(filters.courseId ? { courseId: filters.courseId } : {}),
+            ...(filters.month ? { month: filters.month } : {}),
+        });
+    } catch {
+        throw new TypeError(LESSON_MATERIAL_MANAGEMENT_MESSAGES.INVALID_FILTERS);
+    }
     let today = null;
 
     if (filters.fromToday) {
@@ -99,10 +121,10 @@ function filterMaterialLessons(lessons, filters, todayProvider) {
 
     return Object.freeze(
         lessons.filter((lesson) => (
-            (filters.course.length === 0
-                || lesson.course === filters.course)
-            && (filters.month.length === 0
-                || lesson.date.startsWith(filters.month))
+            (prepared.courseId === undefined
+                || lesson.courseId === prepared.courseId)
+            && (prepared.month === undefined
+                || lesson.date.startsWith(`${prepared.month}-`))
             && (!filters.fromToday || lesson.date >= today)
         )),
     );
@@ -163,10 +185,13 @@ function MaterialLink({ label, url }) {
 
 /**
  * Consulta todas as aulas e representa seus materiais próprios ou mensais.
+ * O catálogo permite filtrar pelo ID, incluindo cursos desativados com
+ * histórico. Filtros são locais e não repetem a leitura das fontes.
  */
 function LessonMaterialManagement({
     lessonService = lessonApi,
     monthlyMaterialService = monthlyMaterialApi,
+    courseService = courseApi,
     todayProvider = defaultTodayProvider,
     refreshKey = 0,
 } = {}) {
@@ -209,6 +234,8 @@ function LessonMaterialManagement({
         );
     }
 
+    const courseCatalog = useCourseCatalog({ courseService });
+
     const [filters, setFilters] = useState(createEmptyMaterialFilters);
     const [lessons, setLessons] = useState(() => Object.freeze([]));
     const [monthlyMaterials, setMonthlyMaterials] = useState(
@@ -233,7 +260,7 @@ function LessonMaterialManagement({
                 ]);
 
             if (requestSequence.current === requestId) {
-                setLessons(receivedLessons);
+                setLessons(LessonApi.createPublicLessonList({ data: { lessons: receivedLessons } }));
                 setMonthlyMaterials(receivedMonthlyMaterials);
             }
         } catch (error) {
@@ -303,15 +330,21 @@ function LessonMaterialManagement({
                     <label htmlFor="lesson-material-course">Curso</label>
                     <select
                         id="lesson-material-course"
-                        name="course"
-                        value={filters.course}
-                        disabled={isLoading}
+                        name="courseId"
+                        value={filters.courseId}
+                        disabled={isLoading || courseCatalog.isLoading || Boolean(courseCatalog.errorMessage)}
                         onChange={handleFilterChange}
                     >
                         <option value="">Todos os cursos</option>
-                        {LESSON_API_COURSES.map((course) => (
-                            <option key={course} value={course}>
-                                {course}
+                        {filters.courseId && !courseCatalog.courses.some(
+                            (course) => course.id === filters.courseId,
+                        ) && (
+                            <option value={filters.courseId} disabled>Curso selecionado indisponível</option>
+                        )}
+                        {courseCatalog.courses.map((course) => (
+                            <option key={course.id} value={course.id}>
+                                {course.code} — {course.name}
+                                {!course.active ? ' (desativado)' : ''}
                             </option>
                         ))}
                     </select>
@@ -346,6 +379,16 @@ function LessonMaterialManagement({
                     <span>Mostrar a partir de hoje</span>
                 </label>
             </div>
+
+            {courseCatalog.isLoading && <p role="status">Carregando cursos...</p>}
+            {courseCatalog.errorMessage && (
+                <div className="lesson-material-error">
+                    <p role="alert">{courseCatalog.errorMessage}</p>
+                    <button type="button" onClick={courseCatalog.reload}>
+                        Tentar carregar cursos novamente
+                    </button>
+                </div>
+            )}
 
             <div
                 id={LESSON_MATERIAL_MANAGEMENT_IDS.RESULTS}

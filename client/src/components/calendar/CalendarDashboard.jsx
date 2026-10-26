@@ -6,7 +6,7 @@ import {
 } from 'react';
 
 import {
-    LESSON_API_COURSES,
+    LessonApi,
     LessonApiError,
     lessonApi,
 } from '../../services/LessonApi.js';
@@ -113,26 +113,38 @@ function compareLessons(first, second) {
 }
 
 /**
- * Conta somente os cursos pertencentes ao contrato público.
+ * Conta os cursos efetivamente presentes nas aulas, sem lista fixa de siglas.
  *
- * Cursos sem registros não são apresentados, reproduzindo o painel original.
- * A ordem pública permanece estável mesmo quando os documentos chegam em uma
- * ordem diferente.
+ * No catálogo, o agrupamento usa courseId; course é apenas a sigla atual
+ * fornecida pelo servidor. Registros legados ficam agrupados separadamente
+ * por texto durante a transição. Cursos sem aulas não são apresentados, e
+ * todo o histórico recebido participa, inclusive de cursos desativados.
  *
  * @param {ReadonlyArray<object>} lessons Aulas públicas.
  * @returns {ReadonlyArray<Readonly<object>>} Quantidades por curso.
  */
 function createCourseBreakdown(lessons) {
-    return Object.freeze(
-        LESSON_API_COURSES
-            .map((course) => Object.freeze({
-                course,
-                count: lessons.filter(
-                    (lesson) => lesson.course === course,
-                ).length,
-            }))
-            .filter((item) => item.count > 0),
-    );
+    const publicLessons = LessonApi.createPublicLessonList({ data: { lessons } });
+    const groups = new Map();
+    for (const lesson of publicLessons) {
+        const key = lesson.courseId ? `id:${lesson.courseId}` : `legacy:${lesson.course}`;
+        const previous = groups.get(key);
+        if (previous && previous.course !== lesson.course) {
+            // Uma única identidade não pode aparecer com siglas divergentes
+            // na mesma fotografia retornada pelo servidor.
+            throw LessonApi.createInvalidResponseError();
+        }
+        groups.set(key, {
+            course: lesson.course,
+            ...(lesson.courseId ? { courseId: lesson.courseId } : {}),
+            count: (previous?.count ?? 0) + 1,
+        });
+    }
+    const breakdown = [...groups.values()].sort((first, second) => (
+        first.course.localeCompare(second.course, 'pt-BR')
+        || (first.courseId ?? '').localeCompare(second.courseId ?? '')
+    ));
+    return Object.freeze(breakdown.map((item) => Object.freeze(item)));
 }
 
 /**
@@ -161,21 +173,23 @@ function createCalendarDashboardData(
         );
     }
 
+    const publicLessons = LessonApi.createPublicLessonList({ data: { lessons } });
+
     const upcomingLessons = Object.freeze(
-        lessons
+        publicLessons
             .filter((lesson) => lesson.date >= today)
             .sort(compareLessons)
             .slice(0, UPCOMING_LESSON_LIMIT),
     );
     const reviewLessons = Object.freeze(
-        lessons
+        publicLessons
             .filter((lesson) => lesson.needsReview)
             .sort(compareLessons),
     );
 
     return Object.freeze({
-        totalLessons: lessons.length,
-        courseBreakdown: createCourseBreakdown(lessons),
+        totalLessons: publicLessons.length,
+        courseBreakdown: createCourseBreakdown(publicLessons),
         upcomingLessons,
         reviewLessons,
         monthlyMaterials,
@@ -386,7 +400,7 @@ function CalendarDashboard({
                                 aria-label="Quantidade por curso"
                             >
                                 {dashboardData.courseBreakdown.map((item) => (
-                                    <li key={item.course}>
+                                    <li key={item.courseId ? `id:${item.courseId}` : `legacy:${item.course}`}>
                                         {item.course}: {item.count}
                                     </li>
                                 ))}

@@ -1100,3 +1100,139 @@ describe('consulta de aulas pelo controlador', () => {
         );
     });
 });
+
+describe('identidade do curso na fronteira HTTP das aulas', () => {
+    const courseId = '507f1f77bcf86cd7994390ab';
+    const lessonId = '507f1f77bcf86cd799439011';
+
+    function createLinkedLesson(overrides = {}) {
+        return createLesson({ id: lessonId, courseId, course: 'CD', ...overrides });
+    }
+
+    test('devolve identidade normalizada e sigla atual sem incluir campos internos', () => {
+        const lesson = createLinkedLesson({ courseId: courseId.toUpperCase() });
+        const result = LessonController.createPublicLesson(lesson);
+        assert.deepEqual(result, createExpectedPublicLesson({
+            id: lessonId, courseId, course: 'CD',
+        }));
+        assert.equal(lesson.courseId, courseId.toUpperCase());
+        assert.equal(Object.isFrozen(result), true);
+    });
+
+    test('preserva respostas legadas sem acrescentar uma identidade inventada', () => {
+        const result = LessonController.createPublicLesson(createLesson());
+        assert.equal(Object.hasOwn(result, 'courseId'), false);
+    });
+
+    test('recusa identidade presente mas malformada antes de construir resposta de sucesso', () => {
+        for (const value of [undefined, null, '', 'CD', [], {}, 42, ` ${courseId}`]) {
+            assert.throws(() => LessonController.createPublicLesson(
+                createLinkedLesson({ courseId: value }),
+            ), {
+                name: 'TypeError',
+                message: LESSON_CONTROLLER_ERRORS.INVALID_LESSON_RESPONSE,
+            });
+        }
+        assert.throws(() => LessonController.createPublicLesson(
+            createLinkedLesson({ id: 'aula-inconsistente' }),
+        ), TypeError);
+    });
+
+    test('lista mista mantém os vínculos e recusa identidade inconsistente em qualquer item', () => {
+        const list = LessonController.createPublicLessonList([
+            createLesson(), createLinkedLesson(),
+        ]);
+        assert.equal(Object.hasOwn(list[0], 'courseId'), false);
+        assert.equal(list[1].courseId, courseId);
+        assert.equal(Object.isFrozen(list), true);
+        assert.throws(() => LessonController.createPublicLessonList([
+            createLesson(), createLinkedLesson({ courseId: null }),
+        ]), {
+            name: 'TypeError',
+            message: LESSON_CONTROLLER_ERRORS.INVALID_LESSON_LIST_RESPONSE,
+        });
+    });
+
+    for (const method of ['create', 'update', 'list']) {
+        test(`${method}: encaminha o novo contrato e mantém courseId na resposta HTTP`, async () => {
+            const linked = createLinkedLesson();
+            const body = {
+                date: linked.date, courseId, curricularUnit: linked.curricularUnit,
+                type: linked.type, lessonNumber: linked.lessonNumber,
+                needsReview: linked.needsReview, lessonPlanUrl: linked.lessonPlanUrl,
+                studentGuideUrl: linked.studentGuideUrl,
+            };
+            const query = { courseId, month: '2026-09' };
+            const { lessonService, calls } = createFakeLessonService({
+                createdLesson: linked, updatedLesson: linked, lessons: [linked],
+            });
+            const { response, calls: responseCalls } = createFakeResponse();
+            const { next, calls: errors } = createNextRecorder();
+            const controller = new LessonController({ lessonService });
+            await controller[method]({ body, params: { id: lessonId }, query }, response, next);
+
+            assert.deepEqual(errors, []);
+            assert.deepEqual(responseCalls.status, [method === 'create' ? 201 : 200]);
+            const data = responseCalls.json[0].data;
+            const lesson = method === 'list' ? data.lessons[0] : data.lesson;
+            assert.equal(lesson.courseId, courseId);
+            assert.equal(lesson.course, 'CD');
+            assert.equal(Object.hasOwn(lesson, 'internalValue'), false);
+            if (method === 'create') assert.strictEqual(calls.createLesson[0], body);
+            if (method === 'update') {
+                assert.equal(calls.updateLesson[0].lessonId, lessonId);
+                assert.strictEqual(calls.updateLesson[0].lessonData, body);
+            }
+            if (method === 'list') assert.strictEqual(calls.listLessons[0], query);
+        });
+    }
+
+    test('não descarta filtros desconhecidos ou incompatíveis antes da validação do serviço', async () => {
+        const failure = new AppError('Os filtros de consulta das aulas são inválidos.', {
+            statusCode: 400, code: 'INVALID_LESSON_FILTERS',
+        });
+        const { lessonService, calls } = createFakeLessonService({ listError: failure });
+        const { response, calls: responseCalls } = createFakeResponse();
+        const { next, calls: errors } = createNextRecorder();
+        const query = { courseId, course: 'APQSA', unknown: 'valor' };
+        await new LessonController({ lessonService }).list({ query }, response, next);
+        assert.strictEqual(calls.listLessons[0], query);
+        assert.deepEqual(responseCalls.status, []);
+        assert.deepEqual(responseCalls.json, []);
+        assert.strictEqual(errors[0], failure);
+    });
+
+    test('respostas inválidas de criação, edição e listagem chegam ao erro sem iniciar resposta', async () => {
+        const invalid = createLinkedLesson({ courseId: null });
+        for (const method of ['create', 'update', 'list']) {
+            const { lessonService } = createFakeLessonService({
+                createdLesson: invalid, updatedLesson: invalid, lessons: [invalid],
+            });
+            const { response, calls } = createFakeResponse();
+            const { next, calls: errors } = createNextRecorder();
+            await new LessonController({ lessonService })[method]({}, response, next);
+            assert.deepEqual(calls.status, []);
+            assert.deepEqual(calls.json, []);
+            assert.equal(errors.length, 1);
+            assert.ok(errors[0] instanceof TypeError);
+        }
+    });
+
+    test('preserva os erros públicos de associação e de alteração concorrente', async () => {
+        for (const [code, statusCode] of [
+            ['INVALID_LESSON_COURSE_ID', 400], ['LESSON_COURSE_NOT_FOUND', 404],
+            ['LESSON_COURSE_INACTIVE', 409], ['LESSON_CHANGED', 409],
+        ]) {
+            const failure = new AppError('Recusa pública controlada.', { code, statusCode });
+            const { lessonService } = createFakeLessonService({ updateError: failure });
+            const { response, calls } = createFakeResponse();
+            const { next, calls: errors } = createNextRecorder();
+            await new LessonController({ lessonService }).update(
+                { params: { id: lessonId }, body: { courseId } }, response, next,
+            );
+            assert.deepEqual(calls.status, []);
+            assert.deepEqual(calls.json, []);
+            assert.strictEqual(errors[0], failure);
+        }
+    });
+});

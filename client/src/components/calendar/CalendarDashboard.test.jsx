@@ -568,3 +568,61 @@ describe('consulta e apresentação do painel geral', () => {
         expect(screen.queryByText('Qualidade de Software')).toBeNull();
     });
 });
+
+
+describe('cursos personalizados no painel geral', () => {
+    const firstCourseId = '507f1f77bcf86cd7994390ab';
+    const secondCourseId = '507f1f77bcf86cd7994390ac';
+    function linkedLesson(overrides = {}) {
+        return createLesson({ id: '507f1f77bcf86cd799439011', courseId: firstCourseId,
+            course: 'CD', ...overrides });
+    }
+
+    test('conta cursos personalizados por identidade e ordena as siglas de apresentação', () => {
+        const breakdown = createCourseBreakdown([
+            linkedLesson({ courseId: secondCourseId, course: 'RC' }),
+            linkedLesson(),
+            linkedLesson({ id: '507f1f77bcf86cd799439012' }),
+        ]);
+        expect(breakdown).toEqual([
+            { courseId: firstCourseId, course: 'CD', count: 2 },
+            { courseId: secondCourseId, course: 'RC', count: 1 },
+        ]);
+        expect(Object.isFrozen(breakdown)).toBe(true);
+        expect(Object.isFrozen(breakdown[0])).toBe(true);
+    });
+
+    test('renomeação muda o texto da nova fotografia e preserva a identidade e a contagem', () => {
+        const first = createCourseBreakdown([linkedLesson()]);
+        const second = createCourseBreakdown([linkedLesson({ course: 'AD' })]);
+        expect(first[0]).toEqual({ courseId: firstCourseId, course: 'CD', count: 1 });
+        expect(second[0]).toEqual({ courseId: firstCourseId, course: 'AD', count: 1 });
+    });
+
+    test('siglas divergentes para o mesmo ID na mesma consulta são recusadas', () => {
+        expect(() => createCourseBreakdown([linkedLesson(), linkedLesson({ course: 'AD' })]))
+            .toThrowError('O servidor devolveu uma resposta inválida.');
+    });
+
+    test('total, quantidades e próximas aulas incluem os cursos personalizados sem lista fixa', async () => {
+        const { lessonService, monthlyMaterialService } = renderDashboard({ lessons: [
+            linkedLesson({ date: '2026-09-22' }),
+            linkedLesson({ id: '507f1f77bcf86cd799439012', date: '2026-09-23',
+                courseId: secondCourseId, course: 'RC', needsReview: true }),
+        ] });
+        expect(await screen.findByLabelText('Total de aulas registradas: 2')).toBeTruthy();
+        const breakdown = screen.getByRole('list', { name: 'Quantidade por curso' });
+        expect(within(breakdown).getByText('CD: 1')).toBeTruthy();
+        expect(within(breakdown).getByText('RC: 1')).toBeTruthy();
+        expect(within(breakdown).queryByText(/APQSA|TECMKT|TECADM/)).toBeNull();
+        expect(lessonService.listLessons).toHaveBeenCalledOnce();
+        expect(monthlyMaterialService.listMonthlyMaterials).toHaveBeenCalledOnce();
+    });
+
+    test('resposta de aulas inválida não se transforma em painel vazio', async () => {
+        const lessonService = { listLessons: vi.fn().mockResolvedValue(null) };
+        renderDashboard({ lessonService });
+        expect(await screen.findByRole('alert')).toBeTruthy();
+        expect(screen.queryByLabelText('Total de aulas registradas: 0')).toBeNull();
+    });
+});

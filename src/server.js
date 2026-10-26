@@ -136,6 +136,10 @@ const SERVER_ERROR_MESSAGES = Object.freeze({
         'A fábrica do roteador de aulas deve ser uma função.',
     INVALID_LESSON_ROUTER:
         'A fábrica de aulas deve retornar um roteador válido.',
+    INVALID_LESSON_INDEX_MODEL:
+        'A preparação das aulas exige um modelo com createIndexes().',
+    INVALID_LESSON_CATALOG_MODEL:
+        'O vínculo das aulas exige consulta por identificador e atualização condicional.',
     INVALID_MONTHLY_MATERIAL_ROUTER_FACTORY:
         'A fábrica do roteador de materiais mensais deve ser uma função.',
     INVALID_MONTHLY_MATERIAL_ROUTER:
@@ -344,22 +348,40 @@ function createAdministrativeAuthenticationRouter({
 }
 
 /**
- * Compõe as regras e a camada HTTP inicial das aulas.
+ * Prepara os índices e compõe a camada HTTP das aulas após conectar ao banco.
  *
- * A composição utiliza o modelo persistente real, mas sua construção não abre
- * conexão com o MongoDB. Serviço, controlador e roteador permanecem separados
- * e recebem suas dependências explicitamente.
+ * A fábrica aguarda os índices de consulta antes de entregar o roteador,
+ * inclusive quando autoIndex está desativado em produção. createIndexes()
+ * preserva documentos e índices existentes: não utiliza syncIndexes().
+ * Importar o módulo não executa esta função nem abre conexão com o banco.
  *
- * @returns {Function} Roteador Express administrativo de aulas.
+ * @param {object} [options={}] Modelos da própria instalação.
+ * @param {object} [options.LessonModel=Lesson] Modelo persistente de aulas.
+ * @param {object} [options.CourseModel=Course] Modelo persistente de cursos.
+ * @returns {Promise<Function>} Roteador administrativo com índices preparados.
  */
-function createAdministrativeLessonRouter() {
+async function createAdministrativeLessonRouter({
+    LessonModel = Lesson,
+    CourseModel = Course,
+} = {}) {
+    if (!LessonModel || typeof LessonModel.createIndexes !== 'function') {
+        throw new TypeError(SERVER_ERROR_MESSAGES.INVALID_LESSON_INDEX_MODEL);
+    }
     const lessonService = new LessonService({
-        LessonModel: Lesson,
+        LessonModel,
+        CourseModel,
     });
+
+    if (typeof LessonModel.findById !== 'function'
+        || typeof LessonModel.findOneAndUpdate !== 'function') {
+        throw new TypeError(SERVER_ERROR_MESSAGES.INVALID_LESSON_CATALOG_MODEL);
+    }
 
     const controller = new LessonController({
         lessonService,
     });
+
+    await LessonModel.createIndexes();
 
     return createLessonRouter({
         controller,
@@ -427,7 +449,7 @@ function createAdministrativeMonthlyMaterialRouter() {
  * A ordem é intencional: ambiente, segurança, frontend, MongoDB,
  * índices administrativos, recuperação e decisão administrativa,
  * armazenamento de sessões, middleware, autenticação e primeiro cadastro,
- * cursos com índices confirmados, aulas, materiais mensais, Express e HTTP.
+ * cursos e aulas com índices confirmados, materiais mensais, Express e HTTP.
  *
  * @param {object} options Dependências de inicialização.
  * @param {object} [options.database=databaseConnection] Banco de dados.
@@ -696,7 +718,9 @@ async function startServer({
             throw new TypeError(SERVER_ERROR_MESSAGES.INVALID_COURSE_ROUTER);
         }
 
-        const lessonRouter = lessonRouterFactory();
+        // A fábrica de aulas também pode ser assíncrona. Nenhum consumidor
+        // recebe o roteador e nenhuma porta é aberta antes dos seus índices.
+        const lessonRouter = await lessonRouterFactory();
 
         if (typeof lessonRouter !== 'function') {
             throw new TypeError(

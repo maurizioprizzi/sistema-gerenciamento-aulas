@@ -131,6 +131,7 @@ describe('configuração da LessonApi', () => {
         ]);
         expect(LESSON_FILTER_FIELDS).toEqual([
             'course',
+            'courseId',
             'month',
             'fromDate',
         ]);
@@ -1135,5 +1136,196 @@ describe('criação de aulas', () => {
         expect(error.code).toBe(LESSON_API_CODES.NETWORK_ERROR);
         expect(error.message).not.toContain('material-confidencial');
         expect(error.cause).toBe(cause);
+    });
+});
+
+
+describe('identidade dos cursos personalizados na LessonApi', () => {
+    const courseId = '507f1f77bcf86cd7994390ab';
+    const otherCourseId = '507f1f77bcf86cd7994390ac';
+    const lessonId = '507f1f77bcf86cd799439011';
+
+    function linkedLesson(overrides = {}) {
+        return createPublicLesson({ id: lessonId, courseId, course: 'CD', ...overrides });
+    }
+    function linkedData(overrides = {}) {
+        const { course: _legacy, ...data } = createLessonData();
+        return { ...data, courseId, ...overrides };
+    }
+
+    test('normaliza a identidade enviada sem aceitar sigla ou campos adicionais', () => {
+        const input = linkedData({ courseId: courseId.toUpperCase() });
+        expect(LessonApi.createLessonData(input)).toEqual(linkedData());
+        expect(input.courseId).toBe(courseId.toUpperCase());
+        expect(Object.isFrozen(LessonApi.createLessonData(input))).toBe(true);
+        for (const extra of [
+            { course: 'CD' }, { active: true }, { previousCourseId: courseId },
+            { [Symbol('extra')]: true },
+        ]) {
+            expect(() => LessonApi.createLessonData({ ...input, ...extra }))
+                .toThrowError(LESSON_API_MESSAGES.INVALID_LESSON_DATA);
+        }
+    });
+
+    test('recusa identidades inválidas antes da rede na criação e na edição', async () => {
+        const fetchClient = vi.fn();
+        const api = new LessonApi({ fetchClient });
+        for (const value of [undefined, null, '', 'CD', {}, [], 42, ` ${courseId}`, 'z'.repeat(24)]) {
+            await expect(api.createLesson(linkedData({ courseId: value }))).rejects.toBeInstanceOf(TypeError);
+            await expect(api.updateLesson(lessonId, linkedData({ courseId: value })))
+                .rejects.toBeInstanceOf(TypeError);
+        }
+        expect(fetchClient).not.toHaveBeenCalled();
+    });
+
+    test('edição exige todos os campos do contrato por identidade', () => {
+        const data = linkedData();
+        for (const field of Object.keys(data)) {
+            const incomplete = { ...data };
+            delete incomplete[field];
+            expect(() => LessonApi.createLessonUpdateData(incomplete))
+                .toThrowError(LESSON_API_MESSAGES.INVALID_LESSON_UPDATE_DATA);
+        }
+        expect(LessonApi.createLessonUpdateData(data)).toEqual(data);
+    });
+
+    test('consulta por courseId produz URL determinística sem enviar sigla', async () => {
+        const fetchClient = vi.fn().mockResolvedValue(createJsonResponse(200, createListPayload([])));
+        await new LessonApi({ fetchClient }).listLessons({
+            fromDate: '2026-10-25', month: '2026-10', courseId: courseId.toUpperCase(),
+        });
+        expect(fetchClient).toHaveBeenCalledWith(
+            `/api/lessons?courseId=${courseId}&month=2026-10&fromDate=2026-10-25`,
+            expect.objectContaining({ method: 'GET', credentials: 'same-origin' }),
+        );
+    });
+
+    test('recusa filtros ambíguos, operadores e identidades malformadas antes da rede', async () => {
+        const fetchClient = vi.fn();
+        const api = new LessonApi({ fetchClient });
+        for (const filters of [
+            { courseId, course: 'APQSA' }, { courseId: { $ne: null } },
+            { courseId: undefined }, { courseId: 'CD' }, { courseId: ` ${courseId}` },
+            { courseId, [Symbol('extra')]: true },
+        ]) {
+            await expect(api.listLessons(filters)).rejects.toBeInstanceOf(TypeError);
+        }
+        expect(fetchClient).not.toHaveBeenCalled();
+    });
+
+    test('seleciona a identidade e aceita siglas personalizadas normalizadas', () => {
+        for (const code of ['CD', 'DADOS + IA', 'TÉC. REDES', 'CURSO/2026']) {
+            const result = LessonApi.createPublicLesson(linkedLesson({ course: code }));
+            expect(result.courseId).toBe(courseId);
+            expect(result.course).toBe(code);
+            expect(Object.isFrozen(result)).toBe(true);
+            expect('internalNote' in result).toBe(false);
+        }
+        const upper = LessonApi.createPublicLesson(linkedLesson({ courseId: courseId.toUpperCase() }));
+        expect(upper.courseId).toBe(courseId);
+    });
+
+    test('não aceita sigla personalizada sem identidade nem identidade presente mas inválida', () => {
+        const invalidLessons = [createPublicLesson({ course: 'CD' })];
+        for (const value of [undefined, null, '', 'CD', {}, [], ` ${courseId}`]) {
+            invalidLessons.push(linkedLesson({ courseId: value }));
+        }
+        for (const lesson of invalidLessons) {
+            expect(() => LessonApi.createPublicLesson(lesson)).toThrowError(LessonApiError);
+        }
+    });
+
+    test('recusa siglas inconsistentes e identificadores inválidos nas respostas vinculadas', () => {
+        for (const course of ['', 'cd', ' CD ', 'DADOS  IA', 'A'.repeat(21)]) {
+            expect(() => LessonApi.createPublicLesson(linkedLesson({ course })))
+                .toThrowError(LESSON_API_MESSAGES.INVALID_RESPONSE);
+        }
+        expect(() => LessonApi.createPublicLesson(linkedLesson({ id: 'aula-inválida' })))
+            .toThrowError(LESSON_API_MESSAGES.INVALID_RESPONSE);
+    });
+
+    test('lista mista preserva vínculos novos e não inventa identidades legadas', async () => {
+        const fetchClient = vi.fn().mockResolvedValue(createJsonResponse(200,
+            createListPayload([createPublicLesson(), linkedLesson()])));
+        const result = await new LessonApi({ fetchClient }).listLessons();
+        expect(Object.hasOwn(result[0], 'courseId')).toBe(false);
+        expect(result[1].courseId).toBe(courseId);
+        expect(Object.isFrozen(result)).toBe(true);
+    });
+
+    for (const method of ['createLesson', 'updateLesson']) {
+        test(`${method}: envia somente o contrato por ID e confirma o vínculo solicitado`, async () => {
+            const status = method === 'createLesson' ? 201 : 200;
+            const fetchClient = vi.fn().mockResolvedValue(createJsonResponse(status,
+                createCreatedPayload(linkedLesson())));
+            const api = new LessonApi({ fetchClient });
+            const result = method === 'createLesson' ? await api[method](linkedData())
+                : await api[method](lessonId, linkedData());
+            expect(JSON.parse(fetchClient.mock.calls[0][1].body)).toEqual(linkedData());
+            expect(result.courseId).toBe(courseId);
+            expect(fetchClient).toHaveBeenCalledOnce();
+        });
+
+        test(`${method}: não confirma sucesso quando o vínculo devolvido é outro ou está ausente`, async () => {
+            const status = method === 'createLesson' ? 201 : 200;
+            for (const lesson of [linkedLesson({ courseId: otherCourseId }), createPublicLesson()]) {
+                const fetchClient = vi.fn().mockResolvedValue(createJsonResponse(status,
+                    createCreatedPayload(lesson)));
+                const api = new LessonApi({ fetchClient });
+                const pending = method === 'createLesson' ? api[method](linkedData())
+                    : api[method](lessonId, linkedData());
+                await expect(pending).rejects.toMatchObject({ code: LESSON_API_CODES.INVALID_RESPONSE });
+                expect(fetchClient).toHaveBeenCalledOnce();
+            }
+        });
+    }
+
+    test('edição não confirma outra aula mesmo que o curso seja o solicitado', async () => {
+        const fetchClient = vi.fn().mockResolvedValue(createJsonResponse(200,
+            createCreatedPayload(linkedLesson({ id: '507f1f77bcf86cd799439012' }))));
+        await expect(new LessonApi({ fetchClient }).updateLesson(lessonId, linkedData()))
+            .rejects.toMatchObject({ code: LESSON_API_CODES.INVALID_RESPONSE });
+    });
+
+    test('renomeação da sigla mantém a identidade recebida em uma nova consulta', async () => {
+        const fetchClient = vi.fn()
+            .mockResolvedValueOnce(createJsonResponse(200, createListPayload([linkedLesson()])))
+            .mockResolvedValueOnce(createJsonResponse(200, createListPayload([linkedLesson({ course: 'AD' })])));
+        const api = new LessonApi({ fetchClient });
+        const first = await api.listLessons();
+        const second = await api.listLessons();
+        expect(first[0].course).toBe('CD');
+        expect(second[0].course).toBe('AD');
+        expect(second[0].courseId).toBe(first[0].courseId);
+        expect(fetchClient).toHaveBeenCalledTimes(2);
+    });
+
+    test('novas recusas conhecidas usam mensagens locais sem expor detalhes do servidor', async () => {
+        for (const [status, code, message] of [
+            [400, 'INVALID_LESSON_COURSE_ID', LESSON_API_MESSAGES.INVALID_COURSE_ID],
+            [404, 'LESSON_COURSE_NOT_FOUND', LESSON_API_MESSAGES.COURSE_NOT_FOUND],
+            [409, 'LESSON_COURSE_INACTIVE', LESSON_API_MESSAGES.COURSE_INACTIVE],
+            [409, 'LESSON_CHANGED', LESSON_API_MESSAGES.LESSON_CHANGED],
+        ]) {
+            const fetchClient = vi.fn().mockResolvedValue(createJsonResponse(status, {
+                error: { code, message: 'detalhe privado recebido do servidor' },
+            }));
+            await expect(new LessonApi({ fetchClient }).updateLesson(lessonId, linkedData()))
+                .rejects.toMatchObject({ code, statusCode: status, message });
+            expect(fetchClient).toHaveBeenCalledOnce();
+        }
+    });
+
+    test('código novo em operação ou estado incompatível produz erro genérico', async () => {
+        const response = { error: { code: 'LESSON_COURSE_INACTIVE', message: 'detalhe privado' } };
+        for (const status of [400, 409, 500]) {
+            const fetchClient = vi.fn().mockResolvedValue(createJsonResponse(status, response));
+            await expect(new LessonApi({ fetchClient }).listLessons())
+                .rejects.toMatchObject({ code: LESSON_API_CODES.REQUEST_FAILED,
+                    message: LESSON_API_MESSAGES.REQUEST_FAILED });
+        }
+        const api = new LessonApi({ fetchClient: vi.fn().mockResolvedValue(createJsonResponse(500, response)) });
+        await expect(api.updateLesson(lessonId, linkedData()))
+            .rejects.toMatchObject({ code: LESSON_API_CODES.REQUEST_FAILED });
     });
 });

@@ -7,10 +7,13 @@ import {
 } from 'react';
 
 import {
-    LESSON_API_COURSES,
+    LESSON_ID_PATTERN,
+    LessonApi,
     LessonApiError,
     lessonApi,
 } from '../../services/LessonApi.js';
+import { courseApi } from '../../services/CourseApi.js';
+import { useCourseCatalog } from '../../hooks/useCourseCatalog.js';
 import {
     MonthlyMaterialApiError,
     monthlyMaterialApi,
@@ -260,11 +263,11 @@ function formatCalendarPeriod(period) {
  *
  * @param {unknown} period Período exibido.
  * @param {unknown} lessons Aulas públicas recebidas da API.
- * @param {unknown} course Curso selecionado ou texto vazio.
+ * @param {unknown} courseId Identidade do curso selecionado ou texto vazio.
  * @param {unknown} today Data civil usada para destacar o dia atual.
  * @returns {ReadonlyArray<Readonly<object>>} Células vazias e dias do mês.
  */
-function createCalendarCells(period, lessons, course, today) {
+function createCalendarCells(period, lessons, courseId, today) {
     if (!isValidCalendarPeriod(period)) {
         throw new TypeError(CALENDAR_VISUAL_MESSAGES.INVALID_PERIOD);
     }
@@ -274,8 +277,8 @@ function createCalendarCells(period, lessons, course, today) {
     }
 
     if (
-        typeof course !== 'string'
-        || (course.length > 0 && !LESSON_API_COURSES.includes(course))
+        typeof courseId !== 'string'
+        || (courseId.length > 0 && !LESSON_ID_PATTERN.test(courseId))
     ) {
         throw new TypeError(CALENDAR_VISUAL_MESSAGES.INVALID_COURSE);
     }
@@ -303,7 +306,7 @@ function createCalendarCells(period, lessons, course, today) {
     lessons
         .filter((lesson) => (
             lesson.date.startsWith(`${monthPrefix}-`)
-            && (course.length === 0 || lesson.course === course)
+            && (courseId.length === 0 || lesson.courseId === courseId.toLowerCase())
         ))
         .forEach((lesson) => {
             const day = Number(lesson.date.slice(8, 10));
@@ -463,8 +466,10 @@ function CalendarLessonDetails({
 /**
  * Calendário mensal persistente correspondente à quarta seção do protótipo.
  *
- * As duas fontes são consultadas uma vez durante a montagem. Mudanças de mês
- * e curso são inteiramente locais e não provocam novas requisições.
+ * Aulas, materiais e catálogo são consultados durante a montagem. Mudanças de
+ * mês e de filtro são locais e não provocam novas requisições. A identidade
+ * selecionada não depende da sigla, e cursos desativados continuam no filtro
+ * para permitir consultar seu histórico.
  *
  * @param {object} props Dependências substituíveis.
  * @param {{listLessons: Function}} [props.lessonService=lessonApi]
@@ -472,6 +477,8 @@ function CalendarLessonDetails({
  * @param {{listMonthlyMaterials: Function}}
  * [props.monthlyMaterialService=monthlyMaterialApi]
  * Serviço de consulta dos materiais mensais.
+ * @param {{listCourses: Function}} [props.courseService=courseApi]
+ * Serviço de consulta do catálogo da instalação.
  * @param {Function} [props.todayProvider=defaultCalendarTodayProvider]
  * Relógio civil substituível nos testes.
  * @returns {import('react').ReactElement} Calendário visual mensal.
@@ -479,6 +486,7 @@ function CalendarLessonDetails({
 function CalendarVisual({
     lessonService = lessonApi,
     monthlyMaterialService = monthlyMaterialApi,
+    courseService = courseApi,
     todayProvider = defaultCalendarTodayProvider,
 } = {}) {
     const isValidLessonService =
@@ -513,6 +521,8 @@ function CalendarVisual({
         );
     }
 
+    const courseCatalog = useCourseCatalog({ courseService });
+
     const initialToday = useRef(null);
 
     if (initialToday.current === null) {
@@ -523,7 +533,7 @@ function CalendarVisual({
     const [period, setPeriod] = useState(
         () => createCalendarPeriodFromDate(initialToday.current),
     );
-    const [course, setCourse] = useState('');
+    const [courseId, setCourseId] = useState('');
     const [lessons, setLessons] = useState(() => Object.freeze([]));
     const [monthlyMaterials, setMonthlyMaterials] = useState(
         () => Object.freeze([]),
@@ -549,7 +559,7 @@ function CalendarVisual({
                 ]);
 
             if (requestSequence.current === requestId) {
-                setLessons(receivedLessons);
+                setLessons(LessonApi.createPublicLessonList({ data: { lessons: receivedLessons } }));
                 setMonthlyMaterials(receivedMonthlyMaterials);
             }
         } catch (error) {
@@ -583,10 +593,10 @@ function CalendarVisual({
         () => createCalendarCells(
             period,
             lessons,
-            course,
+            courseId,
             today,
         ),
-        [course, lessons, period, today],
+        [courseId, lessons, period, today],
     );
 
     function moveMonth(direction) {
@@ -607,7 +617,7 @@ function CalendarVisual({
 
     function handleCourseChange(event) {
         setSelectedLesson(null);
-        setCourse(event.target.value);
+        setCourseId(event.target.value);
     }
 
     return (
@@ -625,21 +635,35 @@ function CalendarVisual({
                 </label>
                 <select
                     id={CALENDAR_VISUAL_IDS.COURSE_FILTER}
-                    value={course}
-                    disabled={isLoading}
+                    value={courseId}
+                    disabled={isLoading || courseCatalog.isLoading || Boolean(courseCatalog.errorMessage)}
                     onChange={handleCourseChange}
                 >
                     <option value="">Todos os cursos</option>
-                    {LESSON_API_COURSES.map((availableCourse) => (
+                    {courseId && !courseCatalog.courses.some((course) => course.id === courseId) && (
+                        <option value={courseId} disabled>Curso selecionado indisponível</option>
+                    )}
+                    {courseCatalog.courses.map((availableCourse) => (
                         <option
-                            key={availableCourse}
-                            value={availableCourse}
+                            key={availableCourse.id}
+                            value={availableCourse.id}
                         >
-                            {availableCourse}
+                            {availableCourse.code} — {availableCourse.name}
+                            {!availableCourse.active ? ' (desativado)' : ''}
                         </option>
                     ))}
                 </select>
             </div>
+
+            {courseCatalog.isLoading && <p role="status">Carregando cursos...</p>}
+            {courseCatalog.errorMessage && (
+                <div className="calendar-visual-error">
+                    <p role="alert">{courseCatalog.errorMessage}</p>
+                    <button type="button" onClick={courseCatalog.reload}>
+                        Tentar carregar cursos novamente
+                    </button>
+                </div>
+            )}
 
             <div
                 id={CALENDAR_VISUAL_IDS.RESULTS}

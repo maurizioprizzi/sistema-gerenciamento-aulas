@@ -54,6 +54,10 @@ function createMonthlyMaterialService(overrides = {}) {
     };
 }
 
+function createCourseService() {
+    return { listCourses: vi.fn().mockResolvedValue([]) };
+}
+
 function renderManagement(overrides = {}) {
     const lessonService = overrides.lessonService
         ?? createLessonService();
@@ -63,11 +67,13 @@ function renderManagement(overrides = {}) {
         ?? vi.fn(() => true);
     const todayProvider = overrides.todayProvider
         ?? (() => '2026-09-20');
+    const courseService = overrides.courseService ?? createCourseService();
 
     render(
         <MaterialManagement
             lessonService={lessonService}
             monthlyMaterialService={monthlyMaterialService}
+            courseService={courseService}
             confirmDeletion={confirmDeletion}
             todayProvider={todayProvider}
         />,
@@ -78,6 +84,7 @@ function renderManagement(overrides = {}) {
         lessonService,
         monthlyMaterialService,
         todayProvider,
+        courseService,
     };
 }
 
@@ -223,5 +230,74 @@ describe('composição das formas de organização', () => {
                 monthlyMaterialService.listMonthlyMaterials,
             ).toHaveBeenCalledTimes(3);
         });
+    });
+});
+
+
+describe('catálogo na composição da área de materiais', () => {
+    const courseId = '507f1f77bcf86cd7994390ab';
+    const course = { id: courseId, name: 'Ciência de Dados', code: 'CD', active: true };
+    function linkedLesson() {
+        return { id: '507f1f77bcf86cd799439011', courseId, course: 'CD', date: '2026-10-25',
+            curricularUnit: 'Introdução aos dados', type: 'Aula', lessonNumber: null,
+            needsReview: false, lessonPlanUrl: null, studentGuideUrl: null };
+    }
+
+    test('recusa serviço de cursos inválido antes de montar as consultas', () => {
+        const lessonService = createLessonService();
+        const monthlyMaterialService = createMonthlyMaterialService();
+        for (const courseService of [null, {}, [], { listCourses: true }]) {
+            expect(() => render(<MaterialManagement lessonService={lessonService}
+                monthlyMaterialService={monthlyMaterialService} courseService={courseService} />))
+                .toThrowError(MATERIAL_MANAGEMENT_MESSAGES.INVALID_COURSE_SERVICE);
+            cleanup();
+        }
+        expect(lessonService.listLessons).not.toHaveBeenCalled();
+        expect(monthlyMaterialService.listMonthlyMaterials).not.toHaveBeenCalled();
+    });
+
+    test('filtro usa somente o serviço de cursos recebido na composição', async () => {
+        const user = userEvent.setup();
+        const courseService = { listCourses: vi.fn().mockResolvedValue([course]) };
+        const lessonService = createLessonService({ listLessons: vi.fn().mockResolvedValue([linkedLesson()]) });
+        renderManagement({ courseService, lessonService });
+        await screen.findByRole('option', { name: 'CD — Ciência de Dados' });
+        await user.selectOptions(screen.getByLabelText('Curso'), courseId);
+        expect(await screen.findByText('Introdução aos dados')).toBeTruthy();
+        expect(courseService.listCourses).toHaveBeenCalledExactlyOnceWith({});
+        expect(lessonService.listLessons).toHaveBeenCalledOnce();
+    });
+
+    test('gravar material mensal atualiza os links herdados sem perder o filtro ou reler o catálogo', async () => {
+        const user = userEvent.setup();
+        const records = [];
+        const courseService = { listCourses: vi.fn().mockResolvedValue([course]) };
+        const lessonService = createLessonService({ listLessons: vi.fn().mockResolvedValue([linkedLesson()]) });
+        const monthlyMaterialService = createMonthlyMaterialService({
+            listMonthlyMaterials: vi.fn(async () => [...records]),
+            saveMonthlyMaterial: vi.fn(async (month, input) => {
+                const material = createMaterial({ month,
+                    lessonPlanUrl: input.lessonPlanUrl || null, studentGuideUrl: input.studentGuideUrl || null });
+                records.push(material);
+                return material;
+            }),
+        });
+        renderManagement({ courseService, lessonService, monthlyMaterialService });
+        await screen.findByRole('option', { name: 'CD — Ciência de Dados' });
+        await screen.findByRole('table', { name: 'Materiais aplicáveis a cada aula' });
+        await user.selectOptions(screen.getByLabelText('Curso'), courseId);
+        await user.click(screen.getByRole('button', { name: 'Adicionar link mensal' }));
+        const dialog = screen.getByRole('dialog');
+        await user.type(within(dialog).getByLabelText('Mês'), '2026-10');
+        await user.type(within(dialog).getByLabelText('Link do Plano de Aula'), 'https://example.com/plano-outubro');
+        await user.click(screen.getByRole('button', { name: 'Salvar materiais' }));
+        await waitFor(() => {
+            const table = screen.getByRole('table', { name: 'Materiais aplicáveis a cada aula' });
+            expect(within(table).getByRole('link', { name: 'Abrir PA' }).getAttribute('href'))
+                .toBe('https://example.com/plano-outubro');
+        });
+        expect(screen.getByLabelText('Curso').value).toBe(courseId);
+        expect(courseService.listCourses).toHaveBeenCalledOnce();
+        expect(lessonService.listLessons).toHaveBeenCalledTimes(2);
     });
 });
