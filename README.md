@@ -1328,10 +1328,10 @@ O passo a passo de uso da aplicação está disponível em:
 [`docs/GUIA_DO_USUARIO.md`](docs/GUIA_DO_USUARIO.md)
 
 O documento explica o primeiro cadastro, o login, a criação, edição e
-desativação de cursos, as operações com aulas, os materiais e os links do Google
-Drive, o painel, o calendário e a saída. Foi preparado para leitores sem
-conhecimento de programação e ainda deverá ser validado com usuários iniciantes.
-O guia informa que o catálogo personalizado ainda não alimenta as aulas.
+desativação de cursos, o vínculo das aulas ao catálogo personalizado, as
+operações com aulas, os materiais e os links do Google Drive, o painel, o
+calendário e a saída. Foi preparado para leitores sem conhecimento de
+programação e ainda deverá ser validado com usuários iniciantes.
 
 ## Responsabilidades dos módulos
 
@@ -1454,11 +1454,15 @@ são propagados para a interface. Não armazena credenciais nem realiza login.
 O POST configura `referrerPolicy: 'strict-origin'` para compatibilidade entre
 `mode: 'same-origin'`, a política da página e a validação de origem do servidor.
 
-### Componentes e cliente HTTP de cursos
+### Componentes, hook e cliente HTTP de cursos
 
 - `client/src/services/CourseApi.js`: lista, cadastra, edita e desativa pela API,
   valida os contratos e usa mensagens locais para recusas conhecidas. Não
   repete escritas automaticamente nem oferece exclusão definitiva.
+- `client/src/hooks/useCourseCatalog.js`: consulta cursos ativos e desativados,
+  seleciona campos públicos, verifica duplicações de identidade, ordena o
+  catálogo e controla estados de carregamento, lista vazia e falha sem
+  sobrescrever leituras mais recentes.
 - `client/src/components/courses/CourseForm.jsx`: apresenta nome e sigla,
   normaliza os dados, identifica o campo inválido e preserva o preenchimento
   enquanto a tela controla o envio e a mensagem pública.
@@ -1468,11 +1472,13 @@ O POST configura `referrerPolicy: 'strict-origin'` para compatibilidade entre
 
 ### `client/src/services/LessonApi.js`
 
-Encapsula consulta e criação de aulas no navegador. Valida e serializa filtros
-por curso, mês e data mínima, seleciona somente os oito campos permitidos na
-criação e converte as respostas em representações públicas imutáveis. Falhas de
-rede, recusas conhecidas e respostas inconsistentes permanecem separadas por
-códigos e mensagens públicas seguras.
+Encapsula consulta, criação, edição e exclusão de aulas no navegador. Valida e
+serializa filtros por curso (`courseId` ou sigla legada exclusiva), mês e data
+mínima, seleciona somente os oito campos permitidos na criação e na edição,
+confirma o vínculo retornado pelo backend e converte as respostas em
+representações públicas imutáveis. Falhas de rede, recusas conhecidas e
+respostas inconsistentes permanecem separadas por códigos e mensagens públicas
+seguras.
 
 ### `client/src/services/MonthlyMaterialApi.js`
 
@@ -1533,14 +1539,15 @@ respostas aos campos autorizados e garante a limpeza coerente do cookie.
 
 ### `src/controllers/LessonController.js`
 
-Traduz criação e consulta de aulas para os contratos HTTP, seleciona novamente
+Traduz consulta, criação, edição e exclusão de aulas para os contratos HTTP,
+preserva o vínculo com o catálogo (`courseId` e `course`), seleciona novamente
 os campos públicos e encaminha falhas ao tratamento centralizado.
 
 ### `src/controllers/MonthlyMaterialController.js`
 
-Traduz consulta e substituição dos materiais mensais para os contratos HTTP,
-aceita a ausência normal do recurso e seleciona defensivamente somente mês,
-identificador e os dois links públicos.
+Traduz listagem, consulta, substituição e exclusão dos materiais mensais para os
+contratos HTTP, aceita a ausência normal do recurso e seleciona defensivamente
+somente mês, identificador e os dois links públicos.
 
 ### `src/errors/AppError.js`
 
@@ -1587,8 +1594,10 @@ mantendo HSTS e atualização forçada para HTTPS somente em produção.
 ### `src/models/Lesson.js`
 
 Define os registros de aula, atividade e avaliação com os oito dados previstos
-no protótipo. Preserva a data civil como texto, limita cursos e tipos, valida
-links opcionais e mantém um índice de consulta por data e curso.
+no protótipo. Vincula o registro ao catálogo personalizado por `courseId`
+(mantendo compatibilidade temporária com `course` em registros antigos),
+preserva a data civil como texto, valida tipos e links opcionais e declara os
+índices de consulta por curso e data (incluindo `lessons_course_id_date`).
 
 ### `src/models/MonthlyMaterial.js`
 
@@ -1607,14 +1616,16 @@ posteriormente montadas pelo app sob o prefixo `/api/auth`.
 
 ### `src/routes/lessonRoutes.js`
 
-Registra consulta e criação na raiz da coleção e executa a autorização
-administrativa antes dos dois handlers. O app aplica o prefixo
+Aguarda a preparação dos índices de aulas na composição do servidor, registra
+`GET /`, `POST /`, `PUT /:id` e `DELETE /:id` e executa a autorização
+administrativa antes de todas as operações. O app aplica o prefixo
 `/api/lessons`.
 
 ### `src/routes/monthlyMaterialRoutes.js`
 
-Registra `GET /:month` e `PUT /:month`, sempre depois da autorização
-administrativa. O app aplica o prefixo `/api/monthly-materials`.
+Registra `GET /`, `GET /:month`, `PUT /:month` e `DELETE /:month`, sempre
+depois da autorização administrativa. O app aplica o prefixo
+`/api/monthly-materials`.
 
 ### `src/models/InitialSetupState.js`
 
@@ -1685,18 +1696,28 @@ conta criada por outra instância ou propaga o erro quando ela não é encontrad
 Normaliza credenciais, recupera explicitamente o hash, compara senhas e devolve
 somente uma identidade pública mínima e imutável.
 
+### `src/services/LessonCourseValidator.js`
+
+Concentra a validação do vínculo entre aula e curso personalizado. Valida o
+identificador antes de consultar o banco, exige curso existente e ativo para
+novas associações ou transferências, permite manter o mesmo curso desativado ao
+editar uma aula já vinculada e retorna apenas a representação pública conferida.
+
 ### `src/services/LessonService.js`
 
-Mantém somente os campos permitidos na criação, prepara filtros por curso, mês
-e data mínima, preserva seletores internos validados diante do sanitizador do
-Mongoose, aplica ordenação determinística e converte documentos em
-representações públicas imutáveis.
+Mantém somente os oito campos permitidos na criação e na edição, valida o
+vínculo pelo `LessonCourseValidator`, executa atualização condicional na edição
+e exclusão idempotente, resolve em lote as siglas atuais dos cursos na listagem,
+prepara filtros por curso, mês e data mínima, preserva seletores internos
+validados diante do sanitizador do Mongoose, aplica ordenação determinística e
+converte documentos em representações públicas imutáveis.
 
 ### `src/services/MonthlyMaterialService.js`
 
 Valida o mês civil, limita a entrada aos dois links permitidos, representa
-campos omitidos com `null` e consulta ou substitui atomicamente o único recurso
-do período. Erros conhecidos do modelo são convertidos em respostas seguras.
+campos omitidos com `null` e lista, consulta, substitui ou exclui de forma
+atômica e idempotente o único recurso do período. Erros conhecidos do modelo são
+convertidos em respostas seguras.
 
 ### `src/services/PasswordHasher.js`
 
@@ -1937,12 +1958,15 @@ A consulta aceita somente os filtros opcionais abaixo:
 
 | Parâmetro | Formato | Finalidade |
 | --- | --- | --- |
-| `course` | Sigla aceita pelo contrato anterior de aulas | Limita a consulta ao curso |
+| `courseId` | Identificador hexadecimal de 24 caracteres | Limita a consulta ao curso personalizado |
+| `course` | Sigla legada (compatibilidade temporária; exclusivo com `courseId`) | Limita a consulta a registros legados por sigla |
 | `month` | `YYYY-MM` | Limita a consulta ao mês civil |
 | `fromDate` | `YYYY-MM-DD` | Define a menor data incluída |
 
-Os filtros podem ser combinados. O resultado utiliza data crescente e o
-identificador como desempate determinístico:
+Os filtros podem ser combinados (exceto `courseId` e `course` na mesma
+requisição). O resultado utiliza data crescente e o identificador como desempate
+determinístico, resolvendo a sigla atual de cada `courseId` a partir do
+catálogo:
 
 ```json
 {
@@ -1959,12 +1983,13 @@ POST /api/lessons
 Content-Type: application/json
 ```
 
-O corpo aceita somente os oito campos funcionais do protótipo:
+O corpo aceita os oito campos funcionais, utilizando `courseId` para vincular a
+aula a um curso ativo do catálogo personalizado:
 
 ```json
 {
   "date": "2026-09-18",
-  "course": "<sigla-aceita-pelo-formulario-de-aulas>",
+  "courseId": "<identificador-do-curso-ativo>",
   "curricularUnit": "Qualidade de Software",
   "type": "Aula",
   "lessonNumber": "12",
@@ -1974,20 +1999,24 @@ O corpo aceita somente os oito campos funcionais do protótipo:
 }
 ```
 
-Substitua o marcador `course` por uma opção aceita pelo formulário de aulas.
-As opções desse campo ainda pertencem ao contrato anterior: o catálogo
-personalizado não está integrado a ele. O exemplo não deve ser enviado com o
-marcador literal.
+Substitua `<identificador-do-curso-ativo>` pelo `id` de um curso ativo
+cadastrado em `/api/courses`. O envio simultâneo de `courseId` e `course` é
+recusado. Para novas aulas ou transferência de curso na edição, o curso de
+destino deve existir e estar ativo; na edição de uma aula já vinculada, o mesmo
+curso desativado pode ser mantido.
 
-Uma criação válida retorna `201` sob `data.lesson`. Identificadores e
-timestamps recebidos do cliente, assim como quaisquer campos desconhecidos,
-são recusados. Dados inválidos retornam `400 INVALID_LESSON_DATA`; filtros
-inválidos retornam `400 INVALID_LESSON_FILTERS`.
+Uma criação válida retorna `201` sob `data.lesson`, contendo `id`, `courseId`, a
+sigla atual resolvida em `course` e os demais campos públicos. Identificadores e
+timestamps recebidos do cliente, assim como quaisquer campos desconhecidos, são
+recusados. Dados inválidos retornam `400 INVALID_LESSON_DATA`; filtros inválidos
+retornam `400 INVALID_LESSON_FILTERS`.
 
 Para editar, envie o corpo completo dos oito campos para
 `PUT /api/lessons/:id`. A confirmação retorna `200` com `data.lesson`; uma aula
-inexistente retorna `404`. Para excluir, use `DELETE /api/lessons/:id`, que
-retorna `204` sem corpo, inclusive quando o registro já está ausente.
+inexistente retorna `404 LESSON_NOT_FOUND`; se o vínculo persistido mudar entre
+a leitura e a escrita, a operação retorna `409 LESSON_CHANGED`. Para excluir,
+use `DELETE /api/lessons/:id`, que retorna `204` sem corpo, inclusive quando o
+registro já está ausente.
 
 ### Materiais mensais administrativos
 
